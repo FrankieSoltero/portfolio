@@ -1,0 +1,10 @@
+{
+  // This project uses "Design Component" .dc.html files: HTML templates with
+  // `{{ value }}` holes embedded inside inline `style="..."` attributes
+  // (e.g. grid-template-columns:{{ heroCols }}). The built-in CSS validator
+  // tries to parse those style attributes as plain CSS and reports the `{{ }}`
+  // holes as errors — ~94 false positives. The code is correct and runs as-is,
+  // so we turn off embedded-style validation rather than change the format.
+  "html.validate.styles": false,
+  "css.validate": false
+}

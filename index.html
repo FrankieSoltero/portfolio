@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Vendored React + ReactDOM, preloaded so support.js skips the unpkg CDN (see vendor/). Must come before support.js. -->
+<script src="./vendor/react.production.min.js"></script>
+<script src="./vendor/react-dom.production.min.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: #0e1018; }
+  svg, img { image-rendering: pixelated; }
+  ::selection { background: #ef7d57; color: #1a1c2c; }
+  @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  @keyframes fillbar { from { width: 0; } }
+  @keyframes shimmer { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+  @keyframes float-star { 0% { transform: translateY(0); opacity: 0.3; } 50% { opacity: 0.9; } 100% { transform: translateY(-14px); opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+</style>
+</helmet>
+
+<div style="background:#0e1018; font-family:'Pixelify Sans', sans-serif; color:#f4f4f4; min-height:100vh; overflow-x:hidden;">
+
+  <!-- ===== HUD / NAV ===== -->
+  <div style="position:sticky; top:0; z-index:50; background:#1a1c2c; box-shadow:0 4px #000, 0 8px rgba(0,0,0,0.4);">
+    <div style="max-width:1160px; margin:0 auto; padding:12px 22px; display:flex; align-items:center; flex-wrap:wrap; gap:18px;">
+      <a href="#top" aria-label="Back to top" style="display:flex; align-items:center; gap:12px; text-decoration:none;" style-focus="outline:3px solid #73eff7; outline-offset:3px;">
+        <span style="display:block;">{{ iconGem }}</span>
+        <span style="display:flex; flex-direction:column; line-height:1.1;">
+          <span style="font-family:'Press Start 2P', monospace; font-size:12px; color:#f4f4f4;">F. SOLTERO</span>
+          <span style="font-family:'VT323', monospace; font-size:15px; color:#73eff7;">LV.7 · FDE</span>
+        </span>
+      </a>
+      <div style="flex:1;"></div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;" data-nav>
+        <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="4">
+          <a href="{{ n.href }}" style="font-family:'Press Start 2P', monospace; font-size:10px; text-decoration:none; color:#94b0c2; padding:10px 12px;" style-hover="color:#ffcd75;" style-focus="color:#ffcd75; outline:3px solid #73eff7; outline-offset:2px;">{{ n.label }}</a>
+        </sc-for>
+      </div>
+      <div style="display:flex; align-items:center; gap:7px; background:#0e1530; padding:8px 12px; box-shadow:0 -3px #000,0 3px #000,-3px 0 #000,3px 0 #000;">
+        <span>{{ iconCoin }}</span>
+        <span style="font-family:'Press Start 2P', monospace; font-size:11px; color:#ffcd75;">×{{ coins }}</span>
+      </div>
+      <a href="Francisco_Soltero_Resume.pdf" download style="display:flex; align-items:center; gap:9px; text-decoration:none; cursor:pointer; font-family:'Press Start 2P', monospace; font-size:10px; color:#1a1c2c; background:#ef7d57; padding:11px 14px; box-shadow:0 -4px #1a1c2c,0 4px #1a1c2c,-4px 0 #1a1c2c,4px 0 #1a1c2c, inset 3px 3px #ffd0b8, inset -3px -3px #b8492a;" style-hover="background:#ffcd75; box-shadow:0 -4px #1a1c2c,0 4px #1a1c2c,-4px 0 #1a1c2c,4px 0 #1a1c2c, inset 3px 3px #fff0c8, inset -3px -3px #d99a3c;" style-focus="outline:3px solid #ffcd75; outline-offset:4px;">{{ iconDisk }} <span>RESUME</span></a>
+    </div>
+  </div>
+
+  <!-- ===== HERO / TITLE SCREEN ===== -->
+  <div id="top" style="position:relative; background:#10142b; background-image:radial-gradient(rgba(115,239,247,0.10) 1px, transparent 1px), radial-gradient(rgba(255,205,117,0.08) 1px, transparent 1px); background-size:32px 32px, 48px 48px; background-position:0 0, 16px 24px; border-bottom:6px solid #000; padding:64px 22px 72px; overflow:hidden;">
+    <div style="position:absolute; top:48px; left:8%; animation:float-star 4s ease-in-out infinite;">{{ iconStarSm }}</div>
+    <div style="position:absolute; top:120px; right:12%; animation:float-star 5.2s ease-in-out infinite;">{{ iconStarSm }}</div>
+    <div style="position:absolute; bottom:90px; left:18%; animation:float-star 6s ease-in-out infinite;">{{ iconStarSm }}</div>
+
+    <div style="max-width:1160px; margin:0 auto; display:grid; grid-template-columns:{{ heroCols }}; gap:{{ heroGap }}; align-items:center;">
+
+      <!-- Player sprite -->
+      <div style="display:flex; flex-direction:column; align-items:center; gap:18px;">
+        <div style="animation:bob 3.2s ease-in-out infinite;">
+          <div style="width:240px; height:240px; background:#0b1024; background-image:repeating-linear-gradient(45deg,#131a3a 0,#131a3a 8px,#0b1024 8px,#0b1024 16px); display:flex; align-items:center; justify-content:center; box-shadow:0 -6px #000,0 6px #000,-6px 0 #000,6px 0 #000, inset 0 0 0 4px #29366f;">
+            <span style="font-family:'VT323', monospace; font-size:19px; color:#566c86; text-align:center; line-height:1.3;">[ DROP YOUR<br>PLAYER SPRITE<br>HERE ]</span>
+          </div>
+        </div>
+        <div style="width:200px; height:26px; background:radial-gradient(ellipse at center, rgba(115,239,247,0.22), transparent 70%); border-radius:50%;"></div>
+        <span style="font-family:'VT323', monospace; font-size:16px; color:#566c86;">▲ self-portrait pixel sprite — in progress</span>
+      </div>
+
+      <!-- Title block -->
+      <div>
+        <div style="display:inline-flex; align-items:center; gap:9px; background:#0e1530; padding:7px 13px; margin-bottom:20px; box-shadow:0 -3px #000,0 3px #000,-3px 0 #000,3px 0 #000;">
+          <span style="width:9px; height:9px; background:#a7f070; animation:shimmer 1.4s infinite;"></span>
+          <span style="font-family:'VT323', monospace; font-size:17px; color:#a7f070; letter-spacing:1px;">NOW PLAYING · NEW YORK, NY</span>
+        </div>
+        <h1 style="font-family:'Press Start 2P', monospace; font-size:{{ heroTitleSize }}; line-height:1.32; margin:0 0 18px; color:#f4f4f4; text-shadow:5px 5px #b13e53;">FRANCISCO<br>SOLTERO</h1>
+        <p style="font-family:'Pixelify Sans', sans-serif; font-weight:600; font-size:24px; margin:0 0 8px; color:#ffcd75;">⚔ Forward Deployed AI Engineer & Founder</p>
+        <p style="font-family:'Pixelify Sans', sans-serif; font-size:20px; line-height:1.5; margin:0 0 26px; color:#94b0c2; max-width:520px;">I scope, build, and deploy production AI systems end-to-end, then hand the keys to the client. Full-stack engineer focused on AI agents.</p>
+
+        <!-- Stat bars -->
+        <div style="display:flex; flex-direction:column; gap:13px; max-width:480px; margin-bottom:30px;">
+          <sc-for list="{{ heroStats }}" as="s" hint-placeholder-count="3">
+            <div>
+              <div style="display:flex; justify-content:space-between; font-family:'Press Start 2P', monospace; font-size:9px; margin-bottom:6px;"><span style="color:{{ s.color }};">{{ s.label }}</span><span style="color:#94b0c2;">{{ s.note }}</span></div>
+              <div style="height:16px; background:#0b0c12; box-shadow:inset 2px 2px #000; padding:3px;"><div style="height:100%; width:{{ s.pct }}; background:{{ s.fill }}; animation:fillbar 1.4s ease-out;"></div></div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px;">
+          <a href="#quests" style="display:inline-flex; align-items:center; gap:10px; text-decoration:none; cursor:pointer; font-family:'Press Start 2P', monospace; font-size:13px; color:#1a1c2c; background:#ef7d57; padding:18px 24px; box-shadow:0 -5px #1a1c2c,0 5px #1a1c2c,-5px 0 #1a1c2c,5px 0 #1a1c2c, inset 3px 3px #ffd0b8, inset -3px -3px #b8492a;" style-hover="background:#ffcd75; box-shadow:0 -5px #1a1c2c,0 5px #1a1c2c,-5px 0 #1a1c2c,5px 0 #1a1c2c, inset 3px 3px #fff0c8, inset -3px -3px #d99a3c;" style-active="transform:translateY(3px);" style-focus="outline:3px solid #ffcd75; outline-offset:4px;">▶ VIEW QUEST LOG</a>
+          <span style="font-family:'Press Start 2P', monospace; font-size:11px; color:#73eff7; animation:blink 1.1s steps(1) infinite;">PRESS START</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== QUEST LOG / PROJECTS ===== -->
+  <div id="quests" style="max-width:1160px; margin:0 auto; padding:72px 22px 24px; scroll-margin-top:84px;">
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:30px; flex-wrap:wrap;">
+      <div>
+        <div style="display:inline-flex; align-items:center; gap:10px; background:#ffcd75; color:#1a1c2c; padding:8px 15px; font-family:'Press Start 2P', monospace; font-size:12px; margin-bottom:16px; box-shadow:0 -4px #1a1c2c,0 4px #1a1c2c,-4px 0 #1a1c2c,4px 0 #1a1c2c;">{{ iconTagStar }}<span>QUEST LOG</span></div>
+        <h2 style="font-family:'Press Start 2P', monospace; font-size:24px; margin:0; color:#f4f4f4; text-shadow:3px 3px #29366f;">PROJECTS &amp; SHIPS</h2>
+      </div>
+      <span style="font-family:'VT323', monospace; font-size:18px; color:#94b0c2;">{{ questCount }} quests · {{ clearedCount }} cleared</span>
+    </div>
+
+    <!-- Featured quest -->
+    <div style="position:relative; background:#1a1c2c; margin-bottom:22px; box-shadow:0 -6px #000,0 6px #000,-6px 0 #000,6px 0 #000, inset 0 0 0 3px #ffcd75;">
+      <div style="position:absolute; top:-1px; right:18px; background:#ffcd75; color:#1a1c2c; font-family:'Press Start 2P', monospace; font-size:9px; padding:7px 11px; box-shadow:0 4px #1a1c2c;">★ LEGENDARY</div>
+      <div style="display:grid; grid-template-columns:{{ featuredCols }}; gap:0;">
+        <div style="background:#0b1024; background-image:repeating-linear-gradient(45deg,#131a3a 0,#131a3a 8px,#0b1024 8px,#0b1024 16px); display:flex; align-items:center; justify-content:center; min-height:{{ featuredSpriteMinH }}; box-shadow:inset -4px 0 #000;">
+          <span style="font-family:'VT323', monospace; font-size:16px; color:#566c86; text-align:center; line-height:1.3;">[ project<br>sprite ]</span>
+        </div>
+        <div style="padding:30px 32px;">
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+            <span style="font-family:'VT323', monospace; font-size:18px; color:#a7f070;">● LIVE</span>
+            <span style="font-family:'VT323', monospace; font-size:18px; color:#566c86;">·</span>
+            <span style="font-family:'VT323', monospace; font-size:18px; color:#73eff7;">DIFFICULTY ●●○○</span>
+            <span style="font-family:'VT323', monospace; font-size:18px; color:#566c86;">·</span>
+            <span style="font-family:'VT323', monospace; font-size:18px; color:#94b0c2;">SOLO · 2026</span>
+          </div>
+          <h3 style="font-family:'Press Start 2P', monospace; font-size:20px; margin:0 0 14px; color:#ffcd75; line-height:1.4;">Calendar Assistant</h3>
+          <p style="font-family:'Pixelify Sans', sans-serif; font-size:20px; line-height:1.5; margin:0 0 18px; color:#cdd9e5; max-width:600px;">An AI scheduling agent that connects to Google Calendar over OAuth, uses the Claude API to recommend open meeting slots, and drafts the matching emails. Built end-to-end in hours by pairing Claude Code with custom skills — the same agent workflow I run on client projects.</p>
+          <div style="display:flex; flex-wrap:wrap; gap:9px; margin-bottom:18px;">
+            <span style="font-family:'Pixelify Sans', sans-serif; font-weight:600; font-size:15px; color:#73eff7; background:#0e1530; padding:6px 11px; box-shadow:0 -3px #000,0 3px #000,-3px 0 #000,3px 0 #000;">Claude API</span>
+            <span style="font-family:'Pixelify Sans', sans-serif; font-weight:600; font-size:15px; color:#73eff7; background:#0e1530; padding:6px 11px; box-shadow:0 -3px #000,0 3px #000,-3px 0 #000,3px 0 #000;">Google OAuth</span>
+            <span style="font-family:'Pixelify Sans', sans-serif; font-weight:600; font-size:15px; color:#73eff7; background:#0e1530; padding:6px 11px; box-shadow:0 -3px #000,0 3px #000,-3px 0 #000,3px 0 #000;">Agents / Skills</span>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; border-top:3px solid #29366f; padding-top:16px;">
+            <span style="display:flex; align-items:center; gap:8px; font-family:'VT323', monospace; font-size:20px; color:#ffcd75;">{{ iconBolt }} REWARD: shipped in hours, not weeks</span>
+            <a href="https://github.com/FrankieSoltero/calendar-assistant" target="_blank" rel="noreferrer" style="font-family:'Press Start 2P', monospace; font-size:10px; text-decoration:none; color:#73eff7; padding:10px 0;" style-hover="color:#ffcd75;" style-focus="color:#ffcd75; outline:3px solid #73eff7; outline-offset:3px;">VIEW ON GITHUB →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quest grid -->
+    <div style="display:grid; grid-template-columns:{{ questCols }}; gap:22px;">
+      <sc-for list="{{ quests }}" as="q" hint-placeholder-count="5">
+        <div style="position:relative; display:flex; flex-direction:column; background:#1a1c2c; box-shadow:0 -5px #000,0 5px #000,-5px 0 #000,5px 0 #000, inset 0 0 0 3px #29366f;" style-hover="inset 0 0 0 3px {{ q.color }}; box-shadow:0 -5px #000,0 5px #000,-5px 0 #000,5px 0 #000, inset 0 0 0 3px {{ q.color }};">
+          <div style="position:absolute; top:-1px; right:14px; background:{{ q.color }}; color:#1a1c2c; font-family:'Press Start 2P', monospace; font-size:8px; padding:6px 9px; box-shadow:0 3px #1a1c2c;">{{ q.rarity }}</div>
+          <div style="display:flex; flex:1; gap:0;">
+            <div style="flex-shrink:0; width:108px; background:#0b1024; background-image:repeating-linear-gradient(45deg,#131a3a 0,#131a3a 8px,#0b1024 8px,#0b1024 16px); display:flex; align-items:center; justify-content:center; box-shadow:inset -4px 0 #000;">
+              <span style="font-family:'VT323', monospace; font-size:13px; color:#566c86; text-align:center; line-height:1.2;">[ sprite ]</span>
+            </div>
+            <div style="flex:1; padding:20px 20px 18px;">
+              <div style="display:flex; align-items:center; gap:9px; margin-bottom:9px; flex-wrap:wrap;">
+                <span style="font-family:'VT323', monospace; font-size:16px; color:{{ q.statusColor }};">● {{ q.status }}</span>
+                <span style="font-family:'VT323', monospace; font-size:16px; color:#94b0c2;">{{ q.diff }}</span>
+              </div>
+              <h3 style="font-family:'Pixelify Sans', sans-serif; font-weight:700; font-size:22px; margin:0 0 8px; color:#f4f4f4; line-height:1.2;">{{ q.title }}</h3>
+              <p style="font-family:'Pixelify Sans', sans-serif; font-size:17px; line-height:1.45; margin:0 0 14px; color:#94b0c2;">{{ q.blurb }}</p>
+              <div style="display:flex; flex-wrap:wrap; gap:7px; margin-bottom:14px;">
+                <sc-for list="{{ q.tags }}" as="t" hint-placeholder-count="3">
+                  <span style="font-family:'Pixelify Sans', sans-serif; font-weight:600; font-size:14px; color:#73eff7; background:#0e1530; padding:5px 9px; box-shadow:0 -2px #000,0 2px #000,-2px 0 #000,2px 0 #000;">{{ t }}</span>
+                </sc-for>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px; font-family:'VT323', monospace; font-size:18px; color:{{ q.color }}; border-top:3px solid #29366f; padding-top:12px;">{{ iconBolt }} {{ q.reward }}</div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ===== SKILLS / INVENTORY ===== -->
+  <div id="skills" style="max-width:1160px; margin:0 auto; padding:72px 22px 24px; scroll-margin-top:84px;">
+    <div style="display:inline-flex; align-items:center; gap:10px; background:#73eff7; color:#1a1c2c; padding:8px 15px; font-family:'Press Start 2P', monospace; font-size:12px; margin-bottom:16px; box-shadow:0 -4px #1a1c2c,0 4px #1a1c2c,-4px 0 #1a1c2c,4px 0 #1a1c2c;">{{ iconTagDiamond }}<span>INVENTORY</span></div>
+    <h2 style="font-family:'Press Start 2P', monospace; font-size:24px; margin:0 0 30px; color:#f4f4f4; text-shadow:3px 3px #29366f;">SKILLS &amp; LOADOUT</h2>
+    <div style="display:grid; grid-template-columns:{{ skillCols }}; gap:22px;">
+      <sc-for list="{{ skillGroups }}" as="g" hint-placeholder-count="4">
+        <div style="background:#1a1c2c; padding:22px 24px; box-shadow:0 -5px #000,0 5px #000,-5px 0 #000,5px 0 #000;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
+            <span style="width:13px; height:13px; background:{{ g.color }};"></span>
+            <span style="font-family:'Press Start 2P', monospace; font-size:12px; color:{{ g.color }};">{{ g.name }}</span>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:9px;">
+            <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="6">
+              <span style="display:flex; align-items:center; gap:8px; font-family:'Pixelify Sans', sans-serif; font-weight:600; font-size:16px; color:#cdd9e5; background:#0e1530; padding:8px 12px; box-shadow:0 -3px #000,0 3px #000,-3px 0 #000,3px 0 #000;"><span style="width:8px; height:8px; background:{{ g.color }}; flex-shrink:0;"></span>{{ it }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ===== ABOUT / LORE ===== -->
+  <div id="about" style="max-width:1160px; margin:0 auto; padding:72px 22px 24px; scroll-margin-top:84px;">
+    <div style="display:inline-flex; align-items:center; gap:10px; background:#a7f070; color:#1a1c2c; padding:8px 15px; font-family:'Press Start 2P', monospace; font-size:12px; margin-bottom:16px; box-shadow:0 -4px #1a1c2c,0 4px #1a1c2c,-4px 0 #1a1c2c,4px 0 #1a1c2c;">{{ iconTagSpark }}<span>LORE</span></div>
+    <h2 style="font-family:'Press Start 2P', monospace; font-size:24px; margin:0 0 30px; color:#f4f4f4; text-shadow:3px 3px #29366f;">CHARACTER BIO</h2>
+    <div style="display:grid; grid-template-columns:{{ aboutCols }}; gap:22px; align-items:start;">
+      <div style="background:#29366f; box-shadow:0 -6px #000,0 6px #000,-6px 0 #000,6px 0 #000, inset 0 5px #4a5aa8, inset 0 -5px #1b2247;">
+        <div style="display:flex; align-items:center; gap:10px; background:#1a1c2c; padding:11px 18px; box-shadow:inset 0 -3px #000;">
+          <span style="width:10px; height:10px; background:#a7f070;"></span>
+          <span style="font-family:'Press Start 2P', monospace; font-size:10px; color:#a7f070;">ORIGIN STORY</span>
+        </div>
+        <div style="padding:26px 28px;">
+          <p style="font-family:'Pixelify Sans', sans-serif; font-size:21px; line-height:1.55; margin:0 0 16px; color:#f4f4f4;">Computer Science and Mathematics at <span style="color:#ffcd75;">Tulane University</span>. Founder of <span style="color:#ffcd75;">LastCall</span> in New York; previously a Forward Deployed AI Engineer at <span style="color:#ffcd75;">Tenex</span>, where I owned client projects from technical scoping through final deployment.</p>
+          <p style="font-family:'Pixelify Sans', sans-serif; font-size:21px; line-height:1.55; margin:0; color:#94b0c2;">Earlier I built across the stack at Greystone Medical — payment gateways, e-commerce, and internal tooling. I bring AI coding agents into real production work and ship quickly without lowering the quality bar. Native English and Spanish. Current side-quest: learning to draw my own pixel sprites.</p>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <sc-for list="{{ factoids }}" as="f" hint-placeholder-count="4">
+          <div style="background:#1a1c2c; padding:16px 18px; box-shadow:0 -4px #000,0 4px #000,-4px 0 #000,4px 0 #000;">
+            <div style="font-family:'VT323', monospace; font-size:16px; color:#566c86; margin-bottom:4px;">{{ f.label }}</div>
+            <div style="font-family:'Pixelify Sans', sans-serif; font-weight:600; font-size:19px; color:{{ f.color }};">{{ f.value }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CONTACT / SAVE POINT ===== -->
+  <div id="contact" style="max-width:1160px; margin:0 auto; padding:72px 22px 80px; scroll-margin-top:84px;">
+    <div style="position:relative; background:#10142b; background-image:radial-gradient(rgba(115,239,247,0.10) 1px, transparent 1px); background-size:30px 30px; padding:48px 32px; box-shadow:0 -6px #000,0 6px #000,-6px 0 #000,6px 0 #000, inset 0 0 0 3px #257179; text-align:center;">
+      <div style="display:inline-flex; margin:0 auto 8px; animation:bob 2.6s ease-in-out infinite;">{{ iconGemBig }}</div>
+      <div style="font-family:'VT323', monospace; font-size:18px; color:#73eff7; margin-bottom:8px; letter-spacing:1px;">✶ SAVE POINT REACHED ✶</div>
+      <h2 style="font-family:'Press Start 2P', monospace; font-size:24px; margin:0 0 12px; color:#f4f4f4; text-shadow:3px 3px #257179;">LET'S TEAM UP</h2>
+      <p style="font-family:'Pixelify Sans', sans-serif; font-size:20px; line-height:1.5; margin:0 auto 30px; color:#94b0c2; max-width:520px;">Hiring, building, or want to compare notes on AI agents and pixel art? Pick a channel — I reply quickly.</p>
+      <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:14px;">
+        <a href="mailto:frankiesoltero@gmail.com" style="display:inline-flex; align-items:center; gap:10px; text-decoration:none; cursor:pointer; font-family:'Press Start 2P', monospace; font-size:11px; color:#1a1c2c; background:#ef7d57; padding:16px 20px; box-shadow:0 -4px #1a1c2c,0 4px #1a1c2c,-4px 0 #1a1c2c,4px 0 #1a1c2c, inset 3px 3px #ffd0b8, inset -3px -3px #b8492a;" style-hover="background:#ffcd75;" style-focus="outline:3px solid #ffcd75; outline-offset:4px;">{{ iconMail }} EMAIL</a>
+        <a href="https://www.linkedin.com/in/francisco-soltero-4b8014237/" target="_blank" rel="noreferrer" style="display:inline-flex; align-items:center; gap:10px; text-decoration:none; cursor:pointer; font-family:'Press Start 2P', monospace; font-size:11px; color:#73eff7; background:#29366f; padding:16px 20px; box-shadow:0 -4px #1a1c2c,0 4px #1a1c2c,-4px 0 #1a1c2c,4px 0 #1a1c2c, inset 3px 3px #4a5aa8, inset -3px -3px #1b2247;" style-hover="color:#fff; background:#3b5dc9;" style-focus="outline:3px solid #73eff7; outline-offset:4px;">LINKEDIN</a>
+        <a href="https://github.com/FrankieSoltero" target="_blank" rel="noreferrer" style="display:inline-flex; align-items:center; gap:10px; text-decoration:none; cursor:pointer; font-family:'Press Start 2P', monospace; font-size:11px; color:#73eff7; background:#29366f; padding:16px 20px; box-shadow:0 -4px #1a1c2c,0 4px #1a1c2c,-4px 0 #1a1c2c,4px 0 #1a1c2c, inset 3px 3px #4a5aa8, inset -3px -3px #1b2247;" style-hover="color:#fff; background:#3b5dc9;" style-focus="outline:3px solid #73eff7; outline-offset:4px;">GITHUB</a>
+        <a href="Francisco_Soltero_Resume.pdf" download style="display:inline-flex; align-items:center; gap:10px; text-decoration:none; cursor:pointer; font-family:'Press Start 2P', monospace; font-size:11px; color:#1a1c2c; background:#a7f070; padding:16px 20px; box-shadow:0 -4px #1a1c2c,0 4px #1a1c2c,-4px 0 #1a1c2c,4px 0 #1a1c2c, inset 3px 3px #d4ffb0, inset -3px -3px #5fa83c;" style-hover="background:#73eff7;" style-focus="outline:3px solid #ffcd75; outline-offset:4px;">{{ iconDisk }} SAVE FILE</a>
+      </div>
+      <div style="font-family:'VT323', monospace; font-size:17px; color:#566c86; margin-top:24px;">frankiesoltero@gmail.com · 858-699-2322 · New York, NY</div>
+    </div>
+  </div>
+
+  <!-- ===== FOOTER ===== -->
+  <div style="background:#1a1c2c; box-shadow:inset 0 6px #000; padding:24px 22px; text-align:center;">
+    <span style="font-family:'VT323', monospace; font-size:17px; color:#566c86;">© 2026 FRANCISCO SOLTERO · built with HTML, pixels &amp; Claude · ◀ ▼ ▲ ▶ to navigate</span>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  buildIcon(rows, map, scale) {
+    const h = rows.length, w = rows[0].length;
+    const rects = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const ch = rows[y][x];
+        const fill = map[ch];
+        if (!fill) continue;
+        rects.push(React.createElement('rect', { key: x + '_' + y, x, y, width: 1.02, height: 1.02, fill }));
+      }
+    }
+    return React.createElement('svg', {
+      viewBox: '0 0 ' + w + ' ' + h, width: w * scale, height: h * scale,
+      'aria-hidden': 'true',
+      style: { imageRendering: 'pixelated', shapeRendering: 'crispEdges', display: 'block' }
+    }, rects);
+  }
+
+  isMobile() {
+    return typeof window !== 'undefined'
+      && window.matchMedia('(max-width:760px)').matches;
+  }
+
+  componentDidMount() {
+    // Re-render when crossing the mobile breakpoint (flash-free: renderVals
+    // already reads the live value, this just refreshes on later changes).
+    this._mq = window.matchMedia('(max-width:760px)');
+    this._onMq = () => this.forceUpdate();
+    this._mq.addEventListener('change', this._onMq);
+
+    // Real arrow-key navigation between sections (makes the footer claim true).
+    this._sections = ['top', 'quests', 'skills', 'about', 'contact'];
+    this._onKey = (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      let dir = 0;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') dir = 1;
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') dir = -1;
+      else return;
+      e.preventDefault();
+      const ids = this._sections;
+      const mid = window.scrollY + window.innerHeight / 2;
+      let cur = 0;
+      ids.forEach((id, i) => {
+        const el = document.getElementById(id);
+        if (el && el.offsetTop <= mid) cur = i;
+      });
+      const next = Math.max(0, Math.min(ids.length - 1, cur + dir));
+      const el = document.getElementById(ids[next]);
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    };
+    document.addEventListener('keydown', this._onKey);
+  }
+
+  componentWillUnmount() {
+    if (this._mq && this._onMq) this._mq.removeEventListener('change', this._onMq);
+    if (this._onKey) document.removeEventListener('keydown', this._onKey);
+  }
+
+  renderVals() {
+    const I = (r, m, s) => this.buildIcon(r, m, s);
+    const mobile = this.isMobile();
+    const layout = {
+      heroCols: mobile ? '1fr' : '340px 1fr',
+      heroGap: mobile ? '32px' : '48px',
+      heroTitleSize: mobile ? '30px' : '46px',
+      featuredCols: mobile ? '1fr' : '280px 1fr',
+      featuredSpriteMinH: mobile ? '150px' : 'auto',
+      questCols: mobile ? '1fr' : '1fr 1fr',
+      skillCols: mobile ? '1fr' : '1fr 1fr',
+      aboutCols: mobile ? '1fr' : '1fr 320px'
+    };
+    const heart = ['.HH.HH.', 'HHHHHHH', 'HHHHHHH', '.HHHHH.', '..HHH..', '...H...'];
+    const coin = ['.ooooo.', 'oOOOOOo', 'oOWOOOo', 'oOOOOOo', 'oOOOOOo', '.ooooo.'];
+    const star = ['...S...', '..SSS..', 'SSSSSSS', '.SSSSS.', '.SS.SS.'];
+    const gem = ['..DDD..', '.DDDDD.', 'DDWDDDD', '.DDDDD.', '..DDD..', '...D...'];
+    const bolt = ['...LL', '..LL.', '.LL..', 'LLLLL', '..LL.', '.LL..', 'LL...'];
+    const mail = ['MMMMMMMMM', 'MKMMMMMKM', 'MMKMMMKMM', 'MMMKMKMMM', 'MMMMKMMMM', 'MMMMMMMMM'];
+    const disk = ['KBBBBBBK', 'BWWWWWBB', 'BWWWWWBB', 'BBBBBBBB', 'BBBBBBBB', 'BWWWWWWB', 'BWKKKKWB', 'BBBBBBBB'];
+    const diamond = ['..D..', '.DDD.', 'DDDDD', '.DDD.', '..D..'];
+    const spark = ['..K..', '..K..', 'KKKKK', '..K..', '..K..'];
+
+    const icons = {
+      iconGem: I(gem, { D: '#73eff7', W: '#fff' }, 4),
+      iconGemBig: I(gem, { D: '#73eff7', W: '#fff' }, 8),
+      iconCoin: I(coin, { o: '#ef7d57', O: '#ffcd75', W: '#fff0c8' }, 3),
+      iconBolt: I(bolt, { L: '#ffcd75' }, 3),
+      iconMail: I(mail, { M: '#1a1c2c', K: '#94b0c2' }, 2.6),
+      iconDisk: I(disk, { B: '#1a1c2c', W: '#1a1c2c', K: '#ef7d57' }, 2.4),
+      iconStarSm: I(star, { S: '#ffcd75' }, 3),
+      iconTagStar: I(star, { S: '#1a1c2c' }, 2),
+      iconTagDiamond: I(diamond, { D: '#1a1c2c' }, 2),
+      iconTagSpark: I(spark, { K: '#1a1c2c' }, 2)
+    };
+
+    const heroStats = [
+      { label: 'FULL-STACK', note: 'TS · React · Node', color: '#73eff7', pct: '94%', fill: 'repeating-linear-gradient(90deg,#73eff7 0,#73eff7 8px,#41a6f6 8px,#41a6f6 12px)' },
+      { label: 'AI / LLM', note: 'agents · function calling', color: '#ffcd75', pct: '88%', fill: 'repeating-linear-gradient(90deg,#ffcd75 0,#ffcd75 8px,#ef7d57 8px,#ef7d57 12px)' },
+      { label: 'SHIP SPEED', note: 'scope → deploy', color: '#a7f070', pct: '97%', fill: 'repeating-linear-gradient(90deg,#a7f070 0,#a7f070 8px,#38b764 8px,#38b764 12px)' }
+    ];
+
+    const quests = [
+      { title: 'Internal Finance Tool', rarity: 'EPIC', color: '#ef7d57', status: 'DEPLOYED', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●●', blurb: 'Full-stack finance tool serving a 60-person client team — Fastify + TypeScript backend, Vite + React frontend, deployed on Google Cloud.', tags: ['Fastify', 'React', 'GCP'], reward: '60-person team in prod' },
+      { title: 'E-Commerce Platform', rarity: 'EPIC', color: '#41a6f6', status: 'SHIPPED', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●○', blurb: 'TypeScript / Next.js storefront with live Authorize.net payments, rate limiting, and Sentry monitoring. Increased company revenue 20%.', tags: ['Next.js', 'Authorize.net', 'PostgreSQL'], reward: '+20% revenue' },
+      { title: 'Salesforce Migration', rarity: 'BOSS', color: '#b13e53', status: 'CLEARED', statusColor: '#94b0c2', diff: 'DIFFICULTY ●●●●', blurb: "Re-architected a billion-dollar mineral company's infrastructure, data, and workflows into a freshly provisioned Salesforce org.", tags: ['Salesforce', 'Data', 'Architecture'], reward: '$1B+ client' },
+      { title: 'LastCall', rarity: 'EPIC', color: '#a7f070', status: 'BUILDING', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●○', blurb: "A startup I'm founding — TypeScript REST backend with a UI/UX I designed, shipped through a CI/CD pipeline I own. Early product testing showed +30% customer satisfaction.", tags: ['TypeScript', 'CI/CD', 'UX'], reward: '+30% CSAT' },
+      { title: 'PDF-Parsing Bot', rarity: 'RARE', color: '#73eff7', status: 'AUTOMATED', statusColor: '#a7f070', diff: 'DIFFICULTY ●●○○', blurb: 'Document-intake bot built at zero infrastructure cost, with invoice processing automated in Python on AWS.', tags: ['Python', 'AWS', 'Automation'], reward: '$0 infra cost' }
+    ];
+
+    const skillGroups = [
+      { name: 'LANGUAGES', color: '#ef7d57', items: ['TypeScript', 'JavaScript', 'Python', 'Java', 'C', 'SQL'] },
+      { name: 'FRAMEWORKS', color: '#73eff7', items: ['React', 'Next.js', 'Node.js', 'Fastify', 'Vite', 'Tailwind'] },
+      { name: 'CLOUD & TOOLS', color: '#a7f070', items: ['GCP', 'AWS', 'Salesforce', 'Vercel', 'PostgreSQL', 'Supabase', 'Sentry', 'Upstash', 'CI/CD'] },
+      { name: 'AI / ML', color: '#ffcd75', items: ['Claude API', 'Function Calling', 'Streaming', 'Claude Code', 'Codex', 'PyTorch', 'TensorFlow', 'Scikit-learn'] }
+    ];
+
+    const factoids = [
+      { label: 'CLASS', value: 'Forward Deployed AI Eng/Founder', color: '#ffcd75' },
+      { label: 'GUILD', value: 'LastCall, NY', color: '#73eff7' },
+      { label: 'EDUCATION', value: 'BS CS + Math · Tulane', color: '#a7f070' },
+      { label: 'LANGUAGES', value: 'English · Spanish (native)', color: '#ef7d57' }
+    ];
+
+    const navItems = [
+      { label: 'QUESTS', href: '#quests' },
+      { label: 'SKILLS', href: '#skills' },
+      { label: 'ABOUT', href: '#about' },
+      { label: 'CONTACT', href: '#contact' }
+    ];
+
+    return {
+      ...icons, ...layout, heroStats, quests, skillGroups, factoids, navItems,
+      coins: 9, questCount: 6, clearedCount: 6
+    };
+  }
+}
+</script>
+</body>
+</html>

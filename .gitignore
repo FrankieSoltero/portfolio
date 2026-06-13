@@ -1,0 +1,10 @@
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# Local preview / duplicate assets not part of the deployed site
+.thumbnail
+uploads/
+
+# Vercel
+.vercel
