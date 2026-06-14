@@ -298,7 +298,6 @@ Edit `skillGroups` (4 groups: `LANGUAGES / FRAMEWORKS / CLOUD & TOOLS / AI / ML`
 | LinkedIn | `https://www.linkedin.com/in/francisco-soltero-4b8014237/` |
 | GitHub | `https://github.com/FrankieSoltero` |
 | Calendar Assistant repo | `https://github.com/FrankieSoltero/calendar-assistant` |
-| Phone | `858-699-2322` |
 | Résumé | `Francisco_Soltero_Resume.pdf` (in project root, `download` attribute) |
 
 When adding repo links to other quests, follow the same pattern: `target="_blank" rel="noreferrer"`, CYAN text, hover → GOLD.
