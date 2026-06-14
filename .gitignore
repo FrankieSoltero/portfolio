@@ -8,3 +8,6 @@ uploads/
 
 # Vercel
 .vercel
+
+# Local agent working doc — not for the public repo
+HANDOFF.md
