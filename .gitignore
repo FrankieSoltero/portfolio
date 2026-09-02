@@ -11,3 +11,13 @@ uploads/
 
 # Local agent working doc — not for the public repo
 HANDOFF.md
+
+# Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Original scaffold drop (copied into app/, components/, content/, lib/)
+papers-scaffold/

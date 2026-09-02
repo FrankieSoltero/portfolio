@@ -1,0 +1,62 @@
+---
+title: "Grokking: Generalization Beyond Overfitting"
+slug: "grokking"
+date: "2026-07-10"
+status: "published"
+arxiv: "https://arxiv.org/abs/2201.02177"
+authors: "Power et al., 2022"
+tags: ["training-dynamics", "small-models"]
+repo: "https://github.com/YOUR_GH/repro-grokking"
+summary: "A tiny transformer memorizes modular arithmetic, then suddenly generalizes thousands of steps later — and it reproduces on one consumer GPU."
+repro:
+  model: "1-layer transformer, ~400K params"
+  dataset: "modular addition, p=113"
+  hardware: "1x consumer GPU, ~3 hrs"
+  claim: "Validation accuracy jumps to ~100% long after training accuracy saturates"
+  result: "partial"
+  delta: "PLACEHOLDER — fill in after running the experiment"
+---
+
+## What the paper claims
+
+> This is a placeholder entry so the section renders end to end. Replace the body
+> after running the actual reproduction.
+
+Train a small transformer on a simple algorithmic task like modular addition. It
+memorizes the training set quickly — then, thousands of steps *after* training
+accuracy hits 100%, validation accuracy suddenly snaps from chance to near-perfect.
+The model "groks" the underlying rule long after it appeared to be done learning.
+
+$$
+\text{val acc} \approx \frac{1}{p} \;\; \xrightarrow{\;\sim 10^4 \text{ steps later}\;} \;\; \approx 1.0
+$$
+
+## Why it matters
+
+It's a clean, cheap window into generalization dynamics — evidence that
+"overfitting" isn't the end of the story, and that weight decay and training
+duration interact in ways the classic bias-variance picture doesn't predict.
+
+## The reproduction
+
+Single-layer transformer, ~400K parameters, trained on `a + b mod 113` with a
+50/50 train/val split and AdamW with weight decay. The one question this answers:
+**does the delayed generalization jump appear at this scale, and when?**
+
+```python
+# placeholder — key training loop snippet goes here
+```
+
+<Figure src="/papers/grokking/curves.png" caption="Train vs validation accuracy over steps (placeholder)." />
+
+## What matched, what didn't
+
+<Callout>
+Placeholder for divergences: step count where grokking appeared, sensitivity to
+weight decay, anything that didn't match the paper.
+</Callout>
+
+## Takeaways
+
+- Placeholder takeaway one.
+- Placeholder takeaway two.

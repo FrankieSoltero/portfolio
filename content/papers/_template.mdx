@@ -1,0 +1,55 @@
+---
+title: "PAPER TITLE"
+slug: "kebab-case-slug"
+date: "2026-01-01"
+status: "draft"
+arxiv: "https://arxiv.org/abs/XXXX.XXXXX"
+authors: "Lastname et al., YYYY"
+tags: ["tag-one", "tag-two"]
+repo: "https://github.com/YOUR_GH/repro-SLUG"
+summary: "One-sentence hook shown on the index page."
+repro:
+  model: ""
+  dataset: ""
+  hardware: ""
+  claim: ""
+  result: "partial"
+  delta: ""
+---
+
+## What the paper claims
+
+Plain-English version of the core idea. One or two paragraphs. If there's a key
+equation, include it — KaTeX is wired up (keep the $$ delimiters on their own
+lines, or the equation renders inline instead of as a display block):
+
+$$
+\mathcal{L} = -\sum_i \log p_\theta(x_i \mid x_{<i})
+$$
+
+## Why it matters
+
+Why anyone should care. Connect it to something practical.
+
+## The reproduction
+
+What I shrank and how: model size, dataset, compute budget. What single question
+the reproduction answers.
+
+```python
+# key snippet from the repro — full code in the repo
+```
+
+{/* Figures sit on the dark graph-grid panel — export charts with a dark or
+    transparent background so they don't glow. */}
+<Figure src="/papers/SLUG/fig1.png" caption="What this chart shows." />
+
+## What matched, what didn't
+
+<Callout>
+Where my results diverged from the paper and my best guess why.
+</Callout>
+
+## Takeaways
+
+Two or three bullets max. What I'd tell a colleague over coffee.

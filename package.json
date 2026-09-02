@@ -1,0 +1,33 @@
+{
+  "name": "portfolio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Francisco Soltero's portfolio: build-free 8-bit character sheet at /, Next.js-rendered /papers section.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "feed": "^5.1.0",
+    "gray-matter": "^4.0.3",
+    "katex": "^0.16.22",
+    "next": "^15.3.4",
+    "next-mdx-remote": "^6.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "reading-time": "^1.5.0",
+    "rehype-katex": "^7.0.1",
+    "rehype-pretty-code": "^0.14.1",
+    "remark-math": "^6.0.0",
+    "shiki": "^3.7.0",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

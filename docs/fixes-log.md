@@ -45,3 +45,56 @@
   `respond fast`, `WIP`); tightened quest/featured/bio/contact prose. Updated role to
   **Forward Deployed AI Engineer & Founder**; bio now leads with founding LastCall and
   treats Tenex as a previous role (per user's factoid edits).
+
+## 2026-07-02 — /papers section (Next.js hybrid)
+
+**Spec:** PLAN.md (papers-scaffold drop, root copy) · **Branch:** `papers-section`
+
+### Changes
+- Wrapped the repo in Next.js **without touching the 8-bit site**: `index.html`,
+  `support.js`, `vendor/`, résumé, and Style Tile moved to `public/` and served
+  statically; a `beforeFiles` rewrite maps `/` → `/index.html`. Verified `curl /`
+  is byte-identical to `public/index.html`.
+- Built the papers section per PLAN.md: zod-validated MDX content layer
+  (`lib/papers.ts`), SSG post pages, server-filtered tag index, RunCard/RunBadge,
+  Figure (graph-grid), Callout, RSS at `/papers/feed.xml`, `app/sitemap.ts`,
+  IBM Plex fonts via `next/font`, tokens in `app/papers/papers.css`.
+- Added `PAPERS` to the 8-bit nav (`navItems`, one-line, style untouched); DC parse
+  check passes.
+
+### Lessons / gotchas
+- **MDX display math:** `$$...$$` on a single line is parsed as *inline* math by
+  micromark; the `$$` delimiters must sit on their own lines to get a
+  `katex-display` block. Fixed in `grokking.mdx` and documented in `_template.mdx`.
+- **next-mdx-remote v5 had a high advisory** (GHSA-g4xw-jxrg-5f6m, arbitrary code
+  execution on untrusted MDX). Upgraded to v6 — same `/rsc` API, no code changes.
+  A moderate `postcss` advisory remains *inside* Next's own dependency tree; not
+  actionable from this repo (audit's "fix" downgrades Next to 9.x — never do that).
+- **Contrast:** the plan's amber `--partial` (#B4690E) is 4.2:1 against white/paper —
+  below AA (4.5:1) for the small mono badge/label text. Added `--partial-strong`
+  (#8F5307, ≥5.9:1) for text fills; `--partial` remains for borders and tints.
+- **Two design systems in one repo:** `/papers` deliberately does NOT use the
+  Sweetie-16/pixel language. Rules for keeping them separate are in CLAUDE.md.
+- **Vercel:** the project was imported as framework "Other" (static). It must be
+  switched to the **Next.js** preset (build command `npm run build`) for `/papers`
+  to deploy.
+
+### Same day — hybrid 8-bit skin on /papers (user picked "Option A")
+- Reskinned /papers per docs/superpowers/specs/2026-07-02-papers-8bit-hybrid-design.md:
+  Sweetie-16 dark ground, pixel-frame box-shadows, Press Start 2P chrome, VT323
+  metadata; body/math/code stay in readable faces. Shiki theme github-light →
+  tokyo-night. IBM Plex Serif dropped.
+- All contrast pairs recomputed for the dark ground (table in the spec); badges are
+  night-text-on-bright-fill (≥6.2:1).
+- Gotcha for future figures: charts now sit on a dark graph-grid panel — export PNGs
+  with dark/transparent backgrounds (noted in _template.mdx).
+
+### Same day — white background + broken routing
+- **White edges/pages:** the App Router had no global reset — default white `<body>`
+  with 8px margin showed at page edges, on overscroll, and on all error pages. Fix:
+  `app/globals.css` (html/body → margin 0, `#1a1c2c` ground) + a themed
+  `app/not-found.tsx` ("404 — AREA NOT FOUND").
+- **500s on bad routes / missing images:** caused by running `npm run build` while
+  `next dev` was running — **both write `.next/` and corrupt each other**
+  (`Cannot find module './873.js'`). Fix: stop dev → `rm -rf .next` → restart.
+  **Rule: never build while the dev server is up.**

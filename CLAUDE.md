@@ -10,12 +10,27 @@ the pixel-frame `box-shadow` recipes, every component, the icon system, content 
 and step-by-step "how to add a project/skill/section" recipes. Do not design or edit
 without reading it — the visual language is strict and easy to break.
 
+## Two sections, one game (hybrid skin)
+- **`/` (8-bit character sheet)** — everything below applies to it. Lives in `public/`
+  and is served as a static file (a rewrite in `next.config.ts` maps `/` to
+  `public/index.html`). Still build-free.
+- **`/papers` (experiment log)** — a Next.js App Router section wearing a **hybrid
+  8-bit skin**: Sweetie-16 palette, pixel-frame box-shadows, Press Start 2P
+  headings/labels/badges, VT323 metadata — but body prose, math, and code stay in
+  readable faces (IBM Plex Sans/Mono). **Never set body copy in pixel type.** Spec:
+  `docs/superpowers/specs/2026-07-02-papers-8bit-hybrid-design.md` (supersedes
+  PLAN.md §4's paper-white direction); tokens live in `app/papers/papers.css`.
+
 ## Files
-- `index.html` — the site. Add/edit projects in the `quests` array and skills in
-  `skillGroups`, both inside its logic class (`renderVals()`).
-- `Style Tile.dc.html` — living design-system reference. Mirror any new component here.
-- `support.js` — Design Component runtime. **Never edit.**
-- `Francisco_Soltero_Resume.pdf` — wired to the RESUME / SAVE FILE buttons.
+- `public/index.html` — the 8-bit site. Add/edit projects in the `quests` array and
+  skills in `skillGroups`, both inside its logic class (`renderVals()`).
+- `public/Style Tile.dc.html` — living design-system reference. Mirror any new 8-bit
+  component here.
+- `public/support.js` — Design Component runtime. **Never edit.**
+- `public/Francisco_Soltero_Resume.pdf` — wired to the RESUME / SAVE FILE buttons.
+- `content/papers/*.mdx` — papers posts (copy `_template.mdx`); frontmatter schema is
+  zod-enforced in `lib/papers.ts`.
+- `app/papers/`, `components/papers/` — papers routes and components.
 
 ## Non-negotiables (full rationale in STYLE_GUIDE.md)
 - Both `.dc.html` files are **Design Components**: HTML template + `class Component

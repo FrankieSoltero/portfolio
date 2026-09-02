@@ -1,0 +1,13 @@
+/* app/globals.css
+   Root reset for all App Router pages (/papers and error pages).
+   The static 8-bit site in public/ never loads this — it has its own resets.
+   Ground matches the Sweetie-16 night so no white ever flashes at the edges,
+   behind overscroll, or on 404/error pages. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #1a1c2c;
+  color: #f4f4f4;
+}
