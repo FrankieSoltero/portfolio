@@ -98,3 +98,31 @@
   `next dev` was running — **both write `.next/` and corrupt each other**
   (`Cannot find module './873.js'`). Fix: stop dev → `rm -rf .next` → restart.
   **Rule: never build while the dev server is up.**
+
+## 2026-09-02 — Multiplayer AI quest + PillSpark role + first real sprite
+
+### Changes
+- New `Multiplayer AI` quest card (first in the grid) with optional per-card fields:
+  `href` (renders a `GITHUB →` link beside the reward, mirroring the featured card)
+  and `sprite` (fills the 108px thumbnail slot). `noSprite` is computed in
+  `renderVals()` so the placeholder branch stays a plain `sc-if` — no logic in holes.
+- Role text: Origin Story bio + `GUILD` factoid now name PillSpark AI (Forward
+  Deployed Engineer) alongside LastCall. Résumé PDF not yet updated.
+- `public/sprites/multiplayer-ai.png` exported from the root `Multiplayer_AI_Sprite.aseprite`
+  (64×64, one layer) with a small pure-Python decoder — no Aseprite CLI on the box.
+
+### Lessons / gotchas
+- **Data-bound `<img src="{{ … }}">` 404s before hydration.** The DC template is raw
+  body markup, so the browser fetched the literal `/{{ q.sprite }}` (console 404)
+  before `support.js` compiled it. Fix: `sc-camel-src="{{ q.sprite }}"` — the runtime
+  strips the `sc-camel-` prefix into a normal `src` prop; the browser ignores the
+  unknown attribute. Anchors never had this problem because `href` isn't prefetched.
+- **`object-fit:cover` crops square sprites in tall slots.** The grid thumbnail column
+  is 108px wide but card-height tall; `cover` blew the 64×64 up to full height and
+  cut the sides. Use `width:100%; height:auto` and let the flex slot center it.
+- **Non-integer sprite scale looks wobbly.** 64px → 108px (1.69×) made pixel columns
+  alternate 1px/2px wide. Grid column is now 132px (`border-box`: 128px content +
+  4px `border-right` divider) so 64×64 sources render at exactly 2×. Also: an `<img>`
+  filling a slot paints *over* the slot's inset `box-shadow`, breaking the divider —
+  hence a real border for the divider. Column is painted in the quest's `spriteBg`
+  so the art reads as a panel, not a tile on stripes.

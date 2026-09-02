@@ -229,9 +229,13 @@ Add new motion as named keyframes; reference with inline `animation:` on the ele
   </span>
 </div>
 ```
-When real art exists, swap the inner `<span>` for an `<img style="image-rendering:pixelated; width:100%; height:100%; object-fit:cover">`. Keep the frame `box-shadow`.
+When real art exists, swap the inner `<span>` for an `<img style="image-rendering:pixelated; width:100%; height:auto; display:block">` (a square sprite renders as a centered tile; avoid `object-fit:cover` in tall slots — it crops). Keep the frame `box-shadow`.
 
-Locations: hero player sprite (240×240), featured quest (280px col), grid quest thumbnails (108px col), about/contact crystals.
+**Data-driven `src` must use `sc-camel-src="{{ … }}"`, not `src`.** The template is raw body markup, so a literal `src="{{ q.sprite }}"` makes the browser request `/{{ q.sprite }}` (a 404) before the runtime compiles it. The `sc-camel-` prefix is stripped by `support.js` and lands as a normal `src` prop.
+
+Locations: hero player sprite (240×240), featured quest (280px col), grid quest thumbnails (132px col = 128px sprite + 4px divider), about/contact crystals.
+
+Grid quest thumbnails are data-driven: set `sprite` (and `spriteBg`) on the quest entry (§9.1). **Draw grid sprites at 64×64** — the column shows them at an exact 2× so every source pixel is a crisp 2×2 block. Non-integer scales (e.g. 64→108) make pixel columns alternate 1px/2px wide and look wobbly. The column is painted in `spriteBg` so the sprite reads as a full-height panel instead of a tile floating on the stripes; the 4px black divider is a real `border-right` so the image can never paint over it. Export sprites from Aseprite as PNG into `public/sprites/` (the `.aseprite` source can live at the repo root; browsers cannot render it).
 
 ---
 
@@ -265,7 +269,10 @@ Edit the `quests` array in `index.html`'s logic class. Each entry:
   diff: 'DIFFICULTY ●●●○',   // 4 dots, fill ● vs ○ for difficulty
   blurb: 'One or two sentences, plain and concrete.',
   tags: ['Tech', 'Tech', 'Tech'],
-  reward: '+X% impact metric'   // the headline win
+  reward: '+X% impact metric',  // the headline win
+  href: 'https://github.com/…', // optional — renders a GITHUB → link beside the reward
+  sprite: 'sprites/name.png',   // optional — 64×64 PNG in public/sprites/, renders at exactly 2× (128px)
+  spriteBg: '#406dbd'           // optional — the sprite's own ground color; paints the whole thumbnail column
 }
 ```
 The first card (Calendar Assistant) is **featured** and lives directly in the template (larger, LEGENDARY, with its own GitHub link). The rest render from the array into the 2-col grid. To feature a different project, move its markup into the featured block.

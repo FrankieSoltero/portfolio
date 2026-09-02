@@ -149,8 +149,13 @@
         <div style="position:relative; display:flex; flex-direction:column; background:#1a1c2c; box-shadow:0 -5px #000,0 5px #000,-5px 0 #000,5px 0 #000, inset 0 0 0 3px #29366f;" style-hover="inset 0 0 0 3px {{ q.color }}; box-shadow:0 -5px #000,0 5px #000,-5px 0 #000,5px 0 #000, inset 0 0 0 3px {{ q.color }};">
           <div style="position:absolute; top:-1px; right:14px; background:{{ q.color }}; color:#1a1c2c; font-family:'Press Start 2P', monospace; font-size:8px; padding:6px 9px; box-shadow:0 3px #1a1c2c;">{{ q.rarity }}</div>
           <div style="display:flex; flex:1; gap:0;">
-            <div style="flex-shrink:0; width:108px; background:#0b1024; background-image:repeating-linear-gradient(45deg,#131a3a 0,#131a3a 8px,#0b1024 8px,#0b1024 16px); display:flex; align-items:center; justify-content:center; box-shadow:inset -4px 0 #000;">
-              <span style="font-family:'VT323', monospace; font-size:13px; color:#566c86; text-align:center; line-height:1.2;">[ sprite ]</span>
+            <div style="flex-shrink:0; width:132px; background:{{ q.slotBg }}; background-image:{{ q.slotBgImage }}; display:flex; align-items:center; justify-content:center; border-right:4px solid #000;">
+              <sc-if value="{{ q.sprite }}">
+                <img sc-camel-src="{{ q.sprite }}" alt="{{ q.title }} sprite" style="image-rendering:pixelated; width:100%; height:auto; display:block;">
+              </sc-if>
+              <sc-if value="{{ q.noSprite }}">
+                <span style="font-family:'VT323', monospace; font-size:13px; color:#566c86; text-align:center; line-height:1.2;">[ sprite ]</span>
+              </sc-if>
             </div>
             <div style="flex:1; padding:20px 20px 18px;">
               <div style="display:flex; align-items:center; gap:9px; margin-bottom:9px; flex-wrap:wrap;">
@@ -164,7 +169,12 @@
                   <span style="font-family:'Pixelify Sans', sans-serif; font-weight:600; font-size:14px; color:#73eff7; background:#0e1530; padding:5px 9px; box-shadow:0 -2px #000,0 2px #000,-2px 0 #000,2px 0 #000;">{{ t }}</span>
                 </sc-for>
               </div>
-              <div style="display:flex; align-items:center; gap:8px; font-family:'VT323', monospace; font-size:18px; color:{{ q.color }}; border-top:3px solid #29366f; padding-top:12px;">{{ iconBolt }} {{ q.reward }}</div>
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; border-top:3px solid #29366f; padding-top:12px;">
+                <span style="display:flex; align-items:center; gap:8px; font-family:'VT323', monospace; font-size:18px; color:{{ q.color }};">{{ iconBolt }} {{ q.reward }}</span>
+                <sc-if value="{{ q.href }}">
+                  <a href="{{ q.href }}" target="_blank" rel="noreferrer" style="font-family:'Press Start 2P', monospace; font-size:9px; text-decoration:none; color:#73eff7; padding:6px 0;" style-hover="color:#ffcd75;" style-focus="color:#ffcd75; outline:3px solid #73eff7; outline-offset:3px;">GITHUB →</a>
+                </sc-if>
+              </div>
             </div>
           </div>
         </div>
@@ -204,7 +214,7 @@
           <span style="font-family:'Press Start 2P', monospace; font-size:10px; color:#a7f070;">ORIGIN STORY</span>
         </div>
         <div style="padding:26px 28px;">
-          <p style="font-family:'Pixelify Sans', sans-serif; font-size:21px; line-height:1.55; margin:0 0 16px; color:#f4f4f4;">Computer Science and Mathematics at <span style="color:#ffcd75;">Tulane University</span>. Founder of <span style="color:#ffcd75;">LastCall</span> in New York; previously a Forward Deployed AI Engineer at <span style="color:#ffcd75;">Tenex</span>, where I owned client projects from technical scoping through final deployment.</p>
+          <p style="font-family:'Pixelify Sans', sans-serif; font-size:21px; line-height:1.55; margin:0 0 16px; color:#f4f4f4;">Computer Science and Mathematics at <span style="color:#ffcd75;">Tulane University</span>. Forward Deployed Engineer at <span style="color:#ffcd75;">PillSpark AI</span> and founder of <span style="color:#ffcd75;">LastCall</span> in New York; previously a Forward Deployed AI Engineer at <span style="color:#ffcd75;">Tenex</span>, where I owned client projects from technical scoping through final deployment.</p>
           <p style="font-family:'Pixelify Sans', sans-serif; font-size:21px; line-height:1.55; margin:0; color:#94b0c2;">Earlier I built across the stack at Greystone Medical — payment gateways, e-commerce, and internal tooling. I bring AI coding agents into real production work and ship quickly without lowering the quality bar. Native English and Spanish. Current side-quest: learning to draw my own pixel sprites.</p>
         </div>
       </div>
@@ -347,6 +357,7 @@ class Component extends DCLogic {
     ];
 
     const quests = [
+      { title: 'Multiplayer AI', rarity: 'EPIC', color: '#ffcd75', status: 'OPEN SOURCE', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●●', blurb: "A self-hosted team hub for agent-assisted engineering — teammates watch each other's live coding-agent sessions, take the wheel mid-task, and answer permission gates across machines. Hub, relay, and web client in TypeScript.", tags: ['TypeScript', 'WebSockets', 'Claude Agent SDK'], reward: 'hand off a live agent mid-run', href: 'https://github.com/FrankieSoltero/multiplayer_ai', sprite: 'sprites/multiplayer-ai.png', spriteBg: '#406dbd' },
       { title: 'Internal Finance Tool', rarity: 'EPIC', color: '#ef7d57', status: 'DEPLOYED', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●●', blurb: 'Full-stack finance tool serving a 60-person client team — Fastify + TypeScript backend, Vite + React frontend, deployed on Google Cloud.', tags: ['Fastify', 'React', 'GCP'], reward: '60-person team in prod' },
       { title: 'E-Commerce Platform', rarity: 'EPIC', color: '#41a6f6', status: 'SHIPPED', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●○', blurb: 'TypeScript / Next.js storefront with live Authorize.net payments, rate limiting, and Sentry monitoring. Increased company revenue 20%.', tags: ['Next.js', 'Authorize.net', 'PostgreSQL'], reward: '+20% revenue' },
       { title: 'Salesforce Migration', rarity: 'BOSS', color: '#b13e53', status: 'CLEARED', statusColor: '#94b0c2', diff: 'DIFFICULTY ●●●●', blurb: "Re-architected a billion-dollar mineral company's infrastructure, data, and workflows into a freshly provisioned Salesforce org.", tags: ['Salesforce', 'Data', 'Architecture'], reward: '$1B+ client' },
@@ -363,7 +374,7 @@ class Component extends DCLogic {
 
     const factoids = [
       { label: 'CLASS', value: 'Forward Deployed AI Eng/Founder', color: '#ffcd75' },
-      { label: 'GUILD', value: 'LastCall, NY', color: '#73eff7' },
+      { label: 'GUILD', value: 'PillSpark AI · LastCall, NY', color: '#73eff7' },
       { label: 'EDUCATION', value: 'BS CS + Math · Tulane', color: '#a7f070' },
       { label: 'LANGUAGES', value: 'English · Spanish (native)', color: '#ef7d57' }
     ];
@@ -377,7 +388,13 @@ class Component extends DCLogic {
     ];
 
     return {
-      ...icons, ...layout, heroStats, quests, skillGroups, factoids, navItems,
+      ...icons, ...layout, heroStats, quests: quests.map(q => ({
+        ...q,
+        noSprite: !q.sprite,
+        // Sprite panel: sprite's own ground color when art exists, striped placeholder otherwise.
+        slotBg: q.sprite ? (q.spriteBg || '#0b1024') : '#0b1024',
+        slotBgImage: q.sprite ? 'none' : 'repeating-linear-gradient(45deg,#131a3a 0,#131a3a 8px,#0b1024 8px,#0b1024 16px)'
+      })), skillGroups, factoids, navItems,
       coins: 9, questCount: 6, clearedCount: 6
     };
   }
