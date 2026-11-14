@@ -239,6 +239,20 @@ describe('RoomFeatures', () => {
       expect(useUiStore.getState().roomProblem).toBe('Walls cannot cross.');
     });
 
+    it('shows the next door\'s stored width, not the text typed for the last one, when the selection moves', async () => {
+      // The same stored width, so only a fresh field (not a changed stored value) can show it.
+      seed([DOOR, { ...DOOR, id: 'd2', wallId: 'c3', height: 84 }]);
+      useUiStore.getState().selectOpening('d1');
+      render(<RoomFeatures />);
+      typeRaw(input('Width'), '8');
+      expect(input('Width').value).toBe('8');
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Door on wall 3' }));
+      expect(useUiStore.getState().selectedOpeningId).toBe('d2');
+      expect(input('Height').value).toBe('84');
+      expect(input('Width').value).toBe('32');
+    });
+
     it('re-seeds the width when the stored width changes from elsewhere', () => {
       render(<RoomFeatures />);
       typeRaw(input('Width'), '8');

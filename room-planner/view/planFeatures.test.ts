@@ -46,20 +46,32 @@ describe('doorDrawing', () => {
     expect(d.arc).toBe('M 114 20 A 64 64 0 0 0 50 -44');
   });
 
+  it('draws a door on the left wall c4, running up from (0, 168): gap, leaf to the right, arc', () => {
+    const d = doorDrawing({ ...D1, id: 'd4', wallId: 'c4' }, R.outline, LAYOUT);
+    if (d === null) throw new Error('no drawing');
+    expectPoint(d.gap[0], 10, 316);
+    expectPoint(d.gap[1], 10, 252);
+    expectPoint(d.leaf[0], 10, 316);
+    expectPoint(d.leaf[1], 74, 316);
+    expect(d.arc).toBe('M 10 252 A 64 64 0 0 1 74 316');
+  });
+
   it('is null for a door on a wall that is not in the outline', () => {
     expect(doorDrawing({ ...D1, wallId: 'zz' }, R.outline, LAYOUT)).toBeNull();
   });
 });
 
 describe('windowDrawing', () => {
-  it('draws a window on c2 on the wall line and 3 px inside it', () => {
+  it('draws a window on c2 on the wall line, with its band edges 3 px inside and 3 px outside it', () => {
     const w = windowDrawing(W1, R.outline, LAYOUT);
     if (w === null) throw new Error('no drawing');
     expect(w.id).toBe('w1');
     expectPoint(w.a, 298, 220);
     expectPoint(w.b, 298, 292);
-    expectPoint(w.inner[0], 295, 220);
-    expectPoint(w.inner[1], 295, 292);
+    expectPoint(w.inside[0], 295, 220);
+    expectPoint(w.inside[1], 295, 292);
+    expectPoint(w.outside[0], 301, 220);
+    expectPoint(w.outside[1], 301, 292);
   });
 
   it('is null for a window on a wall that is not in the outline', () => {

@@ -1,5 +1,6 @@
 import { type ChangeEvent, type JSX, useId, useState } from 'react';
 import { CONFIG } from '../../config';
+import { obstacleName } from '../../domain/obstacles';
 import { wallsOf } from '../../domain/outline';
 import type { Door, Obstacle, Opening, Units, WindowOpening } from '../../domain/types';
 import { furnInputStr, furnUnitLabel, parseLengthInput } from '../../domain/units';
@@ -159,12 +160,6 @@ const ARMED_HELP: Readonly<Record<'door' | 'window', string>> = {
 function openingName(opening: Opening, wallIds: readonly string[]): string {
   const kind = opening.kind === 'door' ? 'Door' : 'Window';
   return `${kind} on wall ${wallIds.indexOf(opening.wallId) + 1}`;
-}
-
-/** The obstacle's label, or `Box` / `Column` when it has none. */
-function obstacleName(obstacle: Obstacle): string {
-  if (obstacle.label !== '') return obstacle.label;
-  return obstacle.shape === 'box' ? 'Box' : 'Column';
 }
 
 function DoorFields({ door }: { door: Door }) {

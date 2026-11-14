@@ -21,20 +21,21 @@ const TRIG_PRECISION = 1e12;
 
 /**
  * Half the width and half the length of the axis-aligned bounding box of a w × d footprint
- * turned `angle` degrees: hx = (|w·cos θ| + |d·sin θ|) / 2, hy = (|w·sin θ| + |d·cos θ|) / 2.
+ * turned `angleDeg` degrees: hx = (|w·cos θ| + |d·sin θ|) / 2, hy = (|w·sin θ| + |d·cos θ|) / 2.
+ * Shared by moveItem and moveObstacle.
  */
-function halfExtents(item: Pick<Item, 'w' | 'd' | 'angle'>): { hx: number; hy: number } {
-  const rad = (item.angle * Math.PI) / 180;
+export function footprintHalfExtents(w: number, d: number, angleDeg: number): { hx: number; hy: number } {
+  const rad = (angleDeg * Math.PI) / 180;
   const cos = Math.abs(Math.round(Math.cos(rad) * TRIG_PRECISION) / TRIG_PRECISION);
   const sin = Math.abs(Math.round(Math.sin(rad) * TRIG_PRECISION) / TRIG_PRECISION);
-  return { hx: (item.w * cos + item.d * sin) / 2, hy: (item.w * sin + item.d * cos) / 2 };
+  return { hx: (w * cos + d * sin) / 2, hy: (w * sin + d * cos) / 2 };
 }
 
 /**
  * The centre coordinate nearest `v` whose bounding-box min edge (centre − half) is a multiple of
- * snap, clamped into [min, max] and stored to 0.01.
+ * snap, clamped into [min, max] and stored to 0.01. Shared by moveItem and moveObstacle.
  */
-function snapInto(v: number, half: number, min: number, max: number, snap: number): number {
+export function snapCentreInto(v: number, half: number, snap: number, min: number, max: number): number {
   const snapped = Math.round((v - half) / snap) * snap + half;
   return round2(Math.min(Math.max(snapped, min), max));
 }
@@ -46,11 +47,11 @@ function snapInto(v: number, half: number, min: number, max: number, snap: numbe
  * centre is kept inside; a footprint that leaves the room is a conflict, not a clamp.
  */
 export function moveItem(item: Item, x: number, y: number, bounds: Bounds, snap: number): Item {
-  const { hx, hy } = halfExtents(item);
+  const { hx, hy } = footprintHalfExtents(item.w, item.d, item.angle);
   return {
     ...item,
-    x: snapInto(x, hx, bounds.minX, bounds.maxX, snap),
-    y: snapInto(y, hy, bounds.minY, bounds.maxY, snap),
+    x: snapCentreInto(x, hx, snap, bounds.minX, bounds.maxX),
+    y: snapCentreInto(y, hy, snap, bounds.minY, bounds.maxY),
   };
 }
 

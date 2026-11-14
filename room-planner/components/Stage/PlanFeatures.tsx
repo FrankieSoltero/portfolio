@@ -1,26 +1,20 @@
 import type React from 'react';
 import type { JSX } from 'react';
-import { obstacleFootprint } from '../../domain/obstacles';
-import type { Door, Obstacle, WindowOpening } from '../../domain/types';
+import { obstacleFootprint, obstacleName } from '../../domain/obstacles';
+import type { Door, Obstacle, Point, WindowOpening } from '../../domain/types';
 import { dragObstacleTo } from '../../state/actions';
 import { usePlanStore } from '../../state/planStore';
 import { useConflicts } from '../../state/selectors';
 import { useUiStore } from '../../state/uiStore';
 import { doorDrawing, windowDrawing } from '../../view/planFeatures';
 import { planItemBox, type PlanLayout } from '../../view/planLayout';
-import { useRoomModeDrag } from './RoomEditLayer';
+import { isPrimaryPress, useRoomModeDrag } from './RoomEditLayer';
 
 /** An obstacle's label is shown only when its box is wider than this on screen, in px. */
 const OBSTACLE_LABEL_MIN_W = 48;
 
 function lineClass(base: string, conflict: boolean): string {
   return conflict ? `${base} is-conflict` : base;
-}
-
-/** The obstacle's label, or `Box` / `Column` when it has none (as the sidebar names it). */
-function obstacleName(obstacle: Obstacle): string {
-  if (obstacle.label !== '') return obstacle.label;
-  return obstacle.shape === 'box' ? 'Box' : 'Column';
 }
 
 /**
@@ -42,6 +36,7 @@ export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
 
   // Moves the obstacle's centre from where it was at pointer down by the movement over the scale.
   const onObstacleDown = (obstacle: Obstacle, e: React.PointerEvent): void => {
+    if (!isPrimaryPress(e)) return;
     selectObstacle(obstacle.id);
     const { scale } = layout;
     const { id, x: x0, y: y0 } = obstacle;
@@ -93,17 +88,14 @@ export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
         })}
         {windows.map((w) => {
           const className = lineClass('plan-window', conflicts[w.id] !== undefined);
+          // The band clears the wall line; the outside edge, the centre and the inside edge are drawn on it.
+          const lines: [Point, Point][] = [w.outside, [w.a, w.b], w.inside];
           return (
             <g key={w.id}>
-              <line className={className} data-opening-id={w.id} x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} />
-              <line
-                className={className}
-                data-opening-id={w.id}
-                x1={w.inner[0].x}
-                y1={w.inner[0].y}
-                x2={w.inner[1].x}
-                y2={w.inner[1].y}
-              />
+              <line className="plan-window-band" data-opening-id={w.id} x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} />
+              {lines.map(([p, q], i) => (
+                <line key={i} className={className} data-opening-id={w.id} x1={p.x} y1={p.y} x2={q.x} y2={q.y} />
+              ))}
             </g>
           );
         })}

@@ -6,6 +6,7 @@ import {
   moveObstacle,
   newObstacle,
   obstacleFootprint,
+  obstacleName,
   obstaclePolygon,
   shiftObstacle,
   updateObstacle,
@@ -294,5 +295,18 @@ describe('immutability', () => {
     expect(added).not.toBe(list);
     expect(list).toHaveLength(1);
     expect(okObstacles(updateObstacle(list, 'nope', {}))).not.toBe(list);
+  });
+});
+
+describe('obstacleName', () => {
+  it('is the label, or Box / Column by shape when the label is empty; a blank label is kept as it is', () => {
+    const o = newObstacle('box', { x: 10, y: 10 }, 96, 'o1');
+    const c = newObstacle('cylinder', { x: 10, y: 10 }, 96, 'o2');
+    expect(obstacleName({ ...o, label: 'Radiator' })).toBe('Radiator');
+    expect(obstacleName({ ...c, label: 'Pillar' })).toBe('Pillar');
+    expect(obstacleName({ ...o, label: '' })).toBe('Box');
+    expect(obstacleName({ ...c, label: '' })).toBe('Column');
+    // Only the empty string falls back, as both call sites did before they shared this rule.
+    expect(obstacleName({ ...o, label: '  ' })).toBe('  ');
   });
 });

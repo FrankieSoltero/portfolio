@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { obstacleFootprint } from '../../domain/obstacles';
 import { dragObstacleTo } from '../../state/actions';
@@ -73,14 +75,33 @@ describe('PlanFeatures', () => {
     expect(arc?.getAttribute('d')).toBe('M 114 20 A 64 64 0 0 1 50 84');
   });
 
-  it('draws a window as two line.plan-window elements, on the wall line and 3 px inside', () => {
+  it('draws a window as a band on the wall line, then three line.plan-window elements: outside, centre, inside', () => {
     load([W1], []);
     render(<PlanFeatures layout={LAYOUT} />);
+    const parts = document.querySelectorAll('svg.plan-features line[data-opening-id="w1"]');
+    expect([...parts].map((l) => l.getAttribute('class'))).toEqual([
+      'plan-window-band', 'plan-window', 'plan-window', 'plan-window',
+    ]);
+    const coords = [...parts].map((l) => [attr(l, 'x1'), attr(l, 'y1'), attr(l, 'x2'), attr(l, 'y2')]);
+    expect(coords).toEqual([[298, 220, 298, 292], [301, 220, 301, 292], [298, 220, 298, 292], [295, 220, 295, 292]]);
     const lines = document.querySelectorAll('svg.plan-features line.plan-window[data-opening-id="w1"]');
-    expect(lines).toHaveLength(2);
-    const coords = [...lines].map((l) => [attr(l, 'x1'), attr(l, 'y1'), attr(l, 'x2'), attr(l, 'y2')]);
-    expect(coords).toEqual([[298, 220, 298, 292], [295, 220, 295, 292]]);
-    expect(windowDrawing(W1, ROOM.outline, LAYOUT)?.inner).toEqual([{ x: 295, y: 220 }, { x: 295, y: 292 }]);
+    expect(lines).toHaveLength(3);
+    expect(windowDrawing(W1, ROOM.outline, LAYOUT)?.inside).toEqual([{ x: 295, y: 220 }, { x: 295, y: 292 }]);
+  });
+
+  it('styles the window band 6 px wide in the plan background colour of the door gap, and its lines thin and dark', () => {
+    const css = readFileSync(resolve(process.cwd(), 'room-planner/components/Stage/stage.css'), 'utf8');
+    const rule = (selector: string): string => {
+      const at = css.indexOf(`\n${selector} {`);
+      if (at < 0) throw new Error(`no rule ${selector}`);
+      return css.slice(at, css.indexOf('}', at));
+    };
+    const gapStroke = /stroke:\s*([^;]+);/.exec(rule('.plan-door-gap'))?.[1];
+    expect(gapStroke).toBe('var(--color-bg)');
+    expect(rule('.plan-window-band')).toMatch(/stroke:\s*var\(--color-bg\);/);
+    expect(rule('.plan-window-band')).toMatch(/stroke-width:\s*6;/);
+    expect(rule('.plan-window')).toMatch(/stroke:\s*var\(--color-text\);/);
+    expect(Number(/stroke-width:\s*([\d.]+);/.exec(rule('.plan-window'))?.[1])).toBeLessThanOrEqual(1.5);
   });
 
   it('draws nothing for an opening whose wall is missing', () => {
@@ -132,9 +153,10 @@ describe('PlanFeatures', () => {
     render(<PlanFeatures layout={LAYOUT} />);
     expect(obstacleEl('o1')).toHaveClass('is-conflict');
     expect(obstacleEl('o2')).not.toHaveClass('is-conflict');
-    const windowLines = document.querySelectorAll('[data-opening-id="w1"]');
-    expect(windowLines).toHaveLength(2);
+    const windowLines = document.querySelectorAll('line.plan-window[data-opening-id="w1"]');
+    expect(windowLines).toHaveLength(3);
     for (const el of windowLines) expect(el).toHaveClass('is-conflict');
+    expect(document.querySelector('line.plan-window-band[data-opening-id="w1"]')).not.toHaveClass('is-conflict');
     const doorParts = document.querySelectorAll('[data-opening-id="d1"]');
     expect(doorParts).toHaveLength(3);
     for (const el of doorParts) expect(el).not.toHaveClass('is-conflict');
@@ -223,6 +245,30 @@ describe('PlanFeatures obstacles in room mode', () => {
     expect(useUiStore.getState().selectedCornerId).toBeNull();
     expect(obstacleEl('o1')).toHaveAttribute('aria-pressed', 'true');
     expect(onParent).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window);
+  });
+
+  it('a secondary-button pointer down selects nothing, freezes nothing and starts no drag', () => {
+    useUiStore.getState().selectCorner('c2');
+    const freeze = vi.fn();
+    const onParent = vi.fn();
+    render(
+      <div onPointerDown={onParent}>
+        <FreezePlanLayoutContext value={freeze}>
+          <PlanFeatures layout={LAYOUT} />
+        </FreezePlanLayoutContext>
+      </div>,
+    );
+    const before = usePlanStore.getState();
+    fireEvent.pointerDown(obstacleEl('o1'), { clientX: 100, clientY: 100, button: 2 });
+    expect(useUiStore.getState().selectedObstacleId).toBeNull();
+    expect(useUiStore.getState().selectedCornerId).toBe('c2');
+    expect(freeze).not.toHaveBeenCalled();
+    // Like a wall band, the press does not reach the plan background, which would clear the selection.
+    expect(onParent).not.toHaveBeenCalled();
+    fireEvent.pointerMove(window, { clientX: 140, clientY: 120 });
+    expect(dragObstacleTo).not.toHaveBeenCalled();
+    expect(usePlanStore.getState()).toBe(before);
     fireEvent.pointerUp(window);
   });
 

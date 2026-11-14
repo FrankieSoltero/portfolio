@@ -14,7 +14,7 @@ import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import type { PaneRect } from '../../view/panes';
 import { computePlanLayout, type PlanLayout, toPane } from '../../view/planLayout';
-import { FreezePlanLayoutContext, RoomEditLayer } from './RoomEditLayer';
+import { FreezePlanLayoutContext, RoomEditLayer, useRoomModeDrag } from './RoomEditLayer';
 
 // The actions run for real; the spies record how the layer calls them.
 vi.mock('../../state/actions', async (importOriginal) => {
@@ -81,6 +81,34 @@ function lastDrag(): { id: string; target: Point; opts: { angleSnap: boolean; to
   return { id: call[0], target: call[1], opts: call[2] };
 }
 
+describe('useRoomModeDrag', () => {
+  /** A bare element that starts a room-mode drag on every pointer down, with no button check of its own. */
+  function Dragger({ onMove }: { onMove: (dx: number, dy: number) => void }) {
+    const beginDrag = useRoomModeDrag();
+    return <div data-testid="dragger" onPointerDown={(e) => beginDrag(e, onMove, { freeze: layout })} />;
+  }
+
+  it('starts no drag for a secondary-button pointer down: no freeze, no moves', () => {
+    const freeze = vi.fn();
+    const onMove = vi.fn();
+    render(
+      <FreezePlanLayoutContext value={freeze}>
+        <Dragger onMove={onMove} />
+      </FreezePlanLayoutContext>,
+    );
+    fireEvent.pointerDown(screen.getByTestId('dragger'), { clientX: 100, clientY: 100, button: 2 });
+    fireEvent.pointerMove(window, { clientX: 140, clientY: 120 });
+    fireEvent.pointerUp(window);
+    expect(freeze).not.toHaveBeenCalled();
+    expect(onMove).not.toHaveBeenCalled();
+    fireEvent.pointerDown(screen.getByTestId('dragger'), { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 140, clientY: 120 });
+    expect(freeze).toHaveBeenCalledWith(layout);
+    expect(onMove).toHaveBeenLastCalledWith(40, 20);
+    fireEvent.pointerUp(window);
+  });
+});
+
 describe('RoomEditLayer corner handles', () => {
   it('renders one button per corner, named Corner <n>, centred on the corner', () => {
     renderLayer();
@@ -114,6 +142,29 @@ describe('RoomEditLayer corner handles', () => {
     expect(useUiStore.getState().selectedCornerId).toBe('c2');
     expect(handle(2)).toHaveAttribute('aria-pressed', 'true');
     expect(onParent).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window);
+  });
+
+  it('a secondary-button pointer down on a handle selects nothing, freezes nothing and starts no drag', () => {
+    useUiStore.getState().selectCorner('c3');
+    const freeze = vi.fn();
+    const onParent = vi.fn();
+    render(
+      <div onPointerDown={onParent}>
+        <FreezePlanLayoutContext value={freeze}>
+          <RoomEditLayer layout={layout} />
+        </FreezePlanLayoutContext>
+      </div>,
+    );
+    const before = usePlanStore.getState();
+    fireEvent.pointerDown(handle(2), { clientX: 100, clientY: 100, button: 2 });
+    expect(useUiStore.getState().selectedCornerId).toBe('c3');
+    expect(freeze).not.toHaveBeenCalled();
+    // Like a wall band, the press does not reach the plan background, which would clear the selection.
+    expect(onParent).not.toHaveBeenCalled();
+    fireEvent.pointerMove(window, { clientX: 140, clientY: 120 });
+    expect(dragCornerTo).not.toHaveBeenCalled();
+    expect(usePlanStore.getState()).toBe(before);
     fireEvent.pointerUp(window);
   });
 
@@ -470,6 +521,30 @@ describe('RoomEditLayer opening handles', () => {
     fireEvent.pointerUp(window);
   });
 
+  it('a secondary-button pointer down on a handle selects nothing, freezes nothing and starts no drag', () => {
+    loadOpenings([D1, W1]);
+    useUiStore.getState().selectOpening('w1');
+    const freeze = vi.fn();
+    const onParent = vi.fn();
+    render(
+      <div onPointerDown={onParent}>
+        <FreezePlanLayoutContext value={freeze}>
+          <RoomEditLayer layout={layout} />
+        </FreezePlanLayoutContext>
+      </div>,
+    );
+    const before = usePlanStore.getState();
+    fireEvent.pointerDown(openingHandle('Door on wall 1'), { clientX: 100, clientY: 100, button: 2 });
+    expect(useUiStore.getState().selectedOpeningId).toBe('w1');
+    expect(freeze).not.toHaveBeenCalled();
+    // Like a wall band, the press does not reach the plan background, which would clear the selection.
+    expect(onParent).not.toHaveBeenCalled();
+    fireEvent.pointerMove(window, { clientX: 140, clientY: 120 });
+    expect(slideOpeningTo).not.toHaveBeenCalled();
+    expect(usePlanStore.getState()).toBe(before);
+    fireEvent.pointerUp(window);
+  });
+
   it('Enter and Space on a focused handle select its opening', async () => {
     loadOpenings([D1, W1]);
     const user = userEvent.setup();
@@ -506,6 +581,18 @@ describe('RoomEditLayer opening drag', () => {
     fireEvent.pointerMove(window, { clientX: 150, clientY: 100 - 6 * s });
     expect(slideOpeningTo).toHaveBeenLastCalledWith('w1', expect.closeTo(94, 9));
     expect(storedOpening('w1')?.offset).toBe(94);
+    fireEvent.pointerUp(window);
+  });
+
+  it('slides a door on the bottom wall (running right to left) further along it when dragged left', () => {
+    // Wall c3 runs from (144, 168) to (0, 168): direction (−1, 0).
+    loadOpenings([{ ...D1, wallId: 'c3' }]);
+    layout = { scale: 2, ox: 10, oy: 20 };
+    renderLayer();
+    fireEvent.pointerDown(openingHandle('Door on wall 3'), { clientX: 200, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX: 180, clientY: 300 });
+    expect(slideOpeningTo).toHaveBeenLastCalledWith('d1', expect.closeTo(30, 9));
+    expect(storedOpening('d1')?.offset).toBe(30);
     fireEvent.pointerUp(window);
   });
 

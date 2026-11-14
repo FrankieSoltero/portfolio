@@ -422,3 +422,82 @@ describe('buildRoom with holes', () => {
     expect(uniqueKeys(worldVertices(empty.floor))).toEqual(uniqueKeys(worldVertices(plain.floor)));
   });
 });
+
+describe('buildRoom opening frames', () => {
+  const DOOR_HOLE: WallHole = { x0: 20, x1: 52, z0: 0, z1: 80, glass: false };
+  const WINDOW_HOLE: WallHole = { x0: 100, x1: 136, z0: 36, z1: 84, glass: true };
+  /** Holes on wall 0 (C1 to C2) only. */
+  const onWall0 = (...cut: WallHole[]): WallHole[][] => R.map((_, i) => (i === 0 ? cut : []));
+
+  function frames(group: THREE.Group): THREE.LineSegments[] {
+    group.updateMatrixWorld(true);
+    return group.children.filter((c): c is THREE.LineSegments => c.name === 'opening-frames');
+  }
+
+  /** The frame's segments as `(along,up)-(along,up)` in the frame of the wall from a to b, sorted. */
+  function segmentsInWall(frame: THREE.LineSegments, a: Point, b: Point): string[] {
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const ux = (b.x - a.x) / len;
+    const uy = (b.y - a.y) / len;
+    const pos = frame.geometry.getAttribute('position');
+    const at = (i: number): string => {
+      const p = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(frame.matrixWorld);
+      const along = (p.x - a.x) * ux + (p.z - a.y) * uy;
+      return `(${round6(along)},${round6(p.y)})`;
+    };
+    const out: string[] = [];
+    for (let i = 0; i + 1 < pos.count; i += 2) out.push([at(i), at(i + 1)].sort().join('-'));
+    return out.sort();
+  }
+
+  /** Signed distance of every frame vertex from the wall's plane, along its inward normal. */
+  function offsetsFromWall(frame: THREE.LineSegments, a: Point, b: Point): number[] {
+    const n = inwardNormal(a, b);
+    const pos = frame.geometry.getAttribute('position');
+    const out: number[] = [];
+    for (let i = 0; i < pos.count; i++) {
+      const p = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(frame.matrixWorld);
+      out.push((p.x - a.x) * n.x + (p.z - a.y) * n.z);
+    }
+    return out;
+  }
+
+  const seg = (p: [number, number], q: [number, number]): string =>
+    [`(${round6(p[0])},${round6(p[1])})`, `(${round6(q[0])},${round6(q[1])})`].sort().join('-');
+
+  it('frames a door hole with its two jambs and its head, just inside the wall, in the text colour', () => {
+    const found = frames(buildRoom(R, H, TOKENS, null, onWall0(DOOR_HOLE)));
+    expect(found).toHaveLength(1);
+    const [frame] = found as [THREE.LineSegments];
+    expect(frame).toBeInstanceOf(THREE.LineSegments);
+    // SceneRenderer's disposeTree frees the geometry and material of every THREE.Line.
+    expect(frame).toBeInstanceOf(THREE.Line);
+    expect(segmentsInWall(frame, C1, C2)).toEqual([
+      seg([20, 0], [20, 80]), seg([52, 0], [52, 80]), seg([20, 80], [52, 80]),
+    ].sort());
+    for (const d of offsetsFromWall(frame, C1, C2)) expect(d).toBeCloseTo(0.25, 9);
+    const material = frame.material as THREE.Material;
+    expect(material).toBeInstanceOf(THREE.LineBasicMaterial);
+    expect((material as THREE.LineBasicMaterial).color.getHexString()).toBe('111111');
+  });
+
+  it('frames a window hole with its jambs, head and sill', () => {
+    const [frame] = frames(buildRoom(R, H, TOKENS, null, onWall0(WINDOW_HOLE))) as [THREE.LineSegments];
+    expect(segmentsInWall(frame, C1, C2)).toEqual([
+      seg([100, 36], [100, 84]), seg([136, 36], [136, 84]), seg([100, 84], [136, 84]), seg([100, 36], [136, 36]),
+    ].sort());
+  });
+
+  it('puts every frame of one wall in one object', () => {
+    const [frame, ...rest] = frames(buildRoom(R, H, TOKENS, null, onWall0(DOOR_HOLE, WINDOW_HOLE)));
+    expect(rest).toHaveLength(0);
+    if (!frame) throw new Error('no frame');
+    expect(segmentsInWall(frame, C1, C2)).toHaveLength(7);
+  });
+
+  it('gives a wall without holes no frame object', () => {
+    expect(frames(buildRoom(R, H, TOKENS, null, onWall0(DOOR_HOLE)))).toHaveLength(1);
+    expect(frames(buildRoom(R, H, TOKENS, null, R.map(() => [])))).toHaveLength(0);
+    expect(frames(buildRoom(R, H, TOKENS, null))).toHaveLength(0);
+  });
+});

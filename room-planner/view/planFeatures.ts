@@ -13,12 +13,15 @@ import { toPane, type PlanLayout } from './planLayout';
  */
 export interface DoorDrawing { id: string; gap: [Point, Point]; leaf: [Point, Point]; arc: string }
 
-/** A window on the plan: its ends `a` and `b` on the wall line, and `inner`, the same segment moved
- * WINDOW_INNER_PX along the wall's inward normal. */
-export interface WindowDrawing { id: string; a: Point; b: Point; inner: [Point, Point] }
+/**
+ * A window on the plan: its ends `a` and `b` on the wall line, and the edges of its band across the
+ * wall: `inside`, the same segment moved WINDOW_HALF_BAND_PX along the wall's inward normal, and
+ * `outside`, moved the same distance the other way.
+ */
+export interface WindowDrawing { id: string; a: Point; b: Point; inside: [Point, Point]; outside: [Point, Point] }
 
-/** How far inside the wall line a window's second line is drawn, in pane pixels. */
-const WINDOW_INNER_PX = 3;
+/** Half the width of a window's band across the wall, in pane pixels. */
+const WINDOW_HALF_BAND_PX = 3;
 
 /** Turns −0 into 0, so a coordinate never prints as "-0" in a path. */
 function clean(v: number): number {
@@ -61,12 +64,13 @@ export function windowDrawing(win: WindowOpening, outline: readonly Corner[], la
   if (span === null) return null;
   const a = toPane(span.a, layout);
   const b = toPane(span.b, layout);
-  const dx = span.n.x * WINDOW_INNER_PX;
-  const dy = span.n.y * WINDOW_INNER_PX;
+  const dx = span.n.x * WINDOW_HALF_BAND_PX;
+  const dy = span.n.y * WINDOW_HALF_BAND_PX;
   return {
     id: win.id,
     a,
     b,
-    inner: [{ x: a.x + dx, y: a.y + dy }, { x: b.x + dx, y: b.y + dy }],
+    inside: [{ x: a.x + dx, y: a.y + dy }, { x: b.x + dx, y: b.y + dy }],
+    outside: [{ x: a.x - dx, y: a.y - dy }, { x: b.x - dx, y: b.y - dy }],
   };
 }

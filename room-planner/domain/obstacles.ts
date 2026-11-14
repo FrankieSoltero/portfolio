@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { storedAngle } from './geometry';
+import { footprintHalfExtents, snapCentreInto, storedAngle } from './geometry';
 import { LIMIT_SLACK } from './outline';
 import { round2 } from './polygon';
 import { footprintCorners, type Footprint } from './shape';
@@ -26,12 +26,6 @@ type ObstaclePatch = Partial<Pick<Obstacle, 'label' | 'rotation' | 'width' | 'de
 
 /** The fields updateObstacle may change. */
 const PATCHABLE: readonly string[] = ['label', 'rotation', 'width', 'depth', 'height', 'elevation'];
-
-/**
- * Half-extents are rounded to this precision, so a quarter-turned box snaps exactly as moveItem's
- * trig-rounded half-extents do (footprintCorners leaves ~1e-15 of trig noise).
- */
-const EXTENT_PRECISION = 1e9;
 
 function unchanged(obstacles: readonly Obstacle[]): ObstaclesResult {
   return { ok: true, obstacles: obstacles.slice() };
@@ -63,6 +57,16 @@ function hasAllowedSize(o: Obstacle): boolean {
   );
 }
 
+/**
+ * The name the planner shows for an obstacle: its label, or `Box` / `Column` by shape when the label
+ * is empty. Only the empty string falls back; a label of spaces is shown as it is.
+ */
+export function obstacleName(o: Obstacle): string {
+  // A whitespace-only label is not empty, so it is shown as it is (the call sites' behaviour before sharing this).
+  if (o.label !== '') return o.label;
+  return o.shape === 'box' ? 'Box' : 'Column';
+}
+
 /** The obstacle's footprint: centre, unturned width and depth, and clockwise rotation. */
 export function obstacleFootprint(o: Obstacle): Footprint {
   return { cx: o.x, cy: o.y, w: o.width, d: o.depth, angle: o.rotation };
@@ -85,23 +89,11 @@ export function obstaclePolygon(o: Obstacle): Point[] {
 
 /**
  * Half the width and half the length of the obstacle's axis-aligned bounding box: a box's from its
- * turned footprint corners (the rule moveItem uses), a cylinder's the radius on both axes.
+ * turned footprint (the rule moveItem uses), a cylinder's the radius on both axes.
  */
 function halfExtents(o: Obstacle): { hx: number; hy: number } {
   if (o.shape === 'cylinder') return { hx: o.width / 2, hy: o.width / 2 };
-  const corners = footprintCorners(obstacleFootprint(o));
-  const half = (dist: (p: Point) => number): number =>
-    Math.round(Math.max(...corners.map(dist)) * EXTENT_PRECISION) / EXTENT_PRECISION;
-  return { hx: half((p) => Math.abs(p.x - o.x)), hy: half((p) => Math.abs(p.y - o.y)) };
-}
-
-/**
- * The centre coordinate nearest `v` whose bounding-box min edge (centre − half) is a multiple of
- * snap, clamped into [min, max] and stored to 0.01 (the same rule as moveItem).
- */
-function snapInto(v: number, half: number, min: number, max: number, snap: number): number {
-  const snapped = Math.round((v - half) / snap) * snap + half;
-  return round2(Math.min(Math.max(snapped, min), max));
+  return footprintHalfExtents(o.width, o.depth, o.rotation);
 }
 
 /**
@@ -141,8 +133,8 @@ export function moveObstacle(o: Obstacle, x: number, y: number, bounds: Bounds, 
   const { hx, hy } = halfExtents(o);
   return {
     ...o,
-    x: snapInto(x, hx, bounds.minX, bounds.maxX, snap),
-    y: snapInto(y, hy, bounds.minY, bounds.maxY, snap),
+    x: snapCentreInto(x, hx, snap, bounds.minX, bounds.maxX),
+    y: snapCentreInto(y, hy, snap, bounds.minY, bounds.maxY),
   };
 }
 

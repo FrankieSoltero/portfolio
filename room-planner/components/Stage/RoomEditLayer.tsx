@@ -30,7 +30,8 @@ export type BeginRoomDrag = (
 
 /**
  * Room-mode drags of corners, doors, windows and obstacles. The returned function freezes the plan
- * layout at `opts.freeze` and starts a drag that reports the pointer movement to `onMove`. The drag
+ * layout at `opts.freeze` and starts a drag that reports the pointer movement to `onMove`; only a
+ * primary-button press starts one (callers check `isPrimaryPress` before selecting anything). The drag
  * ends (calling `opts.onEnd`, then releasing the layout) on pointer up or cancel, when the calling
  * component unmounts, or at the first move after the mode has left 'room'; once ended it edits
  * nothing more, even back in room mode. Only the most recent drag is ended on unmount: one pointer
@@ -44,6 +45,7 @@ export function useRoomModeDrag(): BeginRoomDrag {
   useEffect(() => () => endDragRef.current?.(), []);
 
   return (e, onMove, { freeze, onEnd }) => {
+    if (e.button !== 0) return;
     freezeLayout(freeze);
     let ended = false;
     const endDrag = (): void => {
@@ -65,6 +67,16 @@ export function useRoomModeDrag(): BeginRoomDrag {
       endDrag,
     );
   };
+}
+
+/**
+ * Whether a pointer down on a room-mode handle or obstacle should act: only the primary button
+ * selects and drags. Any press stops here, so a secondary press neither reaches the plan
+ * background (which would clear the selection) nor starts anything.
+ */
+export function isPrimaryPress(e: React.PointerEvent): boolean {
+  e.stopPropagation();
+  return e.button === 0;
 }
 
 function midpoint(a: Point, b: Point): Point {
@@ -102,6 +114,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
   const layerRef = useRef<HTMLDivElement>(null);
 
   const onCornerDown = (corner: Corner, e: React.PointerEvent): void => {
+    if (!isPrimaryPress(e)) return;
     selectCorner(corner.id);
     const { scale } = layout;
     const start = { x: corner.x, y: corner.y };
@@ -121,6 +134,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
 
   // The opening slides by the pointer movement's component along its wall (unit direction u).
   const onOpeningDown = (opening: Opening, u: Point, e: React.PointerEvent): void => {
+    if (!isPrimaryPress(e)) return;
     selectOpening(opening.id);
     const { scale } = layout;
     const start = opening.offset;

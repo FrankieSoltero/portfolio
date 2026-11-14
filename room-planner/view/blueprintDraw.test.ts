@@ -11,7 +11,7 @@ import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from './camera';
 import type { CameraPose, Vec3 } from './camera';
 import { placedItem } from '../test/fixtures';
-import { makeProjector } from './blueprintScene';
+import { buildPrisms, makeProjector } from './blueprintScene';
 import { drawBlueprint } from './blueprintDraw';
 import type { BlueprintInput } from './blueprintDraw';
 import type { PaneRect } from './panes';
@@ -715,6 +715,23 @@ describe('drawBlueprint obstacles', () => {
     const pts = obstaclePolygon(grounded);
     const faces = faceFills(draw(inp).paints);
     expect(faces.some((f) => sameKeys(f.coords, projectAll(inp, pts.map((p): Vec3 => [p.x, p.y, 0]))))).toBe(false);
+  });
+
+  it('never draws the underside of raised furniture, even with the camera below it', () => {
+    // The desk's top part runs from 0.93 × 30 = 27.9 in to 30 in.
+    const desk = placedItem({ id: 'desk-1', kind: 'desk', name: 'Desk', w: 48, d: 24, h: 30, cx: 72, cy: 84 });
+    const raised = buildPrisms([desk]).prisms.filter((p) => p.z0 > 0);
+    expect(raised).toHaveLength(1);
+    const top = at(raised, 0);
+    expect(top.z0).toBeCloseTo(27.9, 9);
+    const base = input({ items: [desk] });
+    const inp = withCamera(base, [base.pose.position[0], base.pose.position[1], 10]);
+    const underside = projectAll(inp, top.pts.map((p): Vec3 => [p.x, p.y, top.z0]));
+    const faces = faceFills(draw(inp).paints);
+    expect(faces.length).toBeGreaterThan(0);
+    expect(faces.some((f) => sameKeys(f.coords, underside))).toBe(false);
+    // Only the camera-facing sides of the desk's three parts are painted: no top, no underside.
+    expect(faces.every((f) => f.points === 4 && f.style !== T.bg)).toBe(true);
   });
 
   it('strokes a conflicted obstacle dashed [5, 4]', () => {

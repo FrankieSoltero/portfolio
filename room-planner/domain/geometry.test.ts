@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialDocument } from './catalog';
-import { moveItem, rotateItemBy, setItemAngle, shiftItem, storedAngle } from './geometry';
+import { footprintHalfExtents, moveItem, rotateItemBy, setItemAngle, shiftItem, snapCentreInto, storedAngle } from './geometry';
 import { boundsOf } from './polygon';
 import { footprintCorners, itemFootprint, roomBounds } from './shape';
 import type { Item } from './types';
@@ -159,5 +159,27 @@ describe('storedAngle', () => {
     const desk = seed('seed-desk');
     expect(Number.isFinite(setItemAngle(desk, 1e307).angle)).toBe(true);
     expect(Number.isFinite(rotateItemBy(desk, 1e307).angle)).toBe(true);
+  });
+});
+
+describe('footprintHalfExtents', () => {
+  it('gives half the turned bounding box, exact on a quarter turn', () => {
+    expect(footprintHalfExtents(24, 25, 0)).toEqual({ hx: 12, hy: 12.5 });
+    expect(footprintHalfExtents(24, 25, 90)).toEqual({ hx: 12.5, hy: 12 });
+    expect(footprintHalfExtents(24, 25, 270)).toEqual({ hx: 12.5, hy: 12 });
+    const turned = footprintHalfExtents(20, 10, 30);
+    expect(turned.hx).toBeCloseTo((20 * Math.cos(Math.PI / 6) + 10 * 0.5) / 2, 9);
+    expect(turned.hy).toBeCloseTo((20 * 0.5 + 10 * Math.cos(Math.PI / 6)) / 2, 9);
+  });
+});
+
+describe('snapCentreInto', () => {
+  it('puts the min edge (centre − half) on the snap grid, then clamps and rounds to 0.01', () => {
+    // Min edge 17.6 → 18: centre 30.5.
+    expect(snapCentreInto(30.1, 12.5, 1, 0, 144)).toBe(30.5);
+    expect(snapCentreInto(30.1, 12.5, 6, 0, 144)).toBe(30.5);
+    expect(snapCentreInto(200, 12.5, 1, 0, 144)).toBe(144);
+    expect(snapCentreInto(-5, 12.5, 1, 0, 144)).toBe(0);
+    expect(snapCentreInto(10, 1 / 3, 1, 0, 144)).toBe(10.33);
   });
 });

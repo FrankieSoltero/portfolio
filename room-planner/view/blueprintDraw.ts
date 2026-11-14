@@ -109,7 +109,8 @@ function prismFills(b: Prism, sel: boolean, T: Tokens): PrismFills {
 
 /**
  * Sides of `b` whose outward normal points toward `cam`, then its top when the camera is
- * above it, or its underside when it is raised off the floor and the camera is below it.
+ * above it, or, for an obstacle raised off the floor, its underside when the camera is below it
+ * (furniture never shows an underside).
  * A four-sided prism's sides go in `SIDE_ORDER`, any other prism's in index order. A side whose
  * outward normal (nx, ny) has |nx| > |ny| faces plan x and takes the `sideX` colour; every
  * other side takes the `sideY` colour.
@@ -138,7 +139,7 @@ function drawPrism(g: CanvasRenderingContext2D, P: Project, b: Prism, cam: Vec3,
     }
   }
   if (cam[2] > z1) poly(g, P, pts.map((p): Vec3 => [p.x, p.y, z1]), { ...style, fill: top });
-  else if (z0 > 0 && cam[2] < z0) poly(g, P, pts.map((p): Vec3 => [p.x, p.y, z0]), { ...style, fill: top });
+  else if (b.obstacle === true && z0 > 0 && cam[2] < z0) poly(g, P, pts.map((p): Vec3 => [p.x, p.y, z0]), { ...style, fill: top });
 }
 
 /** A door or window hole in a wall: its rectangle and, for a window, the line across it at mid-height. */

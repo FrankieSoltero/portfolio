@@ -91,6 +91,9 @@ function floorGeometry(outline: readonly Point[]): THREE.BufferGeometry {
 const GLASS_OPACITY = 0.3;
 const GLASS_ROUGHNESS = 0.1;
 
+/** How far inside the wall's plane the opening frames are drawn, in inches, so they do not z-fight with it. */
+const FRAME_OFFSET = 0.25;
+
 /** Axis-aligned rectangle in a wall's frame: `x` along the wall, `z` up (inches). */
 interface WallRect { x0: number; x1: number; z0: number; z1: number }
 
@@ -152,11 +155,29 @@ function rectsGeometry(rects: readonly WallRect[], length: number, height: numbe
 }
 
 /**
+ * The frame segments of a wall's holes, as (along, up) end-point pairs in the wall's frame: the two
+ * jambs and the head of every hole, and the sill of a hole that starts above the floor.
+ */
+function frameSegments(holes: readonly WallHole[]): [number, number][][] {
+  return holes.flatMap((h) => {
+    const segments: [number, number][][] = [
+      [[h.x0, h.z0], [h.x0, h.z1]],
+      [[h.x1, h.z0], [h.x1, h.z1]],
+      [[h.x0, h.z1], [h.x1, h.z1]],
+    ];
+    if (h.z0 > 0) segments.push([[h.x0, h.z0], [h.x1, h.z0]]);
+    return segments;
+  });
+}
+
+/**
  * Builds the floor and one inward-facing wall per outline edge (prototype lines 496–500).
  * Plan x → X, plan y → Z, height → Y. Each wall is a single-sided plane spanning its two
  * corners whose normal is the wall's inward normal, so a wall between the camera and the
  * room is culled. `holes` (one list per wall, from `wallHoles`) cuts doors and windows out of
- * the walls and fills each window with a translucent pane; without it the walls are whole.
+ * the walls, fills each window with a translucent pane and outlines each hole with a thin frame in
+ * the text colour (one `opening-frames` LineSegments per wall with holes, FRAME_OFFSET inside the
+ * wall); without it the walls are whole.
  */
 export function buildRoom(outline: readonly Point[], height: number, tokens: Tokens,
   floorMap: THREE.Texture | null, holes?: readonly (readonly WallHole[])[]): THREE.Group {
@@ -203,6 +224,18 @@ export function buildRoom(outline: readonly Point[], height: number, tokens: Tok
       pane.rotation.y = ry;
       pane.castShadow = false;
       group.add(pane);
+    }
+
+    if (cut.length > 0) {
+      // World position of a point `along` the wall from a and `up` above the floor, just inside it.
+      const positions = frameSegments(cut).flat().flatMap(([along, up]) => [
+        a.x + ny * along + nx * FRAME_OFFSET, up, a.y - nx * along + ny * FRAME_OFFSET,
+      ]);
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      const frames = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: tokens.text }));
+      frames.name = 'opening-frames';
+      group.add(frames);
     }
   });
 

@@ -713,7 +713,8 @@ describe('PlanView doors, windows and obstacles', () => {
     const L = seedLayout();
     const svg = document.querySelector('svg.plan-features');
     expect(svg?.querySelectorAll('[data-opening-id="d1"]')).toHaveLength(3);
-    expect(svg?.querySelectorAll('line.plan-window[data-opening-id="w1"]')).toHaveLength(2);
+    expect(svg?.querySelectorAll('line.plan-window[data-opening-id="w1"]')).toHaveLength(3);
+    expect(svg?.querySelectorAll('line.plan-window-band[data-opening-id="w1"]')).toHaveLength(1);
     const arc = svg?.querySelector('path.plan-door-arc');
     expect(arc?.getAttribute('d')).toBe(doorDrawing(D1, usePlanStore.getState().room.outline, L)?.arc);
     expect(document.querySelectorAll('div.plan-obstacle')).toHaveLength(2);
