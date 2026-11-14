@@ -57,6 +57,8 @@ function WallRow({ wall, roomMode, roomTool }: { wall: Wall; roomMode: boolean; 
   }
 
   const midpoint = { x: (wall.a.x + wall.b.x) / 2, y: (wall.a.y + wall.b.y) / 2 };
+  const n = wall.index + 1;
+  const placing = roomTool !== 'corner';
 
   return (
     <div className="wall-row">
@@ -78,24 +80,14 @@ function WallRow({ wall, roomMode, roomTool }: { wall: Wall; roomMode: boolean; 
           {roomUnitLabel(units)}
         </span>
       </div>
-      {roomMode && roomTool === 'corner' && (
+      {/* One button whose name and action follow the tool, so it keeps focus when placing disarms it. */}
+      {roomMode && (
         <button
           type="button"
-          className="btn btn-secondary btn-icon wall-row-add"
-          aria-label={`Add a corner to wall ${wall.index + 1}`}
-          title="Add a corner at the middle of this wall"
-          onClick={() => addCornerOnWall(wall.id, midpoint)}
-        >
-          <span aria-hidden="true">+</span>
-        </button>
-      )}
-      {roomMode && roomTool !== 'corner' && (
-        <button
-          type="button"
-          className="btn btn-primary btn-icon wall-row-add"
-          aria-label={`Place the ${roomTool} on wall ${wall.index + 1}`}
-          title={`Place the ${roomTool} at the middle of this wall`}
-          onClick={() => placeOpeningOnWall(wall.id, midpoint)}
+          className={`btn ${placing ? 'btn-primary' : 'btn-secondary'} btn-icon wall-row-add`}
+          aria-label={placing ? `Place the ${roomTool} on wall ${n}` : `Add a corner to wall ${n}`}
+          title={placing ? `Place the ${roomTool} at the middle of this wall` : 'Add a corner at the middle of this wall'}
+          onClick={() => (placing ? placeOpeningOnWall(wall.id, midpoint) : addCornerOnWall(wall.id, midpoint))}
         >
           <span aria-hidden="true">+</span>
         </button>

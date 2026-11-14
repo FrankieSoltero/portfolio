@@ -1,5 +1,5 @@
 import { addObstacle, newObstacle, updateObstacle } from '../domain/obstacles';
-import { addOpening, slideOpening, updateOpening } from '../domain/openings';
+import { addOpening, openingSpan, slideOpening, updateOpening } from '../domain/openings';
 import { insertCorner, moveCorner, type OutlineResult, removeCorner, snapCornerTarget } from '../domain/outline';
 import { interiorPoint } from '../domain/polygon';
 import type { Obstacle, Point } from '../domain/types';
@@ -161,6 +161,28 @@ export function slideSelectedOpening(delta: number): void {
   const opening = usePlanStore.getState().openings.find((o) => o.id === id);
   if (opening === undefined) return;
   slideOpeningTo(opening.id, opening.offset + delta);
+}
+
+/** Below this |direction · u| a direction is across the wall and does not slide an opening. */
+const ACROSS_THE_WALL = 1e-9;
+
+/**
+ * Slides the selected door or window `step` inches along its wall the way `direction` (a plan-space
+ * vector, y down, such as an arrow key's) points: the offset changes by sign(direction · u) × step,
+ * where u is the wall's direction, so on a wall running right to left a step to the right lowers the
+ * offset. A direction across the wall (|direction · u| < 1e-9), no selection, or an opening whose wall
+ * is not in the outline changes nothing, the room problem included.
+ */
+export function slideSelectedOpeningToward(direction: Point, step: number): void {
+  const id = useUiStore.getState().selectedOpeningId;
+  const { room, openings } = usePlanStore.getState();
+  const opening = openings.find((o) => o.id === id);
+  if (opening === undefined) return;
+  const span = openingSpan(room.outline, opening);
+  if (span === null) return;
+  const along = direction.x * span.u.x + direction.y * span.u.y;
+  if (Math.abs(along) < ACROSS_THE_WALL) return;
+  slideSelectedOpening(Math.sign(along) * step);
 }
 
 /**

@@ -33,6 +33,11 @@ const MIN_CORNERS = 3;
  */
 export const LIMIT_SLACK = 1e-9;
 
+/** True when v is a finite number within [min, max]; the limits are exact up to LIMIT_SLACK. */
+export function inLimits(v: number, min: number, max: number): boolean {
+  return Number.isFinite(v) && v >= min - LIMIT_SLACK && v <= max + LIMIT_SLACK;
+}
+
 /** Below this |cross product| two unit directions are treated as parallel. */
 const PARALLEL_SLACK = 1e-9;
 

@@ -65,8 +65,7 @@ function expectReadable(step: string): void {
 
 /**
  * expectReadable, and also: the doors, windows and obstacles read back exactly as stored (so every
- * stored number was already rounded to 0.01), and every obstacle centre is inside the room's
- * bounding box.
+ * stored number was already rounded to 0.01), and every obstacle centre is within ±CONFIG.coordMax.
  */
 function expectExact(step: string): void {
   expectReadable(step);
@@ -75,11 +74,20 @@ function expectExact(step: string): void {
   if (!result.ok) return;
   expect(result.doc.openings, step).toEqual(doc.openings);
   expect(result.doc.obstacles, step).toEqual(doc.obstacles);
-  const b = roomBounds(doc.room);
   for (const o of doc.obstacles) {
-    const inside = o.x >= b.minX && o.x <= b.maxX && o.y >= b.minY && o.y <= b.maxY;
-    expect(inside, `${step}: centre of ${o.id} inside the room bounds`).toBe(true);
+    const inRange = Math.abs(o.x) <= CONFIG.coordMax && Math.abs(o.y) <= CONFIG.coordMax;
+    expect(inRange, `${step}: centre of ${o.id} within ±${CONFIG.coordMax}`).toBe(true);
   }
+}
+
+/** Asserts that obstacle `id`'s centre is inside the room's bounding box, as a drag or nudge keeps it. */
+function expectInRoomBounds(id: string, step: string): void {
+  const { room, obstacles } = usePlanStore.getState();
+  const o = obstacles.find((k) => k.id === id);
+  if (o === undefined) throw new Error(`expected obstacle ${id}`);
+  const b = roomBounds(room);
+  const inside = o.x >= b.minX && o.x <= b.maxX && o.y >= b.minY && o.y <= b.maxY;
+  expect(inside, `${step}: centre of ${id} inside the room bounds`).toBe(true);
 }
 
 /** Adds a door or window through the store, as the planner will. */
@@ -292,8 +300,10 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
     const s = usePlanStore.getState();
     s.moveObstacleTo('box-1', 1e6, -1e6);
     expectExact('move a box far');
+    expectInRoomBounds('box-1', 'move a box far');
     s.moveObstacleBy('box-1', -1e6, 1e6);
     expectExact('nudge a box far');
+    expectInRoomBounds('box-1', 'nudge a box far');
     s.moveObstacleTo('column-1', 30.4, 50.6);
     expectExact('move a column');
     s.moveObstacleBy('column-1', 0.004, -0.006);
@@ -302,6 +312,7 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
     expectExact('update a box');
     s.moveObstacleTo('box-1', 1e6, 1e6);
     expectExact('move a turned box far');
+    expectInRoomBounds('box-1', 'move a turned box far');
     s.moveObstacleBy('box-1', -0.333, -0.333);
     expectExact('nudge a turned box');
     expect(changeObstacle('box-1', { rotation: 1e307 })).toBeNull();
@@ -312,8 +323,13 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
     expectExact('update a column');
     expect(placeObstacle('box', { x: 1e6, y: -1e6 }, 'box-far')).toBeNull();
     expectExact('add a box far outside the room');
+    expect(usePlanStore.getState().obstacles.find((o) => o.id === 'box-far')).toMatchObject({ x: 1440, y: -1440 });
     expect(placeObstacle('cylinder', { x: -1e6, y: 1e6 }, 'column-far')).toBeNull();
     expectExact('add a column far outside the room');
+    expect(placeObstacle('box', { x: Number.POSITIVE_INFINITY, y: 0 }, 'box-infinite')).toBe('obstacle-size');
+    expectExact('add a box at an infinite x');
+    expect(placeObstacle('box', { x: 0, y: Number.NaN }, 'box-nan')).toBe('obstacle-size');
+    expectExact('add a box at a y that is not a number');
     s.setRoomHeight(2.45 / 0.0254);
     expect(placeObstacle('cylinder', centre, 'column-2')).toBeNull();
     expectExact('add a column under a 2.45 m ceiling');
@@ -322,6 +338,21 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
       expectExact(`remove ${id}`);
     }
     expect(usePlanStore.getState().obstacles).toEqual([]);
+  });
+
+  it('an obstacle left outside the room by an outline edit stays where it is while another is edited', () => {
+    const centre = interiorPoint(usePlanStore.getState().room.outline);
+    expect(placeObstacle('box', centre, 'box-1')).toBeNull();
+    usePlanStore.getState().moveObstacleBy('box-1', 48, 0);
+    expect(usePlanStore.getState().applyOutline(setRectangleSize(usePlanStore.getState().room.outline, { w: 108 }))).toBeNull();
+    expectExact('a box left outside the room');
+    const before = usePlanStore.getState().obstacles.find((o) => o.id === 'box-1');
+    expect(before).toMatchObject({ x: 120, y: 84 });
+    expect(placeObstacle('cylinder', interiorPoint(usePlanStore.getState().room.outline), 'column-1')).toBeNull();
+    expectExact('add a column beside it');
+    expect(changeObstacle('column-1', { label: 'Pillar', width: 20, rotation: 15 })).toBeNull();
+    expectExact('edit the column beside it');
+    expect(usePlanStore.getState().obstacles.find((o) => o.id === 'box-1')).toEqual(before);
   });
 
   it.each([

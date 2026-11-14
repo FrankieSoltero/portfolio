@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { obstaclePolygon } from './obstacles';
+import { obstacleName, obstaclePolygon } from './obstacles';
 import { openingSpan } from './openings';
 import { convexInsidePolygon, convexOverlap } from './polygon';
 import { footprintCorners, itemFootprint, roomHeight, roomOutline, type Footprint } from './shape';
@@ -19,14 +19,11 @@ export const BLOCKS_A_DOOR = 'Blocks a door';
 /** The warning for furniture in front of a window and taller than its sill. */
 export const COVERS_A_WINDOW = 'Covers a window';
 
-/** The overlap reason for an obstacle with an empty label. */
-const OVERLAPS_AN_OBSTACLE = 'Overlaps an obstacle';
-
 /** What the conflict check needs to know about one item: its identity, kind, height and footprint. */
 export interface ConflictEntry { id: string; name: string; kind: Kind; h: number; fp: Footprint }
 
-/** An obstacle as the furniture check sees it: its label, where it starts above the floor and its outline. */
-interface ObstacleShape { label: string; elevation: number; polygon: readonly Point[] }
+/** An obstacle as the furniture check sees it: its name (obstacleName), where it starts above the floor and its outline. */
+interface ObstacleShape { name: string; elevation: number; polygon: readonly Point[] }
 
 /** A door's reserved area on the plan, with the door's height. */
 interface DoorArea { height: number; polygon: readonly Point[] }
@@ -117,7 +114,7 @@ function furnitureConflicts(
     // Furniture stands on the floor, so it clears an obstacle raised above its top.
     const obstacle = obstacles.find((o) => a.h > o.elevation + e && convexOverlap(corners[i], o.polygon, e));
     if (obstacle !== undefined) {
-      out[a.id] = obstacle.label === '' ? OVERLAPS_AN_OBSTACLE : `Overlaps ${obstacle.label}`;
+      out[a.id] = `Overlaps ${obstacle.name}`;
       return;
     }
     if (doors.some((d) => convexOverlap(corners[i], d.polygon, e))) out[a.id] = BLOCKS_A_DOOR;
@@ -192,7 +189,7 @@ export function findPlanIssues(
     id: item.id, name: item.name, kind: item.kind, h: item.h, fp: itemFootprint(item),
   }));
   const corners = entries.map((entry) => footprintCorners(entry.fp));
-  const blockers = shapes.map(({ o, polygon }): ObstacleShape => ({ label: o.label, elevation: o.elevation, polygon }));
+  const blockers = shapes.map(({ o, polygon }): ObstacleShape => ({ name: obstacleName(o), elevation: o.elevation, polygon }));
   Object.assign(conflicts, furnitureConflicts(entries, corners, outline, height, blockers, doors));
 
   const warnings: Record<string, string> = {};

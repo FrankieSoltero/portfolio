@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { LIMIT_SLACK, wallsOf, type Wall } from './outline';
+import { inLimits, LIMIT_SLACK, wallsOf, type Wall } from './outline';
 import { projectOntoSegment, round2 } from './polygon';
 import type { Corner, Door, Opening, Point, WindowOpening } from './types';
 
@@ -108,11 +108,6 @@ function rehomedOffset(raw: number, length: number, width: number): number {
   const room = length - width;
   const nearWall = room >= 0 && raw >= -REHOME_NOISE && raw <= room + REHOME_NOISE;
   return nearWall ? clampOffset(round2(raw), length, width) : round2(raw);
-}
-
-/** True when v is a finite number within [min, max]; the limits are exact up to LIMIT_SLACK. */
-function inLimits(v: number, min: number, max: number): boolean {
-  return Number.isFinite(v) && v >= min - LIMIT_SLACK && v <= max + LIMIT_SLACK;
 }
 
 function hasAllowedSize(o: Opening): boolean {

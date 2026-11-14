@@ -999,6 +999,11 @@ describe('parsePlan — obstacles', () => {
     expect(parsePlan(set(full(), ['obstacles', 0, 'label'], 5))).toEqual(refusal('obstacles.0.label: invalid_type'));
   });
 
+  it('label: 20 astral characters (40 UTF-16 units) accepted; 21 (42 units) refused', () => {
+    expect(accepted(set(full(), ['obstacles', 0, 'label'], '😀'.repeat(20))).obstacles[0].label).toBe('😀'.repeat(20));
+    expect(parsePlan(set(full(), ['obstacles', 0, 'label'], '😀'.repeat(21))).ok).toBe(false);
+  });
+
   it('refuses an unknown shape', () => {
     expect(parsePlan(set(full(), ['obstacles', 0, 'shape'], 'cone'))).toEqual(refusal('obstacles.0.shape: invalid_value'));
   });

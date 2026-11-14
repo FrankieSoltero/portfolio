@@ -126,9 +126,21 @@ describe('RoomFeatures', () => {
   it('lists openings first, then obstacles, each in stored order, and is not a heading', () => {
     seed([WINDOW, DOOR], [COLUMN, BOX, { ...BOX, id: 'b2', label: '' }, { ...COLUMN, id: 'k2', label: '' }]);
     render(<RoomFeatures />);
-    expect(rowNames()).toEqual(['Window on wall 2', 'Door on wall 1', 'Column', 'Box', 'Box', 'Column']);
+    expect(rowNames()).toEqual(['Window on wall 2', 'Door on wall 1', 'Column (1 of 2)', 'Box (1 of 2)', 'Box (2 of 2)', 'Column (2 of 2)']);
     expect(screen.queryByRole('heading')).toBeNull();
     expect(screen.queryByText('None yet.')).toBeNull();
+  });
+
+  it('numbers obstacles that share a name, (k of n) in list order, after Add box twice', async () => {
+    seed([]);
+    render(<RoomFeatures />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Add box' }));
+    expect(rowNames()).toEqual(['Box']);
+    await user.click(screen.getByRole('button', { name: 'Add box' }));
+    await user.click(screen.getByRole('button', { name: 'Add column' }));
+    expect(rowNames()).toEqual(['Box (1 of 2)', 'Box (2 of 2)', 'Column']);
+    expect(screen.getByRole('button', { name: 'Box (2 of 2)' })).toBeInTheDocument();
   });
 
   it('names two doors on one wall as the plan handles do: (1 of 2) and (2 of 2) by offset', () => {

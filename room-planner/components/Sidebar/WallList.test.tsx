@@ -256,6 +256,19 @@ describe('WallList', () => {
       expect(screen.getByRole('button', { name: 'Add a corner to wall 1' })).toBeInTheDocument();
     });
 
+    it('keeps focus on the wall row after placing from the keyboard: the same button, now Add a corner', async () => {
+      useUiStore.getState().setMode('room');
+      useUiStore.getState().setRoomTool('door');
+      render(<WallList />);
+      const place = screen.getByRole('button', { name: 'Place the door on wall 1' });
+      place.focus();
+      await userEvent.setup().keyboard('{Enter}');
+      expect(usePlanStore.getState().openings).toHaveLength(1);
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Add a corner to wall 1' }));
+      expect(document.activeElement).toBe(place);
+    });
+
     it('places a window centred on wall 2', async () => {
       useUiStore.getState().setMode('room');
       useUiStore.getState().setRoomTool('window');

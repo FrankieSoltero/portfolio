@@ -21,15 +21,17 @@ without reading it — the visual language is strict and easy to break.
   `docs/superpowers/specs/2026-07-02-papers-8bit-hybrid-design.md` (supersedes
   PLAN.md §4's paper-white direction); tokens live in `app/papers/papers.css`.
 - **`/room-planner` (room layout tool)** — React + three.js, client-side only. Source in
-  `room-planner/`, route in `app/room-planner/`. It has its **own design language**
-  (the Industry design system in `room-planner/styles/industry.css`), **not the 8-bit
-  skin**. Its styles must stay scoped to `.room-planner`; this is enforced by
+  `room-planner/`, route in `app/room-planner/`. It has its **own design language** (the
+  Industry design system in `room-planner/styles/industry.css`), **not the 8-bit skin**. Its
+  styles must stay scoped to `.room-planner`; this is enforced by
   `room-planner/styles/scoping.test.ts`. No backend: the plan is saved in the browser under
   `room-planner:plan:v1`, validated on load and never sent to a server. The room is an
-  outline edited in "Edit room" mode, and furniture rotates to any angle. The room also carries doors, windows and fixed obstacles. Every outline edit goes through `applyOutline`, so openings are re-homed onto their walls; never write `room.outline` directly. Every value read
-  from storage must pass through `parsePlan`. Views read room and item geometry only through
-  `room-planner/domain/shape.ts`. Run `npm run check` before committing. Docs in
-  `docs/room-planner/`.
+  outline edited in "Edit room" mode, and furniture rotates to any angle. The room also
+  carries doors, windows and fixed obstacles. Every outline edit goes through
+  `applyOutline`, so openings are re-homed onto their walls; never write `room.outline`
+  directly. Every value read from storage must pass through `parsePlan`. Views read room and
+  item geometry only through `room-planner/domain/shape.ts`. Run `npm run check` before
+  committing. Docs in `docs/room-planner/`.
 
 ## Files
 - `public/index.html` — the 8-bit site. Add/edit projects in the `quests` array and

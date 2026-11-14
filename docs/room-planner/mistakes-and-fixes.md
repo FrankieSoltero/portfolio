@@ -407,9 +407,10 @@ task named in the title.
 
 ## 2026-11-14 — Openings and obstacles
 
-The first six entries are plan defects fixed by plan amendments. The rest were found in review, in
-screenshots or in the live check, with the task named in the title. Items left as they are are
-listed under "Known limits" in `docs/room-planner/README.md`.
+The first six entries are plan defects fixed by plan amendments. Two were found while building
+(the test fixture and the lint entries, Task 4). The rest were found in review, in screenshots or in
+the live check, with the task named in the title. Items left as they are are listed under "Known
+limits" and "Open questions for the owner (slice C)" in `docs/room-planner/README.md`.
 
 ### Rounding a re-homed opening pushed it off a diagonal wall (plan Amendment 2)
 - **Date:** 2026-11-14
@@ -536,3 +537,17 @@ listed under "Known limits" in `docs/room-planner/README.md`.
 - **Root cause:** The two components built the name separately.
 - **Fix:** Both use `openingName` in `room-planner/domain/openings.ts`; openings on one wall are numbered together by offset.
 - **How to avoid:** Build a user-visible name in one function.
+
+### Editing one obstacle moved another (final review)
+- **Date:** 2026-11-14
+- **What happened:** An outline edit leaves obstacles where they are and flags any left outside the room. Adding, relabelling, resizing or rotating a different obstacle then moved that one back to the room's edge: a box at x 120 jumped to x 108 after the room was narrowed to 108 in and a column was added.
+- **Root cause:** The clamp added for "An obstacle could be stored where the loader refuses it" (Task 6) was applied to the whole list in `applyObstacles` instead of to the obstacle being moved, and it clamped into the room rather than to the loader's bound.
+- **Fix:** `applyObstacles` clamps each centre only to ±`CONFIG.coordMax` (the bound `parsePlan` enforces) and refuses a centre that is not finite. The clamp into the room stays in `moveObstacleTo` and `moveObstacleBy`. A store test and a round-trip test edit a second obstacle beside one left outside the room.
+- **How to avoid:** A fix for "X can be stored out of range" must bound only the value being written, and its test must include an untouched neighbour.
+
+### The arrow keys slid a door against the arrow on some walls (final review)
+- **Date:** 2026-11-14
+- **What happened:** With a door or window selected, ArrowRight always raised its offset. On the bottom wall, which runs right to left, the door moved left on screen, and on the left wall ArrowDown moved it up.
+- **Root cause:** The plan's table specified sliding along the wall's direction, but the code mapped Right and Down to +1 and Left and Up to −1. No unit test or live-check row used the keyboard on a right-to-left or bottom-to-top wall.
+- **Fix:** An arrow changes the offset by sign(arrow · u) × step, where u is the wall's direction; an arrow across the wall does nothing. Tests cover all four walls of the seeded room and a 45° wall.
+- **How to avoid:** Test a direction-dependent control on a wall running each way, and include one such wall in the live check.

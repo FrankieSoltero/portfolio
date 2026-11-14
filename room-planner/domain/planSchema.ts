@@ -16,9 +16,10 @@ import type { Corner, Door, Item, Kind, ModelTier, Obstacle, Opening, PlanDocume
  * from the input.
  *
  * Doors, windows and obstacles are checked in two steps: the schema below checks their structure
- * only (keys, types, enums, ids, list lengths, label length, obstacle coordinates), and the built
- * lists are then checked by `validateOpenings` and `validateObstacles`, the same functions the
- * editor uses, so the size limits have one source.
+ * only (keys, types, enums, ids, list lengths, a first label-length check, obstacle coordinates),
+ * and the built lists are then checked by `validateOpenings` and `validateObstacles`, the same
+ * functions the editor uses, so the size limits have one source. The obstacle label limit, counted
+ * in UTF-16 units, is enforced by `validateObstacles`.
  */
 
 export type ParseResult = { ok: true; doc: PlanDocument } | { ok: false; newer: boolean; reason: string };
@@ -124,7 +125,7 @@ const modelSchema = z.object({
   assetUrl: urlSchema,
 });
 
-/** Fields shared by version 1 and version 2 items. */
+/** Fields shared by version 1, version 2 and version 3 items. */
 const itemFields = {
   id: idSchema,
   kind: z.enum(KINDS),

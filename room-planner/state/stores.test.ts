@@ -14,6 +14,7 @@ import {
   setWallLength,
   startingShape,
 } from '../domain/outline';
+import { parsePlan } from '../domain/planSchema';
 import { boundsOf, pointInPolygon } from '../domain/polygon';
 import { footprintCorners, itemFootprint } from '../domain/shape';
 import type { Corner, Door, Item, Obstacle, PlanDocument, ProductPreview, WindowOpening } from '../domain/types';
@@ -1164,13 +1165,39 @@ describe('plan store: doors, windows and obstacles', () => {
     expect(usePlanStore.getState().obstacles).toEqual([BOX]);
   });
 
-  it('applyObstacles keeps every centre inside the room bounds; an in-room position is stored unchanged', () => {
+  it('applyObstacles keeps every centre within ±CONFIG.coordMax, so parsePlan reads it back; an in-room position is stored unchanged', () => {
     const far = addObstacle([], newObstacle('box', { x: 1e6, y: -1e6 }, 96, 'far'));
     const result = addObstacle(far.ok ? far.obstacles : [], newObstacle('box', { x: 40, y: 120 }, 96, 'b1'));
     expect(result.ok).toBe(true);
     expect(usePlanStore.getState().applyObstacles(result)).toBeNull();
-    expect(obstacleById('far')).toMatchObject({ x: 144, y: 0 });
+    expect(obstacleById('far')).toMatchObject({ x: CONFIG.coordMax, y: -CONFIG.coordMax });
     expect(obstacleById('b1')).toEqual(BOX);
+    expect(parsePlan(JSON.parse(JSON.stringify(docOf(usePlanStore.getState())))).ok).toBe(true);
+  });
+
+  it('applyObstacles clamps a centre just past ±CONFIG.coordMax to it and rounds it to 0.01', () => {
+    expect(CONFIG.coordMax).toBe(1440);
+    const result = { ok: true as const, obstacles: [{ ...BOX, x: -1440.004, y: 1440.5 }, { ...BOX, id: 'b2', x: 12.3456, y: 1439.996 }] };
+    expect(usePlanStore.getState().applyObstacles(result)).toBeNull();
+    expect(obstacleById('b1')).toMatchObject({ x: -1440, y: 1440 });
+    expect(obstacleById('b2')).toMatchObject({ x: 12.35, y: 1440 });
+    expect(parsePlan(JSON.parse(JSON.stringify(docOf(usePlanStore.getState())))).ok).toBe(true);
+  });
+
+  it.each([
+    ['x', Number.POSITIVE_INFINITY],
+    ['x', Number.NEGATIVE_INFINITY],
+    ['x', Number.NaN],
+    ['y', Number.POSITIVE_INFINITY],
+    ['y', Number.NEGATIVE_INFINITY],
+    ['y', Number.NaN],
+  ] as const)('applyObstacles refuses a centre %s of %s as obstacle-size and stores nothing', (key, value) => {
+    withPlan({ obstacles: [BOX] });
+    let problem: unknown;
+    expectNoChange(() => {
+      problem = usePlanStore.getState().applyObstacles({ ok: true, obstacles: [BOX, { ...BOX, id: 'bad', [key]: value }] });
+    });
+    expect(problem).toBe('obstacle-size');
   });
 
   it('applyObstacles refused returns the problem and changes nothing', () => {
@@ -1536,6 +1563,35 @@ describe('door, window and obstacle actions', () => {
     useUiStore.getState().selectObstacle('col');
     rotateSelectedObstacle(15);
     expect(obstacleById('col')).toEqual({ ...COLUMN, rotation: 15 });
+  });
+
+  it('editing one obstacle never moves another left outside the room by an outline edit', () => {
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    addObstacleAtCentre('box');
+    const boxId = req(usePlanStore.getState().obstacles[0], 'the box').id;
+    expect(obstacleById(boxId)).toMatchObject({ x: 72, y: 84 });
+    for (let i = 0; i < 4; i++) nudgeSelectedObstacle(12, 0);
+    expect(obstacleById(boxId)).toMatchObject({ x: 120, y: 84 });
+    expect(usePlanStore.getState().applyOutline(setRectangleSize(usePlanStore.getState().room.outline, { w: 108 }))).toBeNull();
+
+    const expectBoxLeftOutside = (step: string): void => {
+      expect(obstacleById(boxId), step).toMatchObject({ x: 120, y: 84 });
+      const { items, room, openings, obstacles } = usePlanStore.getState();
+      expect(findPlanIssues(items, room, openings, obstacles).conflicts[boxId], step).toBe('Outside the room');
+    };
+    expectBoxLeftOutside('after the outline edit');
+    addObstacleAtCentre('cylinder');
+    const columnId = req(useUiStore.getState().selectedObstacleId ?? undefined, 'the column');
+    expect(columnId).not.toBe(boxId);
+    expectBoxLeftOutside('after adding a column');
+    updateSelectedObstacle({ label: 'Pillar' });
+    expectBoxLeftOutside('after relabelling the column');
+    updateSelectedObstacle({ width: 20 });
+    expectBoxLeftOutside('after resizing the column');
+    rotateSelectedObstacle(15);
+    expectBoxLeftOutside('after rotating the column');
+    expect(obstacleById(columnId)).toMatchObject({ label: 'Pillar', width: 20, depth: 20, rotation: 15 });
+    expect(useUiStore.getState().roomProblem).toBeNull();
   });
 
   it('dragObstacleTo moves the obstacle onto the grid and clears the room problem', () => {

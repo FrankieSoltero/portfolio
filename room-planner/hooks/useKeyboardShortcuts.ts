@@ -8,7 +8,7 @@ import {
   removeSelectedRoomThing,
   rotateSelected,
   rotateSelectedObstacle,
-  slideSelectedOpening,
+  slideSelectedOpeningToward,
 } from '../state/actions';
 import { useUiStore } from '../state/uiStore';
 
@@ -32,8 +32,8 @@ function inFormField(target: EventTarget | null, includeRadio: boolean): boolean
 
 /**
  * Room mode acts on the selected corner, door or window, or obstacle (at most one is selected).
- * Arrows nudge a corner or an obstacle, and slide a door or window along its wall (Right and Down
- * forward, Left and Up back); Shift takes the large step. R turns an obstacle 90°, Shift+R 15°.
+ * Arrows nudge a corner or an obstacle, and slide a door or window along its wall the way the arrow
+ * points on screen (an arrow across the wall does nothing); Shift takes the large step. R turns an obstacle 90°, Shift+R 15°.
  * Delete/Backspace remove the selected thing. Escape disarms an armed door or window tool, or else
  * clears the room selection.
  */
@@ -48,8 +48,7 @@ function onRoomKeyDown(e: KeyboardEvent): void {
     e.preventDefault();
     const step = e.shiftKey ? CONFIG.nudgeStepLarge : CONFIG.nudgeStep;
     if (selectedCornerId !== null) nudgeSelectedCorner(arrow[0] * step, arrow[1] * step);
-    // Exactly one of the arrow's components is non-zero: +1 for Right and Down, -1 for Left and Up.
-    else if (selectedOpeningId !== null) slideSelectedOpening((arrow[0] + arrow[1]) * step);
+    else if (selectedOpeningId !== null) slideSelectedOpeningToward({ x: arrow[0], y: arrow[1] }, step);
     else nudgeSelectedObstacle(arrow[0] * step, arrow[1] * step);
     return;
   }

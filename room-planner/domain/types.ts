@@ -46,5 +46,5 @@ export type Opening = Door | WindowOpening;
 export interface Obstacle { id: string; shape: 'box' | 'cylinder'; label: string; x: number; y: number; rotation: number; width: number; depth: number; height: number; elevation: number }
 /** Which tool the room editor is using: drawing corners, or placing a door or window. */
 export type RoomTool = 'corner' | 'door' | 'window';
-/** The conflicts and warnings found in a plan, each keyed by item id. */
+/** The conflicts found in a plan, keyed by item, obstacle and opening ids, and the warnings, keyed by item id. */
 export interface PlanIssues { conflicts: Conflicts; warnings: Conflicts }

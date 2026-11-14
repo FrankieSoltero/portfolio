@@ -37,11 +37,14 @@ lived in `src/`. That folder is `room-planner/` in this repository.
     the height ranges both overlap. An obstacle partly outside the room, taller than the room or
     inside a door's reserved area is flagged. Obstacles do not conflict with each other.
   - A door or window slides along its wall by dragging its handle or with the arrow keys, and
-    snaps to 1 in. An obstacle is dragged and rotated like furniture, but only in "Edit room"
+    snaps to 1 in. Each arrow moves it the way the arrow points on screen; an arrow across the
+    wall does nothing. An obstacle is dragged and rotated like furniture, but only in "Edit room"
     mode. Each has exact-size fields in the sidebar, and Delete removes the selected one. In room
     mode only the primary mouse button selects or drags, and a press on a handle, obstacle or
     corner also focuses it. Openings on one wall are numbered together by offset, in the plan
-    handles and in the sidebar rows (`Door on wall 1 (1 of 2)`).
+    handles and in the sidebar rows (`Door on wall 1 (1 of 2)`). Obstacles that share a name are
+    numbered by list order in the sidebar rows and the plan buttons' names (`Box (1 of 2)`); the
+    label drawn on the plan is not numbered.
   - Openings must fit inside their wall and must not overlap. A corner drag or typed wall length that
     would break this stops at the last valid position and the sidebar says why. Deleting a corner
     whose walls carry an opening is refused. A corner added to a wall keeps each opening on the
@@ -72,6 +75,9 @@ the desktop-only layout comes from the original design handoff
 - The Blueprint view's painter's sort is cubic in the worst case. 64 columns make that worst case
   about twice as slow.
 - A whitespace-only obstacle label is shown as it is, so its accessible name is blank.
+- In metric units a size is shown rounded to whole centimetres, and a size near a limit can be
+  refused if re-typed as shown: a 12 in door width shows as 30 cm, and 30 cm is 11.81 in, under
+  the 12 in minimum.
 - The import-boundary test (nothing under `room-planner/view/` or `room-planner/domain/` imports
   three.js) does not catch a bare `'../three'` directory import or `require()`.
 

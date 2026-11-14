@@ -1,6 +1,6 @@
 import { CONFIG } from '../config';
 import { footprintHalfExtents, snapCentreInto, storedAngle } from './geometry';
-import { LIMIT_SLACK } from './outline';
+import { inLimits } from './outline';
 import { round2 } from './polygon';
 import { footprintCorners, type Footprint } from './shape';
 import type { Bounds, Obstacle, Point } from './types';
@@ -37,11 +37,6 @@ function settle(candidate: Obstacle[]): ObstaclesResult {
   return problem === null ? { ok: true, obstacles: candidate } : { ok: false, problem };
 }
 
-/** True when v is a finite number within [min, max]; the limits are exact up to LIMIT_SLACK. */
-function inLimits(v: number, min: number, max: number): boolean {
-  return Number.isFinite(v) && v >= min - LIMIT_SLACK && v <= max + LIMIT_SLACK;
-}
-
 function hasAllowedSize(o: Obstacle): boolean {
   return (
     Number.isFinite(o.x) &&
@@ -62,9 +57,18 @@ function hasAllowedSize(o: Obstacle): boolean {
  * is empty. Only the empty string falls back; a label of spaces is shown as it is.
  */
 export function obstacleName(o: Obstacle): string {
-  // A whitespace-only label is not empty, so it is shown as it is (the call sites' behaviour before sharing this).
   if (o.label !== '') return o.label;
   return o.shape === 'box' ? 'Box' : 'Column';
+}
+
+/**
+ * The name the sidebar row and the plan button give `o`: obstacleName(o), followed by ` (k of n)`
+ * when n > 1 obstacles in `obstacles` share that exact name, k counted from 1 by list position.
+ */
+export function obstacleDisplayName(obstacles: readonly Obstacle[], o: Obstacle): string {
+  const name = obstacleName(o);
+  const same = obstacles.filter((other) => obstacleName(other) === name);
+  return same.length > 1 ? `${name} (${same.findIndex((other) => other.id === o.id) + 1} of ${same.length})` : name;
 }
 
 /** The obstacle's footprint: centre, unturned width and depth, and clockwise rotation. */

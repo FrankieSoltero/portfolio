@@ -5,6 +5,7 @@ import {
   addObstacle,
   moveObstacle,
   newObstacle,
+  obstacleDisplayName,
   obstacleFootprint,
   obstacleName,
   obstaclePolygon,
@@ -136,6 +137,12 @@ describe('validateObstacles', () => {
     expect(validateObstacles([box({ label: 'x'.repeat(40) })])).toBeNull();
     expect(validateObstacles([box({ label: '' })])).toBeNull();
     expect(validateObstacles([box({ label: 'x'.repeat(41) })])).toBe('obstacle-size');
+  });
+
+  it('counts a label in UTF-16 units: 20 astral characters (40 units) accepted, 21 (42 units) refused', () => {
+    expect('😀'.repeat(20)).toHaveLength(40);
+    expect(validateObstacles([box({ label: '😀'.repeat(20) })])).toBeNull();
+    expect(validateObstacles([box({ label: '😀'.repeat(21) })])).toBe('obstacle-size');
   });
 
   it('refuses a cylinder whose depth differs from its width', () => {
@@ -308,5 +315,30 @@ describe('obstacleName', () => {
     expect(obstacleName({ ...c, label: '' })).toBe('Column');
     // Only the empty string falls back, as both call sites did before they shared this rule.
     expect(obstacleName({ ...o, label: '  ' })).toBe('  ');
+  });
+});
+
+describe('obstacleDisplayName', () => {
+  it('is obstacleName alone when no other obstacle shares that name', () => {
+    const one = box({ label: '' });
+    expect(obstacleDisplayName([one], one)).toBe('Box');
+  });
+
+  it('adds (k of n) by list position when n obstacles share the exact name', () => {
+    const b1 = box({ id: 'b1', label: '' });
+    const col = { ...COLUMN, id: 'k1', label: '' };
+    const b2 = box({ id: 'b2', label: '' });
+    const list = [b1, col, b2];
+    expect(list.map((o) => obstacleDisplayName(list, o))).toEqual(['Box (1 of 2)', 'Column', 'Box (2 of 2)']);
+  });
+
+  it('suffixes two obstacles labelled Pillar, and counts an empty-label box with one labelled Box', () => {
+    const p1 = { ...COLUMN, id: 'p1', label: 'Pillar' };
+    const p2 = box({ id: 'p2', label: 'Pillar' });
+    const r = box({ id: 'r', label: 'Radiator' });
+    expect([p1, r, p2].map((o, _i, all) => obstacleDisplayName(all, o))).toEqual(['Pillar (1 of 2)', 'Radiator', 'Pillar (2 of 2)']);
+    const named = box({ id: 'n', label: 'Box' });
+    const unnamed = box({ id: 'u', label: '' });
+    expect([named, unnamed].map((o, _i, all) => obstacleDisplayName(all, o))).toEqual(['Box (1 of 2)', 'Box (2 of 2)']);
   });
 });

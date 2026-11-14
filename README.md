@@ -40,12 +40,13 @@ byte-identical with zero build processing.
 - `content/papers/*.mdx` — one file per paper; copy `_template.mdx` to start a post.
 - `lib/papers.ts` — typed content layer (zod-validated frontmatter).
 - `public/Francisco_Soltero_Resume.pdf` — wired to the RESUME / SAVE FILE buttons.
-- `room-planner/` — the Room Planner source (React + three.js). `PlannerRoot.tsx`
-  renders the `.room-planner` wrapper and imports the self-hosted fonts and stylesheets.
-  Styles live in `room-planner/styles/` and must stay scoped to `.room-planner`
-  (enforced by `room-planner/styles/scoping.test.ts`). No backend: the plan is saved in
-  the browser under `room-planner:plan:v1`, validated on load and never sent to a server;
-  "Reset plan" erases it. The room carries doors, windows and fixed obstacles (boxes, raised boxes, columns). Product lookup is a mock (`services/mockProductLookup.ts`).
+- `room-planner/` — the Room Planner source (React + three.js). `PlannerRoot.tsx` renders
+  the `.room-planner` wrapper and imports the self-hosted fonts and stylesheets. Styles
+  live in `room-planner/styles/` and must stay scoped to `.room-planner` (enforced by
+  `room-planner/styles/scoping.test.ts`). No backend: the plan is saved in the browser
+  under `room-planner:plan:v1`, validated on load and never sent to a server; "Reset
+  plan" erases it. The room carries doors, windows and fixed obstacles (boxes, raised
+  boxes, columns). Product lookup is a mock (`services/mockProductLookup.ts`).
 - `app/room-planner/` — the `/room-planner` route: `page.tsx`, `PlannerLoader.tsx`
   (loads the planner client-side only) and `error.tsx` (load-failure screen).
 - `docs/room-planner/` — specs, plans, plan reviews, verification notes, the read-only

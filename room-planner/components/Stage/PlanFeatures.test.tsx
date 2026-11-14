@@ -263,10 +263,10 @@ describe('PlanFeatures obstacles in room mode', () => {
     useUiStore.getState().setMode('room');
   });
 
-  it('are buttons named by their label, or Box / Column when it is empty, in the tab order and editable', () => {
+  it('are buttons named by their label, or Box / Column when it is empty, numbered when names repeat, in the tab order and editable', () => {
     render(<PlanFeatures layout={LAYOUT} />);
     const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
-    expect(names).toEqual(['Radiator', 'Column', 'Column', 'Box']);
+    expect(names).toEqual(['Radiator', 'Column (1 of 2)', 'Column (2 of 2)', 'Box']);
     for (const id of ['o1', 'o2', 'o3', 'o4']) {
       const el = obstacleEl(id);
       expect(el).toHaveAttribute('role', 'button');
@@ -277,6 +277,14 @@ describe('PlanFeatures obstacles in room mode', () => {
     }
     // The doors and windows stay a drawing.
     expect(document.querySelector('svg.plan-features')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('numbers two boxes labelled Radiator in their names, but draws each label without the number', () => {
+    load([], [BOX, { ...BOX, id: 'o5', x: 100, y: 140 }]);
+    render(<PlanFeatures layout={LAYOUT} />);
+    expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Radiator (1 of 2)', 'Radiator (2 of 2)']);
+    expect(obstacleEl('o1')).toHaveTextContent(/^Radiator$/);
+    expect(obstacleEl('o5')).toHaveTextContent(/^Radiator$/);
   });
 
   it('aria-pressed and is-selected reflect the selected obstacle', () => {

@@ -122,8 +122,9 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
           <BlueprintCorners />
         </div>
       )}
-      {/* Doors, windows and obstacles: over the walls, under the furniture (no z-index, so they
-          paint in document order below the items' z-index 1 to 4). */}
+      {/* Door gaps, windows and obstacles: over the walls, under the furniture (no z-index, so they
+          paint in document order below the items' z-index 1 to 4). Door leaves and swing arcs are an
+          overlay above the furniture (PlanFeatures' second SVG). */}
       <PlanFeatures layout={layout} />
       {items.map((item) => {
         const fp = itemFootprint(item);

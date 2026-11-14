@@ -361,15 +361,17 @@ describe('useKeyboardShortcuts in room mode with a door, window or obstacle', ()
     useUiStore.getState().setMode('room');
   });
 
+  // The top wall runs left to right, so Right and Left slide the door and Up and Down, across the
+  // wall, leave it where it is.
   it.each([
     ['ArrowRight', false, 21],
-    ['ArrowDown', false, 21],
+    ['ArrowDown', false, 20],
     ['ArrowLeft', false, 19],
-    ['ArrowUp', false, 19],
+    ['ArrowUp', false, 20],
     ['ArrowRight', true, 32],
-    ['ArrowDown', true, 32],
+    ['ArrowDown', true, 20],
     ['ArrowLeft', true, 8],
-    ['ArrowUp', true, 8],
+    ['ArrowUp', true, 20],
   ] as const)('%s (Shift %s) slides the selected door to offset %d and prevents default', (key, shiftKey, offset) => {
     useUiStore.getState().selectOpening('d1');
     const ev = press(document.body, key, { shiftKey });
@@ -470,6 +472,79 @@ describe('useKeyboardShortcuts in room mode with a door, window or obstacle', ()
     useUiStore.getState().selectOpening('d1');
     press(focused(tag, type), 'Backspace');
     expect(door()).toBeDefined();
+  });
+});
+
+describe('useKeyboardShortcuts slides a door the way the arrow points on screen', () => {
+  /**
+   * A 32 in door on wall `wallId` of the seeded rectangle at offset 40. The walls run: c1 top, left to
+   * right; c2 right, top to bottom; c3 bottom, right to left; c4 left, bottom to top.
+   */
+  function doorOn(wallId: string): Door {
+    return { id: 'd1', kind: 'door', wallId, offset: 40, width: 32, height: 80, hinge: 'start', swing: 'in' };
+  }
+
+  function offset(): number | undefined {
+    return usePlanStore.getState().openings.find((o) => o.id === 'd1')?.offset;
+  }
+
+  function withDoor(door: Door, outline?: Corner[]): void {
+    const base = createInitialDocument();
+    usePlanStore.getState().reset({ ...base, room: { ...base.room, outline: outline ?? base.room.outline }, items: [], openings: [door] });
+    renderHook(() => useKeyboardShortcuts());
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectOpening('d1');
+  }
+
+  it.each([
+    ['c1', 'ArrowRight', 41],
+    ['c1', 'ArrowLeft', 39],
+    ['c1', 'ArrowUp', 40],
+    ['c1', 'ArrowDown', 40],
+    ['c2', 'ArrowDown', 41],
+    ['c2', 'ArrowUp', 39],
+    ['c2', 'ArrowRight', 40],
+    ['c3', 'ArrowRight', 39],
+    ['c3', 'ArrowLeft', 41],
+    ['c3', 'ArrowDown', 40],
+    ['c4', 'ArrowDown', 39],
+    ['c4', 'ArrowUp', 41],
+    ['c4', 'ArrowLeft', 40],
+  ] as const)('on wall %s, %s leaves the door at offset %d', (wallId, key, expected) => {
+    withDoor(doorOn(wallId));
+    press(document.body, key);
+    expect(offset()).toBe(expected);
+  });
+
+  it('Shift+ArrowRight on the bottom wall moves the door 12 in to the right: the offset falls by 12', () => {
+    withDoor(doorOn('c3'));
+    press(document.body, 'ArrowRight', { shiftKey: true });
+    expect(offset()).toBe(28);
+  });
+
+  it('a key across the wall changes nothing and sets no room problem', () => {
+    withDoor(doorOn('c1'));
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    const before = usePlanStore.getState();
+    press(document.body, 'ArrowDown');
+    expect(usePlanStore.getState()).toBe(before);
+    expect(useUiStore.getState().roomProblem).toBe('Walls cannot cross.');
+  });
+
+  it('on a 45° wall running right and down, ArrowRight and ArrowDown both slide it forward, ArrowLeft and ArrowUp back', () => {
+    // The wall from p2 (100, 0) to p3 (160, 60) is about 84.9 in long.
+    const outline: Corner[] = [
+      { id: 'p1', x: 0, y: 0 }, { id: 'p2', x: 100, y: 0 }, { id: 'p3', x: 160, y: 60 }, { id: 'p4', x: 160, y: 168 }, { id: 'p5', x: 0, y: 168 },
+    ];
+    withDoor({ ...doorOn('p2'), offset: 20 }, outline);
+    press(document.body, 'ArrowRight');
+    expect(offset()).toBe(21);
+    press(document.body, 'ArrowDown');
+    expect(offset()).toBe(22);
+    press(document.body, 'ArrowLeft');
+    expect(offset()).toBe(21);
+    press(document.body, 'ArrowUp');
+    expect(offset()).toBe(20);
   });
 });
 

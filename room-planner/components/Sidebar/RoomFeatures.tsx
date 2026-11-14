@@ -1,6 +1,6 @@
 import { type ChangeEvent, type JSX, useId, useState } from 'react';
 import { CONFIG } from '../../config';
-import { obstacleName } from '../../domain/obstacles';
+import { obstacleDisplayName, obstacleName } from '../../domain/obstacles';
 import { openingName } from '../../domain/openings';
 import type { Door, Obstacle, Units, WindowOpening } from '../../domain/types';
 import { furnInputStr, furnUnitLabel, parseLengthInput } from '../../domain/units';
@@ -246,7 +246,7 @@ function RoomFeaturesPanel(): JSX.Element {
     })),
     ...obstacles.map((o) => ({
       id: o.id,
-      name: obstacleName(o),
+      name: obstacleDisplayName(obstacles, o),
       selected: o.id === selectedObstacleId,
       select: () => selectObstacle(o.id),
     })),

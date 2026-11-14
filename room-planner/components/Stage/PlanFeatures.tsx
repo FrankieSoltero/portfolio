@@ -1,6 +1,6 @@
 import type React from 'react';
 import type { JSX } from 'react';
-import { obstacleFootprint, obstacleName } from '../../domain/obstacles';
+import { obstacleDisplayName, obstacleFootprint } from '../../domain/obstacles';
 import type { Door, Obstacle, Point, WindowOpening } from '../../domain/types';
 import { dragObstacleTo } from '../../state/actions';
 import { usePlanStore } from '../../state/planStore';
@@ -23,8 +23,8 @@ function lineClass(base: string, conflict: boolean): string {
  * second SVG over the furniture (stage.css gives it a z-index above the items), so furniture
  * standing in a door's swing does not hide what it blocks. Both SVGs are a drawing only, hidden from
  * assistive technology (the room editor puts a handle on each opening) and taking no pointer input.
- * In furnish mode the obstacles are a drawing too; in room mode each is a button (named by its
- * label, `aria-pressed` when selected) that pointer down selects, focuses and drags, and Enter or
+ * In furnish mode the obstacles are a drawing too; in room mode each is a button (named by
+ * obstacleDisplayName, `aria-pressed` when selected) that pointer down selects, focuses and drags, and Enter or
  * Space selects. Obstacle labels are React text, never markup.
  */
 export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
@@ -107,7 +107,7 @@ export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
           ? {
               role: 'button',
               tabIndex: 0,
-              'aria-label': obstacleName(o),
+              'aria-label': obstacleDisplayName(obstacles, o),
               'aria-pressed': isSelected,
               onPointerDown: (e: React.PointerEvent<HTMLElement>) => onObstacleDown(o, e),
               // Assistive technology activates a button with a synthetic click; selecting is idempotent.

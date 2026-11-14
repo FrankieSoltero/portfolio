@@ -345,9 +345,20 @@ describe('findPlanIssues: furniture against obstacles', () => {
     expect(conflicts).toEqual({ 'seed-bed': 'Overlaps Radiator' });
   });
 
-  it('names an unlabelled obstacle generically', () => {
+  it('names an unlabelled obstacle as the planner does: Box or Column', () => {
     const { conflicts } = findPlanIssues(seedItems(), ROOM, [], [box({ label: '' })]);
-    expect(conflicts).toEqual({ 'seed-bed': 'Overlaps an obstacle' });
+    expect(conflicts).toEqual({ 'seed-bed': 'Overlaps Box' });
+    const column: Obstacle = { ...box({ label: '' }), shape: 'cylinder', depth: 20 };
+    expect(findPlanIssues(seedItems(), ROOM, [], [column]).conflicts).toEqual({ 'seed-bed': 'Overlaps Column' });
+  });
+
+  it('does not flag furniture that shares an edge with an obstacle, and flags it 1 in further in', () => {
+    // The Radiator moved to y 120 spans x 62–82; the crate spans x 42–62, so they share the edge x = 62.
+    const radiator = box({ y: 120 });
+    const crate = item({ id: 'crate', name: 'Crate', w: 20, d: 20, h: 30, cx: 52, cy: 120 });
+    expect(findPlanIssues([crate], ROOM, [], [radiator])).toEqual({ conflicts: {}, warnings: {} });
+    const inside = item({ id: 'crate', name: 'Crate', w: 20, d: 20, h: 30, cx: 53, cy: 120 });
+    expect(findPlanIssues([inside], ROOM, [], [radiator])).toEqual({ conflicts: { crate: 'Overlaps Radiator' }, warnings: {} });
   });
 
   it('lets the 38 in bed fit under the box raised to 40 in', () => {
