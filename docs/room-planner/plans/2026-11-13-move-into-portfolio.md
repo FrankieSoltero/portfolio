@@ -102,6 +102,15 @@ Two changes to Task 7, both because the plan was wrong:
   at a deployment address. The site-URL fallback itself is a follow-up for the pull
   request (it already affects the sitemap and the feed).
 
+## Amendment 4 (2026-11-13, controller ruling during Task 11)
+
+Row P2 expected "console has 0 errors" on `/`. That was never true: `main` already
+logs one error on first load, a 404 for `/favicon.ico`, because the homepage declares
+no icon and the site ships none. The plan did not measure the baseline. P2's console
+clause now reads: "the console shows no error or warning that the same page on `main`
+(port 3001) does not also show". The missing favicon is a follow-up for the pull
+request; the fix is outside this plan's files.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
