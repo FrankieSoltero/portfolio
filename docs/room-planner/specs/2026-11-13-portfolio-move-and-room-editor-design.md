@@ -20,7 +20,7 @@ Each slice is planned, reviewed, built and merged on its own.
 |---|---|---|
 | A. Move | Today's planner, unchanged, live at `/room-planner` with a quest card | this document |
 | B. Room shape and saving | Any-angle room outline, free item rotation, plan kept in the browser | this document |
-| C. Openings and obstacles | Doors, windows, fixed obstacles | its own short design |
+| C. Openings and obstacles | Doors, windows, fixed obstacles | this document |
 | D. Ceilings | Ceiling height zones and slopes | its own short design |
 | Later | Accounts and cloud saving, real product lookup, real 3D models | not designed |
 
@@ -62,6 +62,41 @@ as before, including after navigating to it from the planner.
 | Views | The plan, the Styled 3D view and the Blueprint view all draw the outline: one wall per edge, a floor in the outline's shape, the camera framed on its bounding box. |
 | Saving | The plan saves automatically to `localStorage` under a versioned key, and loads on return. Stored data is treated as untrusted: it is validated against the schema and discarded with a notice if invalid. A "Reset plan" button, with a confirmation, clears it. Nothing is sent to a server, and no personal data is stored. |
 | Seam | Saving goes through a `PlanStore` interface with the browser version as its one implementation, so cloud saving can replace it later. |
+
+## Slice C: openings and obstacles
+
+Status: approved by the owner on 2026-11-13. Owner answers on 2026-11-13: doors have a swing arc
+that flags blockers; windows flag furniture that covers them; obstacles are
+floor-standing boxes, raised boxes and round columns. Everything else in this table
+is a default chosen by the designer.
+
+Amendment to slice B that this slice needs: each outline corner carries a stable
+`id` (`outline: Corner[]`, `Corner = { id, x, y }`), so a door or window can name its
+wall and survive corners being added elsewhere. A wall is identified by the id of
+its starting corner.
+
+| Area | Design |
+|---|---|
+| Data | The plan gains `openings: Opening[]` and `obstacles: Obstacle[]`. `schemaVersion` goes to 3; a version 2 plan loads with both lists empty. |
+| Door | `{ id, kind: 'door', wallId, offset, width, height, hinge: 'start' or 'end', swing: 'in' or 'out' }`. `offset` is inches along the wall from its starting corner to the near edge of the opening. Defaults: 32 in wide, 80 in high, swings in. |
+| Window | `{ id, kind: 'window', wallId, offset, width, sill, height }`. Defaults: 36 in wide, sill at 36 in, 48 in high. |
+| Obstacle | `{ id, shape: 'box' or 'cylinder', label, x, y, rotation, width, depth, height, elevation }`. A cylinder uses `width` as its diameter. `elevation` is the height of its underside above the floor; 0 means floor-standing. |
+| Placing | In "Edit room" mode the sidebar offers Add door, Add window, Add box, Add column. A door or window is placed by clicking a wall and slides along it by dragging; it snaps to 1 in. Obstacles drag and rotate like furniture, but only in "Edit room" mode; outside it they cannot be selected or moved. Each has exact-size fields in the sidebar, and Delete removes the selected one. |
+| Opening validity | An opening must fit inside its wall and must not overlap another opening on that wall. A corner drag or typed wall length that would break this stops at the last valid position and the sidebar says why. Deleting a corner whose two walls carry an opening is refused with the reason. Adding a corner to a wall keeps each opening on the part it lies on; a corner cannot be added inside an opening. |
+| Door check | A door that swings in reserves its quarter-circle arc (radius equal to its width). A door that swings out reserves a strip its own width and 24 in deep inside the room. Furniture or an obstacle inside the reserved area is a conflict. |
+| Window check | Furniture taller than the sill that sits within 6 in of the wall in front of the window gets a warning: shown in amber, listed in the sidebar, and not counted as a conflict. |
+| Obstacle check | Furniture conflicts with an obstacle when their footprints overlap and their height ranges overlap. Furniture shorter than a raised obstacle's underside may sit beneath it. An obstacle partly outside the outline, or taller than the room, is flagged. |
+| Views | Plan: doors show as a gap with the swing arc, windows as a double line, obstacles as hatched shapes with their label. Styled 3D and Blueprint: walls have the door and window holes cut out, windows get a glass pane in the Styled view, obstacles draw as plain boxes and cylinders at their elevation. |
+| Saving | Same browser storage as slice B. Stored openings and obstacles are validated like the rest of the plan; a plan with more than 64 corners, 64 openings or 64 obstacles is rejected as invalid. Labels are plain text, limited to 40 characters, and rendered as text only. |
+
+Out of scope for C: sliding and pocket doors; door swings other than 90 degrees;
+openings in obstacles; ceilings (slice D).
+
+## Delivery of B and C (owner request, 2026-11-13)
+
+B and C are built on the `room-planner` branch on top of slice A and ship in the same
+pull request, merged once after both have passed their checks. Each is still planned,
+reviewed and built as its own slice.
 
 ## Out of scope for A and B
 
