@@ -1,20 +1,26 @@
 /**
  * Blueprint (2D canvas) line drawing of the room in perspective. Pure: it draws only
  * through the context it is given and touches no globals.
+ * The room comes in as an outline and a height, and furniture as rotated prisms, so
+ * nothing here depends on how the plan stores them.
  * Ported from prototype lines 578–666 (floor, grid, walls, boxes, labels).
  */
-import { footprint } from '../domain/geometry';
-import type { Conflicts, Item, Room, Units } from '../domain/types';
+import { boundsOf } from '../domain/polygon';
+import { itemFootprint } from '../domain/shape';
+import type { Conflicts, Item, Point, Units } from '../domain/types';
 import { fmtLen, gridStepInches } from '../domain/units';
 import type { Tokens } from '../styles/tokens';
-import { buildBoxes, makeProjector, sortBoxes } from './blueprintScene';
-import type { Box } from './blueprintScene';
+import { buildPrisms, makeProjector, sortPrisms } from './blueprintScene';
+import type { Prism } from './blueprintScene';
 import type { CameraPose, Vec3 } from './camera';
 
-/** Everything one blueprint frame needs. `width`/`height` are the pane in CSS pixels. */
-export interface BlueprintInput { room: Room; items: readonly Item[]; selectedId: string | null;
-  conflicts: Conflicts; units: Units; pose: CameraPose; width: number; safeW: number;
-  height: number; tokens: Tokens }
+/**
+ * Everything one blueprint frame needs. `outline` is the room's corners (positive signed
+ * area) and `height` its ceiling, in inches; `viewWidth`/`viewHeight` are the pane in CSS pixels.
+ */
+export interface BlueprintInput { outline: readonly Point[]; height: number; items: readonly Item[];
+  selectedId: string | null; conflicts: Conflicts; units: Units; pose: CameraPose;
+  viewWidth: number; safeW: number; viewHeight: number; tokens: Tokens }
 
 const FLOOR_LINE_WIDTH = 1.5;
 const GRID_ALPHA = 0.09;
@@ -32,6 +38,11 @@ const LABEL_H = 20;
 const LABEL_OUTSET = 10;
 /** The selected-item label floats this far above the item, in inches. */
 const SELECTED_LABEL_LIFT = 8;
+/**
+ * Order the prism sides are drawn in, by edge index (0 back, 1 right, 2 front, 3 left):
+ * left, right, back, front, which is x0, x1, y0, y1 for an unturned item.
+ */
+const SIDE_ORDER: readonly number[] = [3, 1, 0, 2];
 /** Text baseline nudge so it sits optically centred in the chip. */
 const LABEL_TEXT_DY = 1;
 
@@ -40,7 +51,8 @@ type Project = (p: Vec3) => [number, number];
 interface PolyStyle { fill?: string; stroke?: string; lineWidth?: number;
   dash?: readonly number[]; alpha?: number }
 
-function poly(g: CanvasRenderingContext2D, P: Project, pts: readonly Vec3[], s: PolyStyle): void {
+/** Starts a new closed path through the projected points. */
+function trace(g: CanvasRenderingContext2D, P: Project, pts: readonly Vec3[]): void {
   g.beginPath();
   pts.forEach((p, i) => {
     const [x, y] = P(p);
@@ -48,6 +60,10 @@ function poly(g: CanvasRenderingContext2D, P: Project, pts: readonly Vec3[], s: 
     else g.moveTo(x, y);
   });
   g.closePath();
+}
+
+function poly(g: CanvasRenderingContext2D, P: Project, pts: readonly Vec3[], s: PolyStyle): void {
+  trace(g, P, pts);
   g.globalAlpha = s.alpha ?? 1;
   g.setLineDash(s.dash ? [...s.dash] : []);
   if (s.fill) { g.fillStyle = s.fill; g.fill(); }
@@ -69,8 +85,12 @@ function line(g: CanvasRenderingContext2D, P: Project, a: Vec3, b: Vec3, alpha: 
   g.globalAlpha = 1;
 }
 
-/** Faces of `b` that point toward `cam`: x sides, y sides, then the top. */
-function drawBox(g: CanvasRenderingContext2D, P: Project, b: Box, cam: Vec3, input: BlueprintInput): void {
+/**
+ * Sides of `b` whose outward normal points toward `cam`, then its top when the camera is
+ * above it. Back and front sides (even edges) take the `sideY` colour, right and left
+ * (odd edges) the `sideX` colour.
+ */
+function drawPrism(g: CanvasRenderingContext2D, P: Project, b: Prism, cam: Vec3, input: BlueprintInput): void {
   const T = input.tokens;
   const sel = b.itemId === input.selectedId;
   const style: PolyStyle = {
@@ -81,12 +101,45 @@ function drawBox(g: CanvasRenderingContext2D, P: Project, b: Box, cam: Vec3, inp
   const top = sel ? T.a200 : (b.kind === 'rug' ? T.a100 : T.bg);
   const sideX = sel ? T.a300 : T.n200;
   const sideY = sel ? T.a400 : T.a200;
-  const { x0, x1, y0, y1, z0, z1 } = b;
-  if (cam[0] < x0) poly(g, P, [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], { ...style, fill: sideX });
-  if (cam[0] > x1) poly(g, P, [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], { ...style, fill: sideX });
-  if (cam[1] < y0) poly(g, P, [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], { ...style, fill: sideY });
-  if (cam[1] > y1) poly(g, P, [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], { ...style, fill: sideY });
-  if (cam[2] > z1) poly(g, P, [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], { ...style, fill: top });
+  const { pts, z0, z1 } = b;
+  for (const i of SIDE_ORDER) {
+    const a = pts[i];
+    const c = pts[(i + 1) % pts.length];
+    if (!a || !c) continue;
+    // Outward normal of edge a → c is (c.y − a.y, −(c.x − a.x)) for positive-area corners.
+    const facing = (cam[0] - a.x) * (c.y - a.y) - (cam[1] - a.y) * (c.x - a.x) > 0;
+    if (facing) {
+      poly(g, P, [[a.x, a.y, z0], [c.x, c.y, z0], [c.x, c.y, z1], [a.x, a.y, z1]],
+        { ...style, fill: i % 2 === 0 ? sideY : sideX });
+    }
+  }
+  if (cam[2] > z1) poly(g, P, pts.map((p): Vec3 => [p.x, p.y, z1]), { ...style, fill: top });
+}
+
+/** One wall of the outline as a floor-to-ceiling quad, with its plan midpoint. */
+interface Wall { pts: Vec3[]; mid: Point; far: boolean }
+
+/**
+ * The outline's walls. A wall is "far" when the camera is on its inward side, where the
+ * inward normal of a wall from a to b is (−(b.y − a.y), b.x − a.x).
+ */
+function wallsOf(outline: readonly Point[], height: number, cam: Vec3): Wall[] {
+  const walls: Wall[] = [];
+  outline.forEach((a, i) => {
+    const b = outline[(i + 1) % outline.length];
+    if (!b) return;
+    const far = -(b.y - a.y) * (cam[0] - a.x) + (b.x - a.x) * (cam[1] - a.y) > 0;
+    walls.push({
+      pts: [[a.x, a.y, 0], [b.x, b.y, 0], [b.x, b.y, height], [a.x, a.y, height]],
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      far,
+    });
+  });
+  return walls;
+}
+
+function planDistSq(p: Point, cam: Vec3): number {
+  return (p.x - cam[0]) ** 2 + (p.y - cam[1]) ** 2;
 }
 
 function label(g: CanvasRenderingContext2D, P: Project, T: Tokens, p: Vec3, txt: string, accent: boolean): void {
@@ -102,51 +155,56 @@ function label(g: CanvasRenderingContext2D, P: Project, T: Tokens, p: Vec3, txt:
 }
 
 /**
- * Draws one blueprint frame: floor, grid, far walls, rugs then painter-sorted boxes,
- * near walls dashed, and the dimension labels on top. The caller sets the device-pixel
- * transform; everything here is in CSS pixels.
+ * Draws one blueprint frame: floor, grid clipped to the floor, far walls far to near,
+ * rugs then painter-sorted prisms, near walls dashed, and the dimension labels on top.
+ * The caller sets the device-pixel transform; everything here is in CSS pixels.
  */
 export function drawBlueprint(g: CanvasRenderingContext2D, input: BlueprintInput): void {
-  const { room, items, units, pose, tokens: T } = input;
-  g.clearRect(0, 0, input.width, input.height);
-  const W = room.w;
-  const L = room.l;
-  const H = room.h;
+  const { outline, height: H, items, units, pose, tokens: T } = input;
+  g.clearRect(0, 0, input.viewWidth, input.viewHeight);
+  const bounds = boundsOf(outline);
+  const { minX, minY, maxX, maxY } = bounds;
   const cam = pose.position;
-  const P = makeProjector(pose, input.safeW, input.height);
+  const P = makeProjector(pose, input.safeW, input.viewHeight);
+  const floor = outline.map((p): Vec3 => [p.x, p.y, 0]);
 
-  poly(g, P, [[0, 0, 0], [W, 0, 0], [W, L, 0], [0, L, 0]], { fill: T.n100, stroke: T.text, lineWidth: FLOOR_LINE_WIDTH });
+  poly(g, P, floor, { fill: T.n100, stroke: T.text, lineWidth: FLOOR_LINE_WIDTH });
+  // Grid lines span the bounding box and are clipped to the floor polygon.
+  g.save();
+  trace(g, P, floor);
+  g.clip();
   const gu = gridStepInches(units);
-  for (let x = gu; x < W - GRID_END_GAP; x += gu) line(g, P, [x, 0, 0], [x, L, 0], GRID_ALPHA, T.text);
-  for (let y = gu; y < L - GRID_END_GAP; y += gu) line(g, P, [0, y, 0], [W, y, 0], GRID_ALPHA, T.text);
+  for (let x = minX + gu; x < maxX - GRID_END_GAP; x += gu) line(g, P, [x, minY, 0], [x, maxY, 0], GRID_ALPHA, T.text);
+  for (let y = minY + gu; y < maxY - GRID_END_GAP; y += gu) line(g, P, [minX, y, 0], [maxX, y, 0], GRID_ALPHA, T.text);
+  g.restore();
 
-  const walls: { vis: boolean; pts: Vec3[] }[] = [
-    { vis: cam[1] > 0, pts: [[0, 0, 0], [W, 0, 0], [W, 0, H], [0, 0, H]] },
-    { vis: cam[1] < L, pts: [[0, L, 0], [W, L, 0], [W, L, H], [0, L, H]] },
-    { vis: cam[0] > 0, pts: [[0, 0, 0], [0, L, 0], [0, L, H], [0, 0, H]] },
-    { vis: cam[0] < W, pts: [[W, 0, 0], [W, L, 0], [W, L, H], [W, 0, H]] },
-  ];
-  for (const w of walls.filter((wall) => wall.vis)) {
+  const walls = wallsOf(outline, H, cam);
+  const far = walls.filter((w) => w.far).sort((a, b) => planDistSq(b.mid, cam) - planDistSq(a.mid, cam));
+  for (const w of far) {
     poly(g, P, w.pts, { fill: T.a100, alpha: FAR_WALL_ALPHA });
     poly(g, P, w.pts, { stroke: T.text });
   }
 
-  const { boxes, rugs } = buildBoxes(items);
-  for (const b of [...rugs, ...sortBoxes(boxes, cam)]) drawBox(g, P, b, cam, input);
+  const { prisms, rugs } = buildPrisms(items);
+  for (const b of [...rugs, ...sortPrisms(prisms, cam)]) drawPrism(g, P, b, cam, input);
 
-  for (const w of walls.filter((wall) => !wall.vis)) {
+  for (const w of walls.filter((wall) => !wall.far)) {
     poly(g, P, w.pts, { stroke: T.text, dash: NEAR_WALL_DASH, alpha: NEAR_WALL_ALPHA });
   }
 
-  const nearY = cam[1] > L / 2;
-  const nearX = cam[0] > W / 2;
-  label(g, P, T, [W / 2, nearY ? L + LABEL_OUTSET : -LABEL_OUTSET, 0], fmtLen(W, units), false);
-  label(g, P, T, [nearX ? W + LABEL_OUTSET : -LABEL_OUTSET, L / 2, 0], fmtLen(L, units), false);
-  label(g, P, T, [nearX ? 0 : W, nearY ? 0 : L, H / 2], fmtLen(H, units), false);
+  const cx = minX + bounds.w / 2;
+  const cy = minY + bounds.l / 2;
+  const nearY = cam[1] > cy;
+  const nearX = cam[0] > cx;
+  label(g, P, T, [cx, nearY ? maxY + LABEL_OUTSET : minY - LABEL_OUTSET, 0], fmtLen(bounds.w, units), false);
+  label(g, P, T, [nearX ? maxX + LABEL_OUTSET : minX - LABEL_OUTSET, cy, 0], fmtLen(bounds.l, units), false);
+  const farthest = outline.reduce<Point | undefined>(
+    (best, p) => (best === undefined || planDistSq(p, cam) > planDistSq(best, cam) ? p : best), undefined);
+  if (farthest) label(g, P, T, [farthest.x, farthest.y, H / 2], fmtLen(H, units), false);
   const si = items.find((i) => i.id === input.selectedId);
   if (si) {
-    const [fw, fd] = footprint(si);
-    label(g, P, T, [si.x + fw / 2, si.y + fd / 2, si.h + SELECTED_LABEL_LIFT],
+    const fp = itemFootprint(si);
+    label(g, P, T, [fp.cx, fp.cy, si.h + SELECTED_LABEL_LIFT],
       `${si.name} · ${fmtLen(si.h, units)} tall`, true);
   }
 }

@@ -1,14 +1,23 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { roomBounds, roomHeight, roomOutline } from '../../domain/shape';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { readTokens } from '../../styles/tokens';
 import type { Tokens } from '../../styles/tokens';
+import { drawBlueprint } from '../../view/blueprintDraw';
+import { computeCameraPose } from '../../view/camera';
 import type { PaneRect } from '../../view/panes';
 import { BlueprintView } from './BlueprintView';
 
 // jsdom has no stylesheet, so the tokens are supplied (or withheld) per test.
 vi.mock('../../styles/tokens', () => ({ readTokens: vi.fn() }));
+
+// The real drawing still runs; the spy only records each frame's input.
+vi.mock('../../view/blueprintDraw', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../view/blueprintDraw')>();
+  return { ...actual, drawBlueprint: vi.fn(actual.drawBlueprint) };
+});
 
 const T: Tokens = {
   bg: 'T-bg', text: 'T-text', n100: 'T-n100', n200: 'T-n200',
@@ -65,6 +74,7 @@ beforeEach(() => {
   frames = new Map();
   nextFrame = 1;
   vi.mocked(readTokens).mockReturnValue(T);
+  vi.mocked(drawBlueprint).mockClear();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
     (() => recordingContext(calls)) as unknown as HTMLCanvasElement['getContext'],
   );
@@ -100,6 +110,23 @@ describe('BlueprintView', () => {
     const clear = calls.findIndex((c) => c.name === 'clearRect');
     expect(clear).toBeGreaterThan(transform);
     expect(calls[clear]?.args).toEqual([0, 0, 1000, 600]);
+  });
+
+  it('draws from the room outline and height, with the pane size and camera pose', () => {
+    render(<BlueprintView pane={PANE} />);
+    flushFrames();
+    const plan = usePlanStore.getState();
+    const ui = useUiStore.getState();
+    expect(vi.mocked(drawBlueprint)).toHaveBeenCalledTimes(1);
+    const input = vi.mocked(drawBlueprint).mock.calls[0]?.[1];
+    expect(input?.outline).toEqual(roomOutline(plan.room));
+    expect(input?.height).toBe(roomHeight(plan.room));
+    expect(input).not.toHaveProperty('room');
+    expect(input?.items).toBe(plan.items);
+    expect(input?.pose).toEqual(computeCameraPose(roomBounds(plan.room), roomHeight(plan.room), ui.camera, PANE));
+    expect(input?.viewWidth).toBe(1000);
+    expect(input?.viewHeight).toBe(600);
+    expect(input?.safeW).toBe(1000);
   });
 
   it('coalesces store changes into at most one draw per animation frame', () => {

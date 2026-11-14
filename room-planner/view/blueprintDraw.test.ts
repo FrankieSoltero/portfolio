@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import { roomBounds, roomHeight } from '../domain/shape';
-import type { CameraState, Conflicts, Item, Units } from '../domain/types';
+import { boundsOf } from '../domain/polygon';
+import { roomHeight, roomOutline } from '../domain/shape';
+import type { CameraState, Conflicts, Item, Point, Units } from '../domain/types';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from './camera';
+import type { Vec3 } from './camera';
 import { makeProjector } from './blueprintScene';
 import { drawBlueprint } from './blueprintDraw';
 import type { BlueprintInput } from './blueprintDraw';
@@ -54,6 +56,8 @@ interface Paint {
   alpha: unknown;
   lineWidth: unknown;
   dash: unknown;
+  /** The path's moveTo / lineTo points, in pane pixels. */
+  coords: [number, number][];
 }
 
 interface Text { index: number; text: string; x: number; y: number; fillStyle: unknown; font: unknown;
@@ -61,25 +65,31 @@ interface Text { index: number; text: string; x: number; y: number; fillStyle: u
 
 interface Rect { index: number; args: unknown[]; fillStyle: unknown }
 
-/** Replays the log, tracking context state, into paints, texts and filled rects. */
-function replay(log: readonly Rec[]): { paints: Paint[]; texts: Text[]; rects: Rect[] } {
+/** A context call that is neither a path nor a paint, such as save, clip or restore. */
+interface Mark { index: number; name: string; path: number; coords: [number, number][] }
+
+/** Replays the log, tracking context state, into paints, texts, filled rects and state marks. */
+function replay(log: readonly Rec[]): { paints: Paint[]; texts: Text[]; rects: Rect[]; marks: Mark[] } {
   const state: Record<string, unknown> = { globalAlpha: 1, lineWidth: 1 };
   let dash: unknown = [];
   let path = -1;
   let points = 0;
+  let coords: [number, number][] = [];
   const paints: Paint[] = [];
+  const marks: Mark[] = [];
   const texts: Text[] = [];
   const rects: Rect[] = [];
   log.forEach((r, index) => {
     if (r.type === 'set') { state[r.name] = r.value; return; }
     switch (r.name) {
-      case 'beginPath': path++; points = 0; break;
-      case 'moveTo': case 'lineTo': points++; break;
+      case 'beginPath': path++; points = 0; coords = []; break;
+      case 'moveTo': case 'lineTo': points++; coords.push([Number(r.args[0]), Number(r.args[1])]); break;
+      case 'save': case 'clip': case 'restore': marks.push({ index, name: r.name, path, coords: [...coords] }); break;
       case 'setLineDash': dash = r.args[0]; break;
       case 'fill': case 'stroke':
         paints.push({ op: r.name, index, path, points,
           style: r.name === 'fill' ? state.fillStyle : state.strokeStyle,
-          alpha: state.globalAlpha, lineWidth: state.lineWidth, dash });
+          alpha: state.globalAlpha, lineWidth: state.lineWidth, dash, coords: [...coords] });
         break;
       case 'fillText':
         texts.push({ index, text: String(r.args[0]), x: Number(r.args[1]), y: Number(r.args[2]),
@@ -88,7 +98,13 @@ function replay(log: readonly Rec[]): { paints: Paint[]; texts: Text[]; rects: R
       case 'fillRect': rects.push({ index, args: r.args, fillStyle: state.fillStyle }); break;
     }
   });
-  return { paints, texts, rects };
+  return { paints, texts, rects, marks };
+}
+
+function at<T>(arr: readonly T[], i: number): T {
+  const v = arr[i];
+  if (v === undefined) throw new Error(`no element at ${i}`);
+  return v;
 }
 
 function seed(id: string): Item {
@@ -101,19 +117,22 @@ const RUG: Item = { ...seed('seed-bed'), id: 'rug-1', kind: 'rug', name: 'Wool r
 const CRATE: Item = { ...seed('seed-bed'), id: 'crate-1', kind: 'box', name: 'Crate', w: 44, d: 30, h: 20, x: 50, y: 60, rot: 0 };
 
 function input(over: Partial<{ items: readonly Item[]; selectedId: string | null; conflicts: Conflicts;
-  units: Units; camera: CameraState }> = {}): BlueprintInput {
+  units: Units; camera: CameraState; outline: readonly Point[]; height: number }> = {}): BlueprintInput {
   const doc = createInitialDocument();
   const camera = over.camera ?? { ...CONFIG.camera };
+  const outline = over.outline ?? roomOutline(doc.room);
+  const height = over.height ?? roomHeight(doc.room);
   return {
-    room: doc.room,
+    outline,
+    height,
     items: over.items ?? doc.items,
     selectedId: over.selectedId ?? null,
     conflicts: over.conflicts ?? {},
     units: over.units ?? 'ft',
-    pose: computeCameraPose(roomBounds(doc.room), roomHeight(doc.room), camera, PANE),
-    width: PANE.w,
+    pose: computeCameraPose(boundsOf(outline), height, camera, PANE),
+    viewWidth: PANE.w,
     safeW: PANE.safeW,
-    height: PANE.h,
+    viewHeight: PANE.h,
     tokens: T,
   };
 }
@@ -128,6 +147,41 @@ function draw(inp: BlueprintInput) {
 function faceFills(paints: readonly Paint[]): Paint[] {
   return paints.filter((p) => p.op === 'fill' && p.path > 0 && p.alpha === 1);
 }
+
+/** Projects plan-space points through the frame's camera. */
+function projectAll(inp: BlueprintInput, pts: readonly Vec3[]): [number, number][] {
+  const P = makeProjector(inp.pose, inp.safeW, inp.viewHeight);
+  return pts.map((p) => P(p));
+}
+
+/** The same pane points in any order, to 6 decimal places. */
+function expectSamePoints(actual: readonly [number, number][], expected: readonly [number, number][]): void {
+  const key = (q: readonly [number, number]) => `${q[0].toFixed(6)},${q[1].toFixed(6)}`;
+  expect(actual.map(key).sort()).toEqual(expected.map(key).sort());
+}
+
+/** The same pane points in the same order, to 6 decimal places. */
+function expectPoints(actual: readonly [number, number][], expected: readonly [number, number][]): void {
+  expect(actual).toHaveLength(expected.length);
+  actual.forEach((q, i) => {
+    expect(q[0]).toBeCloseTo(expected[i]?.[0] ?? NaN, 6);
+    expect(q[1]).toBeCloseTo(expected[i]?.[1] ?? NaN, 6);
+  });
+}
+
+/** A wall's quad: both ends on the floor and at the ceiling. */
+function wallQuad(a: Point, b: Point, h: number): Vec3[] {
+  return [[a.x, a.y, 0], [b.x, b.y, 0], [b.x, b.y, h], [a.x, a.y, h]];
+}
+
+/** An L-shaped room in the 144 × 168 bounding box; the notch is at the bottom right. */
+const L_ROOM: readonly Point[] = [
+  { x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 96 }, { x: 72, y: 96 }, { x: 72, y: 168 }, { x: 0, y: 168 },
+];
+/** A room off the origin with its top-right corner cut: bounds 20..160 × 10..180. */
+const CUT_ROOM: readonly Point[] = [
+  { x: 20, y: 10 }, { x: 120, y: 10 }, { x: 160, y: 50 }, { x: 160, y: 180 }, { x: 20, y: 180 },
+];
 
 function strokeOfPath(paints: readonly Paint[], path: number): Paint | undefined {
   return paints.find((p) => p.op === 'stroke' && p.path === path);
@@ -272,5 +326,107 @@ describe('drawBlueprint', () => {
     const q = makeProjector(inp.pose, PANE.safeW, PANE.h)([118 + 13, 104 + 27.5, 38]);
     expect(label?.x).toBeCloseTo(q[0], 9);
     expect(label?.y).toBeCloseTo(q[1] + 1, 9);
+  });
+
+  it('fills and strokes the floor along the outline', () => {
+    const inp = input({ outline: CUT_ROOM, items: [] });
+    const { paints } = draw(inp);
+    const floor = paints.find((p) => p.op === 'fill');
+    expect(floor).toMatchObject({ style: T.n100, path: 0, points: 5 });
+    const expected = projectAll(inp, CUT_ROOM.map((c): Vec3 => [c.x, c.y, 0]));
+    expectPoints(floor?.coords ?? [], expected);
+    expect(strokeOfPath(paints, 0)).toMatchObject({ style: T.text, lineWidth: 1.5 });
+  });
+
+  it('spans the grid over the bounding box and clips it to the floor polygon', () => {
+    const inp = input({ outline: CUT_ROOM, items: [] });
+    const { paints, marks } = draw(inp);
+    const lines = gridLines(paints);
+    // x = 32 … 152 (11 lines) and y = 22 … 178 (14 lines), one foot apart from the bounds' corner.
+    expect(lines).toHaveLength(25);
+    expectPoints(at(lines, 0).coords, projectAll(inp, [[32, 10, 0], [32, 180, 0]]));
+    expectPoints(at(lines, 10).coords, projectAll(inp, [[152, 10, 0], [152, 180, 0]]));
+    expectPoints(at(lines, 11).coords, projectAll(inp, [[20, 22, 0], [160, 22, 0]]));
+    expectPoints(at(lines, 24).coords, projectAll(inp, [[20, 178, 0], [160, 178, 0]]));
+    expect(marks.map((m) => m.name)).toEqual(['save', 'clip', 'restore']);
+    const [save, clip, restore] = [at(marks, 0), at(marks, 1), at(marks, 2)];
+    expectPoints(clip.coords, projectAll(inp, CUT_ROOM.map((c): Vec3 => [c.x, c.y, 0])));
+    const firstLine = Math.min(...lines.map((l) => l.index));
+    const lastLine = Math.max(...lines.map((l) => l.index));
+    expect(save.index).toBeLessThan(clip.index);
+    expect(clip.index).toBeLessThan(firstLine);
+    expect(restore.index).toBeGreaterThan(lastLine);
+    expect(paints.filter((p) => p.index > save.index && p.index < restore.index).every((p) => lines.includes(p)))
+      .toBe(true);
+  });
+
+  it('fills the far walls far to near before the furniture and dashes the near walls after it', () => {
+    const inp = input({ outline: L_ROOM, items: [CRATE] });
+    const { paints } = draw(inp);
+    const corner = (i: number) => at(L_ROOM, i);
+    const quad = (i: number) => projectAll(inp, wallQuad(corner(i), corner((i + 1) % L_ROOM.length), 96));
+    // Camera ≈ (−121, 338): walls 0, 1 and 3 have it on their inward side. Midpoint
+    // distances: wall 1 (144, 48) is farthest, then wall 0 (72, 0), then wall 3 (72, 132).
+    const far = paints.filter((p) => p.op === 'fill' && p.alpha === 0.6);
+    expect(far).toHaveLength(3);
+    [1, 0, 3].forEach((wall, k) => {
+      const f = at(far, k);
+      expect(f).toMatchObject({ style: T.a100, points: 4 });
+      expectSamePoints(f.coords, quad(wall));
+      expect(paints.find((p) => p.op === 'stroke' && p.path === f.path + 1)).toMatchObject({ style: T.text, alpha: 1 });
+    });
+    const faces = faceFills(paints);
+    const firstFace = Math.min(...faces.map((f) => f.index));
+    const lastFace = Math.max(...faces.map((f) => f.index));
+    for (const f of far) expect(f.index).toBeLessThan(firstFace);
+    const near = paints.filter((p) => p.op === 'stroke' && JSON.stringify(p.dash) === '[4,5]');
+    expect(near).toHaveLength(3);
+    [2, 4, 5].forEach((wall, k) => {
+      const n = at(near, k);
+      expect(n).toMatchObject({ style: T.text, alpha: 0.35, points: 4 });
+      expect(n.index).toBeGreaterThan(lastFace);
+      expectSamePoints(n.coords, quad(wall));
+    });
+  });
+
+  it('colours prism sides by edge: back and front a200, right and left n200, for any quarter turn', () => {
+    const P = (inp: BlueprintInput, pts: readonly Vec3[]) => projectAll(inp, pts);
+    // Unturned crate, x 50–94, y 60–90: its left (x = 50) and front (y = 90) face the camera.
+    const flat = input({ items: [CRATE] });
+    const flatFaces = faceFills(draw(flat).paints);
+    expect(flatFaces.map((f) => f.style)).toEqual([T.n200, T.a200, T.bg]);
+    expectSamePoints(at(flatFaces, 0).coords, P(flat, [[50, 60, 0], [50, 90, 0], [50, 90, 20], [50, 60, 20]]));
+    expectSamePoints(at(flatFaces, 1).coords, P(flat, [[50, 90, 0], [94, 90, 0], [94, 90, 20], [50, 90, 20]]));
+    // A quarter turn, x 50–80, y 60–104: plan side y = 104 is now the crate's right (n200)
+    // and plan side x = 50 its front (a200).
+    const turned = input({ items: [{ ...CRATE, rot: 1 }] });
+    const turnedFaces = faceFills(draw(turned).paints);
+    expect(turnedFaces.map((f) => f.style)).toEqual([T.n200, T.a200, T.bg]);
+    expectSamePoints(at(turnedFaces, 0).coords, P(turned, [[50, 104, 0], [80, 104, 0], [80, 104, 20], [50, 104, 20]]));
+    expectSamePoints(at(turnedFaces, 1).coords, P(turned, [[50, 60, 0], [50, 104, 0], [50, 104, 20], [50, 60, 20]]));
+    expectSamePoints(at(turnedFaces, 2).coords, P(turned, [[50, 60, 20], [80, 60, 20], [80, 104, 20], [50, 104, 20]]));
+  });
+
+  it('colours a selected prism\'s sides a400 on back and front and a300 on right and left', () => {
+    const faces = faceFills(draw(input({ items: [{ ...CRATE, rot: 1 }], selectedId: 'crate-1' })).paints);
+    expect(faces.map((f) => f.style)).toEqual([T.a300, T.a400, T.a200]);
+  });
+
+  it('leaves out the top of a prism that reaches above the camera', () => {
+    const faces = faceFills(draw(input({ items: [{ ...CRATE, h: 400 }] })).paints);
+    expect(faces.map((f) => f.style)).toEqual([T.n200, T.a200]);
+  });
+
+  it('labels the bounding-box size at its near sides and the height at the farthest corner', () => {
+    const inp = input({ outline: CUT_ROOM });
+    const { texts } = draw(inp);
+    // Bounds 140 × 170 centred on (90, 95); camera ≈ (−102, 348): near sides are y = 180 and x = 20.
+    // The farthest outline corner from the camera is (120, 10).
+    expect(texts.map((t) => t.text)).toEqual(['11′ 8″', '14′ 2″', '8′ 0″']);
+    const expected = projectAll(inp, [[90, 190, 0], [10, 95, 0], [120, 10, 48]]);
+    texts.forEach((t, i) => {
+      expect(t.x).toBeCloseTo(expected[i]?.[0] ?? NaN, 9);
+      expect(t.y).toBeCloseTo((expected[i]?.[1] ?? NaN) + 1, 9);
+    });
   });
 });

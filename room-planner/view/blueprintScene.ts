@@ -1,82 +1,121 @@
 /**
- * Blueprint (2D canvas) scene maths: furniture part boxes, painter's-order sorting
- * and the perspective projector. Pure, in plan space (x, y, z up).
+ * Blueprint (2D canvas) scene maths: furniture part prisms, painter's-order sorting
+ * and the perspective projector. Pure, in plan space (x right, y down, z up).
+ * Geometry comes only from the shape accessors (`itemFootprint`, `partCorners`).
  * Ported from prototype lines 463–470 (`front`), 586–599 (projection) and 621–641 (boxes, ordering).
  */
+import { CONFIG } from '../config';
 import { PARTS } from '../domain/catalog';
-import { footprint, mapPart } from '../domain/geometry';
-import type { Item, Kind } from '../domain/types';
+import { itemFootprint, partCorners } from '../domain/shape';
+import type { Item, Kind, Point } from '../domain/types';
 import type { CameraPose, Vec3 } from './camera';
 
-/** One axis-aligned part box in plan space, tagged with the item it belongs to. */
-export interface Box { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number; itemId: string; kind: Kind }
+/**
+ * One part of an item as an upright prism: a four-corner plan footprint (back-left,
+ * back-right, front-right, front-left; positive signed area) extruded from z0 to z1.
+ */
+export interface Prism { pts: readonly [Point, Point, Point, Point]; z0: number; z1: number; itemId: string; kind: Kind }
 
-/** Tolerance for treating touching boxes as separated. */
-const SEPARATION_EPSILON = 0.01;
 /** Smallest camera-space depth the projector divides by, so points behind the camera stay finite. */
 const MIN_DEPTH = 1;
 
-type AxisKeys = readonly [lo: 'x0' | 'y0' | 'z0', hi: 'x1' | 'y1' | 'z1', index: 0 | 1 | 2];
-const AXES: readonly AxisKeys[] = [['x0', 'x1', 0], ['y0', 'y1', 1], ['z0', 'z1', 2]];
-
-/** Splits every item into part boxes; rug parts go to `rugs`, everything else to `boxes`. */
-export function buildBoxes(items: readonly Item[]): { boxes: Box[]; rugs: Box[] } {
-  const boxes: Box[] = [];
-  const rugs: Box[] = [];
+/** Splits every item into part prisms; rug parts go to `rugs`, everything else to `prisms`. */
+export function buildPrisms(items: readonly Item[]): { prisms: Prism[]; rugs: Prism[] } {
+  const prisms: Prism[] = [];
+  const rugs: Prism[] = [];
   for (const it of items) {
-    const [fw, fd] = footprint(it);
+    const fp = itemFootprint(it);
     for (const part of PARTS[it.kind]) {
-      const m = mapPart(part, it.rot);
-      const b: Box = {
-        x0: it.x + m[0] * fw, x1: it.x + m[1] * fw,
-        y0: it.y + m[2] * fd, y1: it.y + m[3] * fd,
+      const p: Prism = {
+        pts: partCorners(fp, part),
         z0: part[4] * it.h, z1: part[5] * it.h,
         itemId: it.id, kind: it.kind,
       };
-      (it.kind === 'rug' ? rugs : boxes).push(b);
+      (it.kind === 'rug' ? rugs : prisms).push(p);
     }
   }
-  return { boxes, rugs };
+  return { prisms, rugs };
+}
+
+/** A candidate separating axis: a unit plan direction, or the vertical. */
+type Axis = { kind: 'z' } | { kind: 'plan'; nx: number; ny: number };
+
+/** Unit normals of the prism's four edges, in edge order. */
+function edgeAxes(p: Prism): Axis[] {
+  const axes: Axis[] = [];
+  p.pts.forEach((a, i) => {
+    const b = p.pts[(i + 1) % p.pts.length] ?? a;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > 0) axes.push({ kind: 'plan', nx: -(b.y - a.y) / len, ny: (b.x - a.x) / len });
+  });
+  return axes;
+}
+
+/** The prism's extent along an axis, as [lo, hi]. */
+function extent(p: Prism, axis: Axis): [number, number] {
+  if (axis.kind === 'z') return [p.z0, p.z1];
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const q of p.pts) {
+    const d = q.x * axis.nx + q.y * axis.ny;
+    lo = Math.min(lo, d);
+    hi = Math.max(hi, d);
+  }
+  return [lo, hi];
+}
+
+function along(cam: Vec3, axis: Axis): number {
+  return axis.kind === 'z' ? cam[2] : cam[0] * axis.nx + cam[1] * axis.ny;
 }
 
 /**
  * Whether `a` is in front of `b` as seen from `cam`: 1 if a is in front, -1 if b is,
- * 0 when no separating axis decides it. Axes are tried in x, y, z order.
+ * 0 when no separating axis decides it. Axes are tried in order: z, the edge normals of
+ * `a`, then those of `b`. Prisms touching within `CONFIG.conflictEpsilon` count as
+ * separated; when the camera lies between them on an axis, the next axis is tried.
  */
-export function frontOf(a: Box, b: Box, cam: Vec3): -1 | 0 | 1 {
-  for (const [lo, hi, k] of AXES) {
-    if (a[hi] <= b[lo] + SEPARATION_EPSILON) {
-      if (cam[k] <= a[hi]) return 1;
-      if (cam[k] >= b[lo]) return -1;
-    } else if (b[hi] <= a[lo] + SEPARATION_EPSILON) {
-      if (cam[k] >= a[lo]) return 1;
-      if (cam[k] <= b[hi]) return -1;
+export function frontOf(a: Prism, b: Prism, cam: Vec3): -1 | 0 | 1 {
+  const eps = CONFIG.conflictEpsilon;
+  const axes: Axis[] = [{ kind: 'z' }, ...edgeAxes(a), ...edgeAxes(b)];
+  for (const axis of axes) {
+    const [aLo, aHi] = extent(a, axis);
+    const [bLo, bHi] = extent(b, axis);
+    const c = along(cam, axis);
+    if (aHi <= bLo + eps) {
+      if (c <= aHi) return 1;
+      if (c >= bLo) return -1;
+    } else if (bHi <= aLo + eps) {
+      if (c >= aLo) return 1;
+      if (c <= bHi) return -1;
     }
   }
   return 0;
 }
 
-function centreDistSq(b: Box, cam: Vec3): number {
-  return ((b.x0 + b.x1) / 2 - cam[0]) ** 2 + ((b.y0 + b.y1) / 2 - cam[1]) ** 2 + ((b.z0 + b.z1) / 2 - cam[2]) ** 2;
+function centreDistSq(p: Prism, cam: Vec3): number {
+  const n = p.pts.length;
+  const cx = p.pts.reduce((s, q) => s + q.x, 0) / n;
+  const cy = p.pts.reduce((s, q) => s + q.y, 0) / n;
+  return (cx - cam[0]) ** 2 + (cy - cam[1]) ** 2 + ((p.z0 + p.z1) / 2 - cam[2]) ** 2;
 }
 
 /**
- * Painter's order, far to near. Each step draws the farthest box that is not in front of
- * any remaining box; if every remaining box is blocked (a cycle), the farthest one is drawn.
- * Always terminates and returns each input box exactly once.
+ * Painter's order, far to near. Each step draws the farthest prism that is not in front of
+ * any remaining prism; if every remaining prism is blocked (a cycle), the farthest one is drawn.
+ * Always terminates and returns each input prism exactly once.
  */
-export function sortBoxes(boxes: readonly Box[], cam: Vec3): Box[] {
-  const order: Box[] = [];
-  const rem = boxes.slice();
+export function sortPrisms(prisms: readonly Prism[], cam: Vec3): Prism[] {
+  const order: Prism[] = [];
+  const rem = prisms.slice();
   while (rem.length > 0) {
     let pick = -1;
     let best = -1;
     let far = 0;
     let farD = -1;
-    rem.forEach((bi, i) => {
-      const d = centreDistSq(bi, cam);
+    rem.forEach((pi, i) => {
+      const d = centreDistSq(pi, cam);
       if (d > farD) { farD = d; far = i; }
-      const blocked = rem.some((bj, j) => j !== i && frontOf(bi, bj, cam) === 1);
+      const blocked = rem.some((pj, j) => j !== i && frontOf(pi, pj, cam) === 1);
       if (!blocked && d > best) { best = d; pick = i; }
     });
     order.push(...rem.splice(pick < 0 ? far : pick, 1));
