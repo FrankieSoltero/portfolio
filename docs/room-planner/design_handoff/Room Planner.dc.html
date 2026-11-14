@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/industry-be146a4e-adb2-4c13-8c51-8590a0cfc099/styles.css">
+<script src="_ds/industry-be146a4e-adb2-4c13-8c51-8590a0cfc099/_ds_bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>html,body{height:100%;margin:0}a{color:var(--color-accent-700)}a:hover{color:var(--color-accent-900)}</style>
+</helmet>
+<div style="display:grid; grid-template-rows:auto minmax(0,1fr); height:100vh; min-height:620px; background:var(--color-bg); color:var(--color-text); font-family:var(--font-body)">
+  <header class="nav" style="border-bottom:1px solid var(--color-divider)">
+    <span class="nav-brand">Room planner</span>
+    <span class="text-muted" style="font-size:12px">Units</span>
+    <div class="seg">
+      <label class="seg-opt"><input type="radio" name="units" checked="{{ isFt }}" onChange="{{ setFt }}">ft / in</label>
+      <label class="seg-opt"><input type="radio" name="units" checked="{{ isM }}" onChange="{{ setM }}">m / cm</label>
+    </div>
+  </header>
+  <div style="display:grid; grid-template-columns:minmax(260px,340px) minmax(0,1fr); min-height:0">
+    <aside style="display:flex; flex-direction:column; gap:var(--space-8); padding:var(--space-6) var(--space-4); border-right:1px solid var(--color-divider); overflow-y:auto; min-height:0">
+      <section style="display:flex; flex-direction:column; gap:var(--space-3)">
+        <h6 style="margin:0; display:flex; gap:8px"><span style="color:var(--color-accent-700)">01</span><span>Room</span></h6>
+        <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-2)">
+          <div class="field"><label>Width</label>
+            <div style="position:relative"><input class="input" type="number" step="{{ roomStep }}" value="{{ draft.w }}" onChange="{{ setW }}" style="padding-right:26px"><span class="text-muted" style="position:absolute; right:8px; top:9px; font-size:12px; pointer-events:none">{{ roomUnit }}</span></div>
+          </div>
+          <div class="field"><label>Length</label>
+            <div style="position:relative"><input class="input" type="number" step="{{ roomStep }}" value="{{ draft.l }}" onChange="{{ setL }}" style="padding-right:26px"><span class="text-muted" style="position:absolute; right:8px; top:9px; font-size:12px; pointer-events:none">{{ roomUnit }}</span></div>
+          </div>
+          <div class="field"><label>Ceiling</label>
+            <div style="position:relative"><input class="input" type="number" step="{{ roomStep }}" value="{{ draft.h }}" onChange="{{ setH }}" style="padding-right:26px"><span class="text-muted" style="position:absolute; right:8px; top:9px; font-size:12px; pointer-events:none">{{ roomUnit }}</span></div>
+          </div>
+        </div>
+        <div class="text-muted" style="font-size:12px">Floor area {{ area }}. You can also drag the room's edge handles on the plan.</div>
+      </section>
+
+      <section style="display:flex; flex-direction:column; gap:var(--space-3)">
+        <h6 style="margin:0; display:flex; gap:8px"><span style="color:var(--color-accent-700)">02</span><span>Add furniture from a link</span></h6>
+        <div style="display:flex; gap:var(--space-3)">
+          <input class="input" type="text" placeholder="Paste a product link" value="{{ url }}" onChange="{{ setUrl }}" onKeyDown="{{ urlKey }}" style="flex:1; min-width:0">
+          <button class="btn btn-primary blueprint" onClick="{{ fetchUrl }}" disabled="{{ isLoading }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Fetch</button>
+        </div>
+        <sc-if value="{{ hasErr }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12px; color:var(--color-accent-900)">{{ err }}</div>
+        </sc-if>
+        <sc-if value="{{ isIdle }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2)">
+            <span class="text-muted" style="font-size:12px; flex-basis:100%">No link handy? Try a sample:</span>
+            <button class="btn btn-secondary" onClick="{{ sampleSofa }}" style="font-size:13px">Sofa</button>
+            <button class="btn btn-secondary" onClick="{{ sampleShelf }}" style="font-size:13px">Bookshelf</button>
+            <button class="btn btn-secondary" onClick="{{ sampleUnknown }}" style="font-size:13px">Page without sizes</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+          <div class="card blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div class="card-kicker">{{ loadingHost }}</div>
+            <div class="card-body">Reading the product page for name, size and price…</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ hasPreview }}" hint-placeholder-val="{{ false }}">
+          <div class="card blueprint" style="gap:var(--space-3)"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="display:flex; gap:var(--space-3); align-items:flex-start">
+              <div style="flex:none; width:64px; height:64px; border:1px solid var(--color-divider); display:grid; place-items:center; font:10px ui-monospace,Menlo,monospace; color:var(--color-neutral-700); background:repeating-linear-gradient(45deg, transparent 0 6px, color-mix(in srgb, var(--color-text) 8%, transparent) 6px 7px)">photo</div>
+              <div style="display:flex; flex-direction:column; gap:2px; min-width:0">
+                <div class="card-kicker" style="color:var(--color-accent-700)">{{ preview.host }}</div>
+                <div class="card-title">{{ preview.name }}</div>
+                <div class="card-meta">{{ preview.priceText }}</div>
+                <span class="tag tag-outline" style="align-self:flex-start; margin-top:4px; color:var(--color-accent-700)">{{ preview.model }}</span>
+              </div>
+            </div>
+            <sc-if value="{{ previewUnknown }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:12px; color:var(--color-accent-900)">This page didn't list dimensions. Enter them from the product description.</div>
+            </sc-if>
+            <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-2)">
+              <div class="field"><label>Width ({{ furnUnit }})</label><input class="input" type="number" value="{{ pdraft.w }}" onChange="{{ setPW }}"></div>
+              <div class="field"><label>Depth ({{ furnUnit }})</label><input class="input" type="number" value="{{ pdraft.d }}" onChange="{{ setPD }}"></div>
+              <div class="field"><label>Height ({{ furnUnit }})</label><input class="input" type="number" value="{{ pdraft.h }}" onChange="{{ setPH }}"></div>
+            </div>
+            <div style="display:flex; gap:var(--space-3); align-items:center">
+              <button class="btn btn-primary blueprint" onClick="{{ place }}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Place in room</button>
+              <button class="btn btn-ghost" onClick="{{ discard }}">Discard</button>
+            </div>
+          </div>
+        </sc-if>
+      </section>
+
+      <section style="display:flex; flex-direction:column; gap:var(--space-2)">
+        <h6 style="margin:0; display:flex; gap:8px"><span style="color:var(--color-accent-700)">03</span><span>In this room</span></h6>
+        <sc-if value="{{ noItems }}" hint-placeholder-val="{{ false }}">
+          <div class="text-muted" style="font-size:13px">Nothing placed yet.</div>
+        </sc-if>
+        <div style="display:flex; flex-direction:column">
+          <sc-for list="{{ rows }}" as="row" hint-placeholder-count="2">
+            <button onClick="{{ row.onClick }}" style="display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 12px; text-align:left; font:inherit; color:inherit; cursor:pointer; border:none; border-bottom:1px solid var(--color-divider); padding:var(--space-2) var(--space-2); background:{{ row.bg }}" style-hover="background:color-mix(in srgb, var(--color-accent) 10%, transparent)">
+              <span style="font-family:var(--font-heading); font-weight:600; font-size:15px">{{ row.name }}</span>
+              <span style="font-size:13px">{{ row.price }}</span>
+              <span class="text-muted" style="font-size:12px">{{ row.dims }}</span>
+              <sc-if value="{{ row.hasConflict }}" hint-placeholder-val="{{ false }}">
+                <span class="tag" style="grid-column:1 / -1; justify-self:start; background:var(--color-accent-900); color:var(--color-bg)">{{ row.conflict }}</span>
+              </sc-if>
+            </button>
+          </sc-for>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:var(--space-2); font-size:13px">
+          <span class="text-muted">Total, nothing bought yet</span><span style="font-weight:700">{{ total }}</span>
+        </div>
+      </section>
+    </aside>
+
+    <main style="display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-width:0; min-height:0">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--color-divider)">
+        <div class="seg">
+          <label class="seg-opt"><input type="radio" name="layout" checked="{{ isInset }}" onChange="{{ setInset }}">3D + plan inset</label>
+          <label class="seg-opt"><input type="radio" name="layout" checked="{{ isSplit }}" onChange="{{ setSplit }}">Side by side</label>
+          <label class="seg-opt"><input type="radio" name="layout" checked="{{ isTabs }}" onChange="{{ setTabs }}">Tabs</label>
+          
+        </div>
+        <sc-if value="{{ isTabs }}" hint-placeholder-val="{{ false }}">
+          <div class="seg" style="margin-right:auto">
+            <label class="seg-opt"><input type="radio" name="view" checked="{{ is2d }}" onChange="{{ set2d }}">2D plan</label>
+            <label class="seg-opt"><input type="radio" name="view" checked="{{ is3d }}" onChange="{{ set3d }}">3D check</label>
+          </div>
+        </sc-if>
+        <sc-if value="{{ allFit }}" hint-placeholder-val="{{ true }}"><span class="tag tag-accent">Everything fits</span></sc-if>
+        <sc-if value="{{ hasConflicts }}" hint-placeholder-val="{{ false }}"><span class="tag" style="background:var(--color-accent-900); color:var(--color-bg)">{{ conflictText }}</span></sc-if>
+      </div>
+
+      <div ref="{{ stageRef }}" style="position:relative; overflow:hidden; min-height:0">
+        <sc-if value="{{ showPlan }}" hint-placeholder-val="{{ true }}">
+          <div class="blueprint" onPointerDown="{{ deselect }}" style="position:absolute; left:{{ plan.left }}px; top:{{ plan.top }}px; width:{{ plan.w }}px; height:{{ plan.h }}px; z-index:{{ plan.z }}; border:{{ plan.border }}; background:{{ plan.bg }}; box-shadow:{{ plan.shadow }}">
+            <sc-if value="{{ plan.inset }}" hint-placeholder-val="{{ true }}">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <span style="position:absolute; left:8px; top:6px; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--color-accent-700); pointer-events:none">Plan</span>
+              <button class="btn btn-secondary" onPointerDown="{{ stop }}" onClick="{{ swap }}" style="position:absolute; right:6px; top:6px; z-index:9; font-size:12px; padding:3px 8px; background:var(--color-bg)">Swap</button>
+            </sc-if>
+            <div style="position:absolute; left:{{ g.left }}px; top:{{ g.dimTop }}px; width:{{ g.w }}px; height:0; border-top:1px solid var(--color-text); display:flex; justify-content:center; align-items:center; pointer-events:none">
+              <i style="position:absolute; left:0; top:-5px; height:9px; border-left:1px solid var(--color-text)"></i><i style="position:absolute; right:0; top:-5px; height:9px; border-left:1px solid var(--color-text)"></i>
+              <span style="background:var(--color-bg); padding:0 8px; font-family:var(--font-heading); font-weight:600; font-size:14px; white-space:nowrap">{{ g.wLabel }}</span>
+            </div>
+            <div style="position:absolute; left:{{ g.dimLeft }}px; top:{{ g.top }}px; width:0; height:{{ g.h }}px; border-left:1px solid var(--color-text); display:flex; justify-content:center; align-items:center; pointer-events:none">
+              <i style="position:absolute; top:0; left:-5px; width:9px; border-top:1px solid var(--color-text)"></i><i style="position:absolute; bottom:0; left:-5px; width:9px; border-top:1px solid var(--color-text)"></i>
+              <span style="background:var(--color-bg); padding:0 8px; font-family:var(--font-heading); font-weight:600; font-size:14px; white-space:nowrap; transform:rotate(-90deg)">{{ g.lLabel }}</span>
+            </div>
+            <div class="blueprint" style="position:absolute; left:{{ g.left }}px; top:{{ g.top }}px; width:{{ g.w }}px; height:{{ g.h }}px; border:2px solid var(--color-text); background-color:var(--color-neutral-100); background-image:linear-gradient(to right, color-mix(in srgb, var(--color-text) 9%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--color-text) 9%, transparent) 1px, transparent 1px); background-size:{{ g.grid }}px {{ g.grid }}px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            </div>
+            <sc-for list="{{ items2d }}" as="it" hint-placeholder-count="2">
+              <div onPointerDown="{{ it.onDown }}" style="position:absolute; left:{{ it.left }}px; top:{{ it.top }}px; width:{{ it.width }}px; height:{{ it.height }}px; z-index:{{ it.z }}; border:{{ it.border }}; background:{{ it.bg }}; cursor:grab; touch-action:none; user-select:none; display:grid; place-items:center">
+                <sc-for list="{{ it.parts }}" as="p" hint-placeholder-count="0">
+                  <i style="position:absolute; left:{{ p.l }}%; top:{{ p.t }}%; width:{{ p.w }}%; height:{{ p.h }}%; border:1px solid color-mix(in srgb, var(--color-text) 30%, transparent); pointer-events:none"></i>
+                </sc-for>
+                <sc-if value="{{ it.showLabel }}" hint-placeholder-val="{{ true }}">
+                  <div style="position:relative; text-align:center; line-height:1.15; padding:2px 6px; background:color-mix(in srgb, var(--color-bg) 85%, transparent); pointer-events:none; max-width:100%">
+                    <div style="font-family:var(--font-heading); font-weight:600; font-size:13px">{{ it.name }}</div>
+                    <div style="font-size:10px; color:var(--color-neutral-700)">{{ it.dims }}</div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+            <sc-for list="{{ clear }}" as="c" hint-placeholder-count="0">
+              <div style="position:absolute; left:{{ c.left }}px; top:{{ c.top }}px; width:{{ c.width }}px; height:{{ c.height }}px; border-top:{{ c.bt }}; border-left:{{ c.bl }}; z-index:7; pointer-events:none; display:flex; align-items:center; justify-content:center">
+                <span style="display:{{ c.lbl }}; background:var(--color-accent-700); color:var(--color-bg); font-size:10px; line-height:1; padding:3px 5px; white-space:nowrap">{{ c.label }}</span>
+              </div>
+            </sc-for>
+            <div onPointerDown="{{ dragW }}" title="Drag to change width" style="position:absolute; left:{{ g.hwLeft }}px; top:{{ g.hwTop }}px; width:12px; height:32px; z-index:6; background:var(--color-bg); border:1.5px solid var(--color-accent); cursor:ew-resize; touch-action:none" style-hover="background:var(--color-accent-200)"></div>
+            <div onPointerDown="{{ dragL }}" title="Drag to change length" style="position:absolute; left:{{ g.hlLeft }}px; top:{{ g.hlTop }}px; width:32px; height:12px; z-index:6; background:var(--color-bg); border:1.5px solid var(--color-accent); cursor:ns-resize; touch-action:none" style-hover="background:var(--color-accent-200)"></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ show3d }}" hint-placeholder-val="{{ true }}">
+          <div class="blueprint" style="position:absolute; left:{{ three.left }}px; top:{{ three.top }}px; width:{{ three.w }}px; height:{{ three.h }}px; z-index:{{ three.z }}; border:{{ three.border }}; border-left:{{ three.bl }}; background:{{ three.bg }}; box-shadow:{{ three.shadow }}">
+            <sc-if value="{{ isBlue }}" hint-placeholder-val="{{ false }}">
+              <canvas ref="{{ canvasRef }}" onPointerDown="{{ orbitDown }}" onWheel="{{ onWheel }}" style="position:absolute; inset:0; width:100%; height:100%; cursor:grab; touch-action:none"></canvas>
+            </sc-if>
+            <sc-if value="{{ isReal }}" hint-placeholder-val="{{ true }}">
+              <canvas ref="{{ glRef }}" onPointerDown="{{ orbitDown }}" onWheel="{{ onWheel }}" style="position:absolute; inset:0; width:100%; height:100%; cursor:grab; touch-action:none"></canvas>
+            </sc-if>
+            <sc-if value="{{ showRenderSeg }}" hint-placeholder-val="{{ true }}">
+              <div class="seg" style="position:absolute; left:var(--space-4); top:var(--space-4); z-index:9; background:var(--color-bg)">
+                <label class="seg-opt"><input type="radio" name="render" checked="{{ isReal }}" onChange="{{ setReal }}">Realistic</label>
+                <label class="seg-opt"><input type="radio" name="render" checked="{{ isBlue }}" onChange="{{ setBlue }}">Blueprint</label>
+              </div>
+            </sc-if>
+            <sc-if value="{{ three.inset }}" hint-placeholder-val="{{ false }}">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <span style="position:absolute; left:8px; top:6px; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--color-accent-700); pointer-events:none">3D</span>
+              <button class="btn btn-secondary" onClick="{{ swap }}" style="position:absolute; right:6px; top:6px; z-index:9; font-size:12px; padding:3px 8px; background:var(--color-bg)">Swap</button>
+            </sc-if>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex; align-items:center; flex-wrap:wrap; gap:var(--space-2) var(--space-4); min-height:56px; padding:var(--space-2) var(--space-4); border-top:1px solid var(--color-divider)">
+        <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; margin-right:auto">
+            <span style="font-family:var(--font-heading); font-weight:600; font-size:17px">{{ selName }}</span>
+            <span class="text-muted" style="font-size:13px">{{ selDims }}</span>
+            <span style="font-size:13px; color:var(--color-accent-900); font-weight:500">{{ selNote }}</span>
+          </div>
+          <div style="display:flex; gap:var(--space-2)">
+            <button class="btn btn-secondary" onClick="{{ rotateSel }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>Rotate 90°</button>
+            <button class="btn btn-ghost" onClick="{{ removeSel }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>Remove</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ hint2d }}" hint-placeholder-val="{{ true }}">
+          <span class="text-muted" style="font-size:13px">Drag a piece on the plan to move it. Select one to see its clearance to each wall. R rotates, Delete removes. Drag the 3D view to orbit.</span>
+        </sc-if>
+        <sc-if value="{{ hint3d }}" hint-placeholder-val="{{ false }}">
+          <span class="text-muted" style="font-size:13px">Drag to orbit, scroll to zoom. Pick a piece from the list to highlight it.</span>
+        </sc-if>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;inset&quot;,&quot;options&quot;:[&quot;inset&quot;,&quot;split&quot;,&quot;tabs&quot;],&quot;tsType&quot;:&quot;'inset'|'split'|'tabs'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;renderStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;realistic&quot;,&quot;options&quot;:[&quot;realistic&quot;,&quot;blueprint&quot;],&quot;tsType&quot;:&quot;'realistic'|'blueprint'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;snapInches&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1,&quot;min&quot;:1,&quot;max&quot;:12,&quot;step&quot;:1,&quot;unit&quot;:&quot;in&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Plan&quot;},&quot;showClearances&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Plan&quot;},&quot;startEmpty&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Plan&quot;}}">
+class Component extends DCLogic {
+  catalog = {
+    sofa: { match: 'sofa|couch|sectional', name: 'Alder 3-seat sofa', w: 84, d: 36, h: 33, price: 1290 },
+    desk: { match: 'desk', name: 'Tack writing desk', w: 55, d: 26, h: 30, price: 420 },
+    shelf: { match: 'shelf|bookcase|shelving', name: 'Girder bookshelf', w: 36, d: 13, h: 78, price: 310 },
+    bed: { match: 'bed', name: 'Low platform bed, queen', w: 64, d: 85, h: 38, price: 890 },
+    chair: { match: 'chair', name: 'Brace lounge chair', w: 30, d: 32, h: 31, price: 540 },
+    rug: { match: 'rug', name: 'Flatweave rug', w: 60, d: 96, h: 0.5, price: 340 },
+    table: { match: 'table', name: 'Slab coffee table', w: 44, d: 24, h: 16, price: 260 },
+  };
+  // [u0,u1,v0,v1,z0,z1] as fractions of width, depth, height; v=0 is the back edge
+  parts = {
+    sofa: [[.08,.92,.28,1,0,.5],[0,1,0,.28,0,1],[0,.08,.28,1,0,.7],[.92,1,.28,1,0,.7]],
+    chair: [[.12,.88,.25,1,0,.5],[0,1,0,.25,0,1],[0,.12,.25,1,0,.68],[.88,1,.25,1,0,.68]],
+    bed: [[0,1,.04,1,0,.42],[0,1,0,.04,0,1],[.08,.46,.08,.26,.42,.52],[.54,.92,.08,.26,.42,.52]],
+    desk: [[0,1,0,1,.93,1],[.02,.06,.06,.94,0,.93],[.94,.98,.06,.94,0,.93]],
+    table: [[0,1,0,1,.82,1],[.06,.12,.1,.9,0,.82],[.88,.94,.1,.9,0,.82]],
+    shelf: [[0,1,0,1,0,1]], rug: [[0,1,0,1,0,1]], box: [[0,1,0,1,0,1]],
+  };
+  defaults = () => [
+    { id: 1, kind: 'bed', name: 'Low platform bed, queen', host: 'shop.example', price: 890, w: 64, d: 85, h: 38, x: 40, y: 0, rot: 0 },
+    { id: 2, kind: 'desk', name: 'Tack writing desk', host: 'shop.example', price: 420, w: 55, d: 26, h: 30, x: 118, y: 104, rot: 1 },
+  ];
+  nextId = 3;
+  looks = {
+    sofa: { main: '#6f7f8c', soft: '#7e8e9b', wood: '#3b2f27' }, chair: { main: '#b5673f', soft: '#c0744c', wood: '#2e2a27' },
+    bed: { main: '#8a9a8b', wood: '#a67c52' }, desk: { wood: '#b98d5e', metal: '#2b2b2d' }, table: { wood: '#6b4a33' },
+    shelf: { wood: '#ddd8ce' }, rug: { main: '#c9b8a3', soft: '#ded2c2' }, box: { main: '#c9ccd1' },
+  };
+  models = { sofa: '3D model from retailer', bed: '3D model from retailer', desk: '3D model from retailer', shelf: 'Model built from photos', chair: 'Model built from photos', table: 'Model built from photos', rug: 'Model built from photos' };
+  canvasRef = React.createRef();
+  glRef = React.createRef();
+  stageRef = React.createRef();
+  state = {
+    units: 'ft', view: '2d',
+    room: { w: 144, l: 168, h: 96 }, draft: { w: '12', l: '14', h: '8' },
+    items: this.defaults(), sel: null,
+    url: '', fetchState: 'idle', preview: null, pdraft: { w: '', d: '', h: '' }, err: '', loadingHost: '',
+    sw: 800, sh: 560, yaw: -0.65, pitch: 0.55, zoom: 1, layoutSel: null, swap: false, renderSel: null,
+  };
+
+  componentDidMount() {
+    if (this.props.startEmpty) this.setState({ items: [], sel: null });
+    const attach = () => {
+      const el = this.stageRef.current;
+      if (!el) { this._raf = requestAnimationFrame(attach); return; }
+      const measure = () => {
+        const w = el.clientWidth, h = el.clientHeight;
+        if (w && h && (Math.abs(w - this.state.sw) > 1 || Math.abs(h - this.state.sh) > 1)) this.setState({ sw: w, sh: h });
+      };
+      this._ro = new ResizeObserver(measure); this._ro.observe(el); measure();
+    };
+    attach();
+    this._key = e => {
+      const t = e.target; if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName) && t.type !== 'radio') return;
+      if (this.state.sel == null) return;
+      if (e.key === 'r' || e.key === 'R') this.rotateSel();
+      else if (e.key === 'Delete' || e.key === 'Backspace') this.removeSel();
+      else if (e.key === 'Escape') this.setState({ sel: null });
+    };
+    window.addEventListener('keydown', this._key);
+    this.scheduleDraw();
+  }
+  componentDidUpdate(prevProps) {
+    if (prevProps && prevProps.startEmpty !== this.props.startEmpty) this.setState({ items: this.props.startEmpty ? [] : this.defaults(), sel: null });
+    if (prevProps && prevProps.layout !== this.props.layout && this.state.layoutSel) this.setState({ layoutSel: null });
+    if (prevProps && prevProps.renderStyle !== this.props.renderStyle && this.state.renderSel) this.setState({ renderSel: null });
+    this.scheduleDraw();
+  }
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this._key);
+    if (this._ro) this._ro.disconnect();
+    if (this._gl) this._gl.renderer.dispose();
+    cancelAnimationFrame(this._raf); cancelAnimationFrame(this._draw); clearTimeout(this._t);
+  }
+  scheduleDraw() { cancelAnimationFrame(this._draw); this._draw = requestAnimationFrame(() => this.draw()); }
+
+  // ---------- units ----------
+  fmtLen(v, units) {
+    units = units || this.state.units;
+    if (units === 'm') { const cm = v * 2.54; return cm >= 100 ? (cm / 100).toFixed(2) + ' m' : Math.round(cm) + ' cm'; }
+    let ft = Math.floor(v / 12), inch = Math.round(v - ft * 12);
+    if (inch === 12) { ft++; inch = 0; }
+    return ft ? ft + '′ ' + inch + '″' : inch + '″';
+  }
+  roomStr(v, units) { return String(+(units === 'm' ? v * 0.0254 : v / 12).toFixed(2)); }
+  furnStr(v, units) { return String(units === 'm' ? Math.round(v * 2.54) : +v.toFixed(1)); }
+  furnDims(it) {
+    const u = this.state.units, f = v => u === 'm' ? Math.round(v * 2.54) : +v.toFixed(1);
+    return f(it.w) + ' × ' + f(it.d) + ' × ' + f(it.h) + (u === 'm' ? ' cm' : ' in');
+  }
+  setUnits(units) {
+    this.setState(s => ({
+      units, draft: { w: this.roomStr(s.room.w, units), l: this.roomStr(s.room.l, units), h: this.roomStr(s.room.h, units) },
+      pdraft: s.preview ? { w: this.furnStr(s.preview.w, units), d: this.furnStr(s.preview.d, units), h: this.furnStr(s.preview.h, units) } : s.pdraft,
+    }));
+  }
+  setRoom(axis, str) {
+    this.setState(s => {
+      const n = parseFloat(str), v = s.units === 'm' ? n / 0.0254 : n * 12;
+      const ok = isFinite(v) && v >= 36 && v <= 720;
+      return { draft: { ...s.draft, [axis]: str }, room: ok ? { ...s.room, [axis]: v } : s.room };
+    });
+  }
+  setPrev(axis, str) {
+    this.setState(s => {
+      const n = parseFloat(str), v = s.units === 'm' ? n / 2.54 : n;
+      const ok = isFinite(v) && v > 0 && v <= 240;
+      return { pdraft: { ...s.pdraft, [axis]: str }, preview: ok ? { ...s.preview, [axis]: v } : s.preview };
+    });
+  }
+
+  // ---------- geometry ----------
+  foot(it) { return it.rot % 2 ? [it.d, it.w] : [it.w, it.d]; }
+  mapPart(p, rot) {
+    const [u0, u1, v0, v1] = p;
+    if (rot === 1) return [1 - v1, 1 - v0, u0, u1];
+    if (rot === 2) return [1 - u1, 1 - u0, 1 - v1, 1 - v0];
+    if (rot === 3) return [v0, v1, 1 - u1, 1 - u0];
+    return [u0, u1, v0, v1];
+  }
+  snap() { return Math.max(1, this.props.snapInches ?? 1); }
+  mode() { return this.state.layoutSel || this.props.layout || 'inset'; }
+  panes() {
+    const { sw, sh, view, swap } = this.state, mode = this.mode();
+    const full = { left: 0, top: 0, w: sw, h: sh, z: 1 };
+    if (mode === 'tabs') return { plan: view === '2d' ? full : null, three: view === '3d' ? full : null };
+    if (mode === 'split') { const hw = Math.floor(sw / 2); return { plan: { left: 0, top: 0, w: hw, h: sh, z: 1 }, three: { left: hw, top: 0, w: sw - hw, h: sh, z: 1, divider: true } }; }
+    const iw = Math.max(220, Math.min(380, sw * 0.36)), ih = Math.max(200, Math.min(320, sh * 0.44));
+    const ins = { left: sw - iw - 16, top: sh - ih - 16, w: iw, h: ih, z: 8, inset: true };
+    const main = { ...full, safeW: Math.max(200, sw - iw - 32) };
+    return swap ? { plan: main, three: ins } : { plan: ins, three: main };
+  }
+  clampSnap(v, max) { const s = this.snap(); v = Math.round(v / s) * s; return Math.max(0, Math.min(v, Math.max(0, max))); }
+  layout() {
+    if (this._frozen) return this._frozen;
+    const { room } = this.state, pn = this.panes().plan || { w: this.state.sw, h: this.state.sh }, sw = pn.safeW || pn.w, sh = pn.h, m = pn.inset ? 48 : 64;
+    const scale = Math.max(0.2, Math.min((sw - 2 * m) / room.w, (sh - 2 * m) / room.l));
+    return { scale, ox: (sw - room.w * scale) / 2, oy: (sh - room.l * scale) / 2 };
+  }
+  conflicts() {
+    const { items, room } = this.state, out = {}, e = 0.01;
+    items.forEach(a => {
+      const [aw, ad] = this.foot(a);
+      if (a.x < -e || a.y < -e || a.x + aw > room.w + e || a.y + ad > room.l + e) { out[a.id] = 'Outside the room'; return; }
+      if (a.h > room.h + e) { out[a.id] = 'Taller than the ceiling'; return; }
+      if (a.kind === 'rug') return;
+      const hit = items.find(b => {
+        if (b.id === a.id || b.kind === 'rug') return false;
+        const [bw, bd] = this.foot(b);
+        return a.x < b.x + bw - e && b.x < a.x + aw - e && a.y < b.y + bd - e && b.y < a.y + ad - e;
+      });
+      if (hit) out[a.id] = 'Overlaps ' + hit.name;
+    });
+    return out;
+  }
+
+  // ---------- interactions ----------
+  startDrag(e, onMove, onEnd) {
+    e.preventDefault(); e.stopPropagation();
+    const sx = e.clientX, sy = e.clientY;
+    const mv = ev => onMove(ev.clientX - sx, ev.clientY - sy);
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); if (onEnd) onEnd(); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  }
+  itemDown(id, e) {
+    const it = this.state.items.find(i => i.id === id), { scale } = this.layout(), x0 = it.x, y0 = it.y;
+    this.setState({ sel: id });
+    this.startDrag(e, (dx, dy) => this.setState(s => ({
+      items: s.items.map(i => {
+        if (i.id !== id) return i;
+        const [fw, fd] = this.foot(i);
+        return { ...i, x: this.clampSnap(x0 + dx / scale, s.room.w - fw), y: this.clampSnap(y0 + dy / scale, s.room.l - fd) };
+      }),
+    })));
+  }
+  roomDown(axis, e) {
+    const L = this.layout(), v0 = this.state.room[axis];
+    this._frozen = L;
+    this.startDrag(e, (dx, dy) => {
+      const v = Math.max(36, Math.min(720, Math.round((v0 + (axis === 'w' ? dx : dy) / L.scale) / 3) * 3));
+      this.setState(s => ({ room: { ...s.room, [axis]: v }, draft: { ...s.draft, [axis]: this.roomStr(v, s.units) } }));
+    }, () => { this._frozen = null; this.forceUpdate(); });
+  }
+  orbitDown(e) {
+    const y0 = this.state.yaw, p0 = this.state.pitch;
+    this.startDrag(e, (dx, dy) => this.setState({ yaw: y0 - dx * 0.008, pitch: Math.max(0.12, Math.min(1.45, p0 + dy * 0.006)) }));
+  }
+  rotateSel() {
+    this.setState(s => ({
+      items: s.items.map(i => {
+        if (i.id !== s.sel) return i;
+        const [fw, fd] = this.foot(i), cx = i.x + fw / 2, cy = i.y + fd / 2;
+        return { ...i, rot: (i.rot + 1) % 4, x: this.clampSnap(cx - fd / 2, s.room.w - fd), y: this.clampSnap(cy - fw / 2, s.room.l - fw) };
+      }),
+    }));
+  }
+  removeSel() { this.setState(s => ({ items: s.items.filter(i => i.id !== s.sel), sel: null })); }
+
+  // ---------- link lookup (simulated) ----------
+  runFetch(raw) {
+    const url = (raw ?? this.state.url).trim();
+    let host, path;
+    try {
+      const u = new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url);
+      host = u.hostname.replace(/^www\./, ''); path = u.pathname;
+      if (!host.includes('.')) throw 0;
+    } catch (err) { this.setState({ err: "That doesn't look like a link. Paste the full product URL." }); return; }
+    this.setState({ url, err: '', fetchState: 'loading', preview: null, loadingHost: host });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => {
+      const key = Object.keys(this.catalog).find(k => new RegExp(this.catalog[k].match, 'i').test(url));
+      let p;
+      if (key) { const c = this.catalog[key]; p = { kind: key, name: c.name, w: c.w, d: c.d, h: c.h, price: c.price, host, known: true, model: this.models[key] }; }
+      else {
+        let slug = decodeURIComponent(path.split('/').filter(Boolean).pop() || '').replace(/\.\w+$/, '').replace(/[-_]+/g, ' ').trim();
+        if (!slug || /^\d+$/.test(slug)) slug = 'Untitled product';
+        p = { kind: 'box', name: slug.charAt(0).toUpperCase() + slug.slice(1), w: 36, d: 24, h: 30, price: null, host, known: false, model: 'No model, shown as a sized box' };
+      }
+      const u = this.state.units;
+      this.setState({ fetchState: 'preview', preview: p, pdraft: { w: this.furnStr(p.w, u), d: this.furnStr(p.d, u), h: this.furnStr(p.h, u) } });
+    }, 900);
+  }
+  place() {
+    this.setState(s => {
+      const p = s.preview; if (!p) return null;
+      const id = this.nextId++;
+      const it = { id, kind: p.kind, name: p.name, host: p.host, price: p.price, w: p.w, d: p.d, h: p.h, rot: 0,
+        x: this.clampSnap((s.room.w - p.w) / 2, s.room.w - p.w), y: this.clampSnap((s.room.l - p.d) / 2, s.room.l - p.d) };
+      return { items: [...s.items, it], sel: id, preview: null, fetchState: 'idle', url: '' };
+    });
+  }
+
+  // ---------- 3D ----------
+  tokens() {
+    if (this._tok && this._tok.text) return this._tok;
+    const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
+    this._tok = { bg: v('--color-bg'), text: v('--color-text'), n100: v('--color-neutral-100'), n200: v('--color-neutral-200'),
+      a100: v('--color-accent-100'), a200: v('--color-accent-200'), a300: v('--color-accent-300'), a400: v('--color-accent-400'), a700: v('--color-accent-700') };
+    return this._tok;
+  }
+  front(a, b, cam) {
+    const e = 0.01, ax = [['x0', 'x1', 0], ['y0', 'y1', 1], ['z0', 'z1', 2]];
+    for (const [lo, hi, k] of ax) {
+      if (a[hi] <= b[lo] + e) { if (cam[k] <= a[hi]) return 1; if (cam[k] >= b[lo]) return -1; }
+      else if (b[hi] <= a[lo] + e) { if (cam[k] >= a[lo]) return 1; if (cam[k] <= b[hi]) return -1; }
+    }
+    return 0;
+  }
+  renderStyle() { return this.state.renderSel || this.props.renderStyle || 'realistic'; }
+  draw() { if (this.renderStyle() === 'realistic') this.drawGL(); else this.drawBlueprint(); }
+  disposeTree(o) { o.traverse(n => { if (n.geometry) n.geometry.dispose(); if (n.material) { if (n.material.map) n.material.map.dispose(); n.material.dispose(); } }); }
+  initGL(canvas) {
+    const T3 = window.THREE;
+    if (this._gl) this._gl.renderer.dispose();
+    const renderer = new T3.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.outputEncoding = T3.sRGBEncoding; renderer.shadowMap.enabled = true; renderer.shadowMap.type = T3.PCFSoftShadowMap;
+    const scene = new T3.Scene(), camera = new T3.PerspectiveCamera(40, 1, 1, 5000);
+    scene.add(new T3.HemisphereLight(0xffffff, 0xd8d2c8, 0.78));
+    const sun = new T3.DirectionalLight(0xffffff, 0.62);
+    sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.4; sun.shadow.radius = 3;
+    scene.add(sun); scene.add(sun.target);
+    this._gl = { renderer, scene, camera, sun, canvas, meshes: new Map(), roomKey: '', room: null, w: 0, h: 0 };
+  }
+  buildRoom(W, L, H, T) {
+    const T3 = window.THREE, g = new T3.Group();
+    const cv = document.createElement('canvas'); cv.width = cv.height = 512;
+    const x = cv.getContext('2d'); let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let r = 0; r < 8; r++) {
+      let px = -rnd() * 200;
+      while (px < 512) { const len = 160 + rnd() * 200; x.fillStyle = 'hsl(30, 30%, ' + (63 + rnd() * 8) + '%)'; x.fillRect(px, r * 64, len, 64); x.fillStyle = 'rgba(60,40,20,0.18)'; x.fillRect(px, r * 64, 1.5, 64); px += len; }
+      x.fillStyle = 'rgba(60,40,20,0.22)'; x.fillRect(0, r * 64, 512, 1.5);
+    }
+    const tex = new T3.CanvasTexture(cv); tex.wrapS = tex.wrapT = T3.RepeatWrapping; tex.repeat.set(W / 64, L / 64); tex.encoding = T3.sRGBEncoding; tex.anisotropy = 4;
+    const floor = new T3.Mesh(new T3.PlaneGeometry(W, L), new T3.MeshStandardMaterial({ map: tex, roughness: 0.75 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.set(W / 2, 0, L / 2); floor.receiveShadow = true; g.add(floor);
+    const wall = (len, px, pz, ry) => { const m = new T3.Mesh(new T3.PlaneGeometry(len, H), new T3.MeshStandardMaterial({ color: T.n100, roughness: 1 })); m.position.set(px, H / 2, pz); m.rotation.y = ry; m.receiveShadow = true; g.add(m); };
+    wall(W, W / 2, 0, 0); wall(W, W / 2, L, Math.PI); wall(L, 0, L / 2, Math.PI / 2); wall(L, W, L / 2, -Math.PI / 2);
+    return g;
+  }
+  buildFurniture(it, T) {
+    const T3 = window.THREE, g = new T3.Group(), { w, d, h } = it, c = this.looks[it.kind] || this.looks.box;
+    const mat = (col, rough) => new T3.MeshStandardMaterial({ color: col, roughness: rough ?? 0.92 });
+    const main = mat(c.main), soft = mat(c.soft || c.main), wood = mat(c.wood || c.main, 0.6), white = mat('#f3f1ec');
+    const B = (m, x0, x1, z0, z1, y0, y1, noShadow) => {
+      const me = new T3.Mesh(new T3.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), m);
+      me.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); me.castShadow = !noShadow; me.receiveShadow = true; g.add(me);
+    };
+    const hw = w / 2, hd = d / 2;
+    const legs = (m, inx, inz, top, r) => [[-hw + inx, -hd + inz], [hw - inx, -hd + inz], [-hw + inx, hd - inz], [hw - inx, hd - inz]].forEach(p => B(m, p[0] - r, p[0] + r, p[1] - r, p[1] + r, 0, top));
+    const k = it.kind;
+    if (k === 'sofa' || k === 'chair') {
+      const lg = Math.min(5, h * 0.15), seat = h * 0.52, aw = Math.min(8, w * 0.1), bd = d * 0.26, n = k === 'chair' ? 1 : 3, cw = (w - 2 * aw) / n;
+      legs(wood, 2.5, 2.5, lg, 1);
+      B(main, -hw, hw, -hd, hd - 1, lg, seat - 5); B(main, -hw, hw, -hd, -hd + bd * 0.45, lg, h * 0.9);
+      B(main, -hw, -hw + aw, -hd, hd - 1, lg, h * 0.72); B(main, hw - aw, hw, -hd, hd - 1, lg, h * 0.72);
+      for (let i = 0; i < n; i++) { const x0 = -hw + aw + i * cw; B(soft, x0 + 0.4, x0 + cw - 0.4, -hd + bd, hd, seat - 5, seat); B(soft, x0 + 0.4, x0 + cw - 0.4, -hd + bd * 0.45, -hd + bd, seat, h); }
+    } else if (k === 'bed') {
+      const ft = h * 0.3, mt = h * 0.55;
+      legs(wood, 3, 3, 3, 1.2); B(wood, -hw, hw, -hd + 2, hd, 3, ft); B(wood, -hw, hw, -hd, -hd + 2, 0, h);
+      B(white, -hw + 1.5, hw - 1.5, -hd + 2, hd - 1.5, ft, mt); B(main, -hw + 1, hw - 1, -hd + d * 0.32, hd - 1, ft + 2, mt + 1);
+      B(white, -hw + w * 0.08, -w * 0.04, -hd + 4, -hd + d * 0.24, mt, mt + 4); B(white, w * 0.04, hw - w * 0.08, -hd + 4, -hd + d * 0.24, mt, mt + 4);
+    } else if (k === 'desk') {
+      B(wood, -hw, hw, -hd, hd, h - 1.5, h); legs(mat(c.metal, 0.5), 2, 2, h - 1.5, 0.9);
+      B(wood, hw - w * 0.34, hw - 3, -hd + 2, hd - 1, h - 6.5, h - 1.5);
+    } else if (k === 'table') {
+      B(wood, -hw, hw, -hd, hd, h - 1.5, h); legs(wood, 2.5, 2.5, h - 1.5, 1); B(wood, -hw + 3, hw - 3, -hd + 3, hd - 3, h * 0.3, h * 0.3 + 0.8);
+    } else if (k === 'shelf') {
+      const t = 0.8, n = Math.max(2, Math.round(h / 14)), gap = (h - 2 - t) / n;
+      const books = ['#7c8a96', '#b9a48a', '#5f6b5c', '#a2584a', '#d8d2c4'].map(b => mat(b, 0.85));
+      let seed = it.id * 97 + 13; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      B(wood, -hw, -hw + t, -hd, hd, 0, h); B(wood, hw - t, hw, -hd, hd, 0, h); B(wood, -hw + t, hw - t, -hd, -hd + 0.4, 0, h);
+      for (let i = 0; i <= n; i++) {
+        const y = 2 + gap * i; B(wood, -hw + t, hw - t, -hd, hd, y, y + t);
+        if (i === n) break;
+        let x = -hw + t + 0.5; const lim = hw - t - 2 - rnd() * w * 0.3;
+        while (x < lim) { const bw = 1 + rnd() * 1.6, bh = (gap - t - 1) * (0.6 + rnd() * 0.35); B(books[Math.floor(rnd() * 5)], x, x + bw, -hd + 1, hd - 1 - rnd() * 2, y + t, y + t + bh); x += bw + 0.08; }
+      }
+    } else if (k === 'rug') {
+      B(main, -hw, hw, -hd, hd, 0, 0.4, true); B(soft, -hw + 4, hw - 4, -hd + 4, hd - 4, 0.4, 0.5, true);
+    } else B(main, -hw, hw, -hd, hd, 0, h);
+    const ol = new T3.LineSegments(new T3.EdgesGeometry(new T3.BoxGeometry(w + 1.2, h + 0.6, d + 1.2)), new T3.LineBasicMaterial({ color: T.a700 }));
+    ol.position.y = h / 2 + 0.3; ol.visible = false; g.add(ol); g.userData.outline = ol;
+    return g;
+  }
+  drawGL() {
+    const c = this.glRef.current, T3 = window.THREE; if (!c) return;
+    const T = this.tokens();
+    if (!T3 || !T.text) { setTimeout(() => this.scheduleDraw(), 200); return; }
+    const p3 = this.panes().three; if (!p3) return;
+    if (!this._gl || this._gl.canvas !== c) this.initGL(c);
+    const G = this._gl, fullW = p3.w, safeW = p3.safeW || p3.w, sh = p3.h, { room, yaw, pitch, zoom, sel, items } = this.state;
+    if (G.w !== fullW || G.h !== sh) { G.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); G.renderer.setSize(fullW, sh, false); G.w = fullW; G.h = sh; }
+    const W = room.w, L = room.l, H = room.h, rk = W + '|' + L + '|' + H;
+    if (G.roomKey !== rk) {
+      if (G.room) { G.scene.remove(G.room); this.disposeTree(G.room); }
+      G.room = this.buildRoom(W, L, H, T); G.scene.add(G.room); G.roomKey = rk;
+      const R = Math.hypot(W, L) / 2 + 24, s = G.sun, sc = s.shadow.camera;
+      s.position.set(0, H * 2.4, L * 1.4); s.target.position.set(W / 2, 0, L / 2); s.target.updateMatrixWorld();
+      sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = Math.hypot(W, L, H) * 5; sc.updateProjectionMatrix();
+    }
+    const bad = this.conflicts(), seen = {};
+    items.forEach(it => {
+      const key = [it.kind, it.w, it.d, it.h].join('|'); let e = G.meshes.get(it.id);
+      if (!e || e.key !== key) { if (e) { G.scene.remove(e.group); this.disposeTree(e.group); } e = { key, group: this.buildFurniture(it, T) }; G.scene.add(e.group); G.meshes.set(it.id, e); }
+      const [fw, fd] = this.foot(it); seen[it.id] = 1;
+      e.group.position.set(it.x + fw / 2, 0, it.y + fd / 2); e.group.rotation.y = -it.rot * Math.PI / 2;
+      const ol = e.group.userData.outline; ol.visible = it.id === sel || !!bad[it.id]; ol.material.color.set(it.id === sel ? T.a700 : T.text);
+    });
+    G.meshes.forEach((e, id) => { if (!seen[id]) { G.scene.remove(e.group); this.disposeTree(e.group); G.meshes.delete(id); } });
+    const cam = G.camera, focal = Math.min(safeW, sh) * 1.25, dist = Math.hypot(W, L, H) * 1.55 / zoom, cp = Math.cos(pitch), sp = Math.sin(pitch);
+    cam.fov = 2 * Math.atan(sh / 2 / focal) * 180 / Math.PI; cam.aspect = fullW / sh; cam.near = 1; cam.far = dist * 5;
+    cam.position.set(W / 2 + dist * cp * Math.sin(yaw), H * 0.35 + dist * sp, L / 2 + dist * cp * Math.cos(yaw)); cam.lookAt(W / 2, H * 0.35, L / 2);
+    const off = (fullW - safeW) / 2; if (off > 0) cam.setViewOffset(fullW, sh, off, 0, fullW, sh); else cam.clearViewOffset();
+    cam.updateProjectionMatrix(); G.renderer.render(G.scene, cam);
+  }
+  drawBlueprint() {
+    const c = this.canvasRef.current; if (!c) return;
+    const p3 = this.panes().three; if (!p3) return;
+    const fullW = p3.w, sw = p3.safeW || p3.w, sh = p3.h, { room, yaw, pitch, zoom, sel, items, units } = this.state;
+    const dpr = window.devicePixelRatio || 1, pw = Math.round(fullW * dpr), ph = Math.round(sh * dpr);
+    if (c.width !== pw || c.height !== ph) { c.width = pw; c.height = ph; }
+    const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, fullW, sh);
+    const T = this.tokens(); if (!T.text) { setTimeout(() => this.scheduleDraw(), 200); return; }
+    const W = room.w, L = room.l, H = room.h, ctr = [W / 2, L / 2, H * 0.35];
+    const dist = Math.hypot(W, L, H) * 1.55 / zoom, cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const cam = [ctr[0] + dist * cp * Math.sin(yaw), ctr[1] + dist * cp * Math.cos(yaw), ctr[2] + dist * sp];
+    // world = (x, -y, z)
+    const cw = [cam[0], -cam[1], cam[2]];
+    let f = [ctr[0] - cw[0], -ctr[1] - cw[1], ctr[2] - cw[2]]; const fl = Math.hypot(f[0], f[1], f[2]); f = f.map(v => v / fl);
+    let r = [f[1], -f[0], 0]; const rl = Math.hypot(r[0], r[1]); r = r.map(v => v / rl);
+    const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+    const focal = Math.min(sw, sh) * 1.25;
+    const P = p => {
+      const d = [p[0] - cw[0], -p[1] - cw[1], p[2] - cw[2]];
+      const zc = Math.max(1, d[0] * f[0] + d[1] * f[1] + d[2] * f[2]), s = focal / zc;
+      return [sw / 2 + (d[0] * r[0] + d[1] * r[1]) * s, sh / 2 - (d[0] * u[0] + d[1] * u[1] + d[2] * u[2]) * s];
+    };
+    const poly = (pts, fill, stroke, lw, dash, alpha) => {
+      g.beginPath(); pts.forEach((p, i) => { const q = P(p); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); g.closePath();
+      g.globalAlpha = alpha ?? 1; g.setLineDash(dash || []);
+      if (fill) { g.fillStyle = fill; g.fill(); }
+      if (stroke) { g.strokeStyle = stroke; g.lineWidth = lw || 1; g.lineJoin = 'round'; g.stroke(); }
+      g.globalAlpha = 1; g.setLineDash([]);
+    };
+    const line = (a, b, alpha) => { const p = P(a), q = P(b); g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.globalAlpha = alpha; g.strokeStyle = T.text; g.lineWidth = 1; g.stroke(); g.globalAlpha = 1; };
+
+    poly([[0, 0, 0], [W, 0, 0], [W, L, 0], [0, L, 0]], T.n100, T.text, 1.5);
+    const gu = units === 'm' ? 50 / 2.54 : 12;
+    for (let x = gu; x < W - 0.5; x += gu) line([x, 0, 0], [x, L, 0], 0.09);
+    for (let y = gu; y < L - 0.5; y += gu) line([0, y, 0], [W, y, 0], 0.09);
+    const walls = [
+      { vis: cam[1] > 0, pts: [[0, 0, 0], [W, 0, 0], [W, 0, H], [0, 0, H]] },
+      { vis: cam[1] < L, pts: [[0, L, 0], [W, L, 0], [W, L, H], [0, L, H]] },
+      { vis: cam[0] > 0, pts: [[0, 0, 0], [0, L, 0], [0, L, H], [0, 0, H]] },
+      { vis: cam[0] < W, pts: [[W, 0, 0], [W, L, 0], [W, L, H], [W, 0, H]] },
+    ];
+    walls.filter(w => w.vis).forEach(w => { poly(w.pts, T.a100, null, 1, null, 0.6); poly(w.pts, null, T.text, 1); });
+
+    const bad = this.conflicts(), boxes = [], rugs = [];
+    items.forEach(it => {
+      const [fw, fd] = this.foot(it);
+      (this.parts[it.kind] || this.parts.box).forEach(p => {
+        const m = this.mapPart(p, it.rot);
+        const b = { x0: it.x + m[0] * fw, x1: it.x + m[1] * fw, y0: it.y + m[2] * fd, y1: it.y + m[3] * fd, z0: p[4] * it.h, z1: p[5] * it.h, it };
+        (it.kind === 'rug' ? rugs : boxes).push(b);
+      });
+    });
+    const d2 = b => ((b.x0 + b.x1) / 2 - cam[0]) ** 2 + ((b.y0 + b.y1) / 2 - cam[1]) ** 2 + ((b.z0 + b.z1) / 2 - cam[2]) ** 2;
+    const order = [], rem = boxes.slice();
+    while (rem.length) {
+      let pick = -1, best = -1, far = 0, farD = -1;
+      for (let i = 0; i < rem.length; i++) {
+        const d = d2(rem[i]); if (d > farD) { farD = d; far = i; }
+        let blocked = false;
+        for (let j = 0; j < rem.length && !blocked; j++) if (j !== i && this.front(rem[i], rem[j], cam) === 1) blocked = true;
+        if (!blocked && d > best) { best = d; pick = i; }
+      }
+      order.push(rem.splice(pick < 0 ? far : pick, 1)[0]);
+    }
+    rugs.concat(order).forEach(b => {
+      const s = b.it.id === sel, dash = bad[b.it.id] ? [5, 4] : null, st = s ? T.a700 : T.text, lw = s ? 1.6 : 1;
+      const top = s ? T.a200 : (b.it.kind === 'rug' ? T.a100 : T.bg), sa = s ? T.a300 : T.n200, sb = s ? T.a400 : T.a200;
+      const { x0, x1, y0, y1, z0, z1 } = b;
+      if (cam[0] < x0) poly([[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], sa, st, lw, dash);
+      if (cam[0] > x1) poly([[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], sa, st, lw, dash);
+      if (cam[1] < y0) poly([[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], sb, st, lw, dash);
+      if (cam[1] > y1) poly([[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], sb, st, lw, dash);
+      if (cam[2] > z1) poly([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], top, st, lw, dash);
+    });
+    walls.filter(w => !w.vis).forEach(w => poly(w.pts, null, T.text, 1, [4, 5], 0.35));
+
+    const label = (p, txt, accent) => {
+      const q = P(p); g.font = '600 13px "Barlow Condensed", system-ui, sans-serif';
+      const w = g.measureText(txt).width + 12;
+      g.fillStyle = accent ? T.a700 : T.bg; g.fillRect(q[0] - w / 2, q[1] - 10, w, 20);
+      g.fillStyle = accent ? T.bg : T.text; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, q[0], q[1] + 1);
+    };
+    const nearY = cam[1] > L / 2, nearX = cam[0] > W / 2;
+    label([W / 2, nearY ? L + 10 : -10, 0], this.fmtLen(W));
+    label([nearX ? W + 10 : -10, L / 2, 0], this.fmtLen(L));
+    label([nearX ? 0 : W, nearY ? 0 : L, H / 2], this.fmtLen(H));
+    const si = items.find(i => i.id === sel);
+    if (si) { const [fw, fd] = this.foot(si); label([si.x + fw / 2, si.y + fd / 2, si.h + 8], si.name + ' · ' + this.fmtLen(si.h) + ' tall', true); }
+  }
+
+  renderVals() {
+    const s = this.state, { room, units, items, sel } = s;
+    const L = this.layout(), sc = L.scale, bad = this.conflicts(), nBad = Object.keys(bad).length;
+    const left = L.ox, top = L.oy, w = room.w * sc, h = room.l * sc;
+    const pn = this.panes(), mode = this.mode(), off = pn.plan && pn.plan.inset ? 22 : 30;
+    const deco = p => p ? { ...p, inset: !!p.inset, border: p.inset ? '1px solid var(--color-text)' : 'none',
+      bl: p.inset ? '1px solid var(--color-text)' : p.divider ? '1px solid var(--color-divider)' : 'none',
+      bg: p.inset ? 'var(--color-bg)' : 'transparent', shadow: p.inset ? 'var(--shadow-md)' : 'none' } : {};
+    const setMode = m => () => this.setState({ layoutSel: m });
+    const g = { left, top, w, h, dimTop: top - off, dimLeft: left - off, wLabel: this.fmtLen(room.w), lLabel: this.fmtLen(room.l),
+      grid: (units === 'm' ? 50 / 2.54 : 12) * sc, hwLeft: left + w - 6, hwTop: top + h / 2 - 16, hlLeft: left + w / 2 - 16, hlTop: top + h - 6 };
+    const items2d = items.map(it => {
+      const [fw, fd] = this.foot(it), isSel = it.id === sel, isBad = !!bad[it.id], pw = fw * sc, ph = fd * sc;
+      const base = it.kind === 'rug' ? 'color-mix(in srgb, var(--color-accent) 14%, var(--color-bg))' : 'var(--color-bg)';
+      return {
+        id: it.id, left: left + it.x * sc, top: top + it.y * sc, width: pw, height: ph,
+        z: isSel ? 4 : it.kind === 'rug' ? 1 : 2, name: it.name, dims: this.furnDims(it), showLabel: pw > 84 && ph > 38,
+        border: isSel ? '2px solid var(--color-accent)' : isBad ? '1.5px dashed var(--color-text)' : '1px solid var(--color-text)',
+        bg: isBad ? 'repeating-linear-gradient(45deg, var(--color-bg) 0 5px, color-mix(in srgb, var(--color-text) 16%, var(--color-bg)) 5px 6px)' : base,
+        onDown: e => this.itemDown(it.id, e),
+        parts: (this.parts[it.kind] || []).length > 1 ? this.parts[it.kind].map(p => { const m = this.mapPart(p, it.rot); return { l: m[0] * 100, t: m[2] * 100, w: (m[1] - m[0]) * 100, h: (m[3] - m[2]) * 100 }; }) : [],
+      };
+    });
+    const si = items.find(i => i.id === sel), clear = [];
+    if (si && (this.props.showClearances ?? true) && bad[si.id] !== 'Outside the room') {
+      const [fw, fd] = this.foot(si), mx = left + (si.x + fw / 2) * sc, my = top + (si.y + fd / 2) * sc, ln = '1px dashed var(--color-accent-700)';
+      const add = (gap, o) => { if (gap > 0.5) clear.push({ ...o, label: this.fmtLen(gap), lbl: gap * sc > 34 ? 'block' : 'none' }); };
+      add(si.x, { left, top: my, width: si.x * sc, height: 0, bt: ln, bl: 'none' });
+      add(room.w - si.x - fw, { left: left + (si.x + fw) * sc, top: my, width: (room.w - si.x - fw) * sc, height: 0, bt: ln, bl: 'none' });
+      add(si.y, { left: mx, top, width: 0, height: si.y * sc, bt: 'none', bl: ln });
+      add(room.l - si.y - fd, { left: mx, top: top + (si.y + fd) * sc, width: 0, height: (room.l - si.y - fd) * sc, bt: 'none', bl: ln });
+    }
+    const money = n => n == null ? 'No price' : '$' + n.toLocaleString('en-US');
+    const areaIn = room.w * room.l;
+    const p = s.preview;
+    return {
+      isFt: units === 'ft', isM: units === 'm', setFt: () => this.setUnits('ft'), setM: () => this.setUnits('m'),
+      roomUnit: units === 'm' ? 'm' : 'ft', roomStep: units === 'm' ? 0.05 : 0.25, furnUnit: units === 'm' ? 'cm' : 'in',
+      draft: s.draft, setW: e => this.setRoom('w', e.target.value), setL: e => this.setRoom('l', e.target.value), setH: e => this.setRoom('h', e.target.value),
+      area: units === 'm' ? (areaIn * 0.00064516).toFixed(1) + ' m²' : Math.round(areaIn / 144) + ' sq ft',
+      url: s.url, setUrl: e => this.setState({ url: e.target.value, err: '' }), urlKey: e => { if (e.key === 'Enter') this.runFetch(); },
+      fetchUrl: () => this.runFetch(), err: s.err, hasErr: !!s.err,
+      isIdle: s.fetchState === 'idle', isLoading: s.fetchState === 'loading', hasPreview: s.fetchState === 'preview' && !!p, loadingHost: s.loadingHost,
+      sampleSofa: () => this.runFetch('https://shop.example/living/alder-3-seat-sofa'),
+      sampleShelf: () => this.runFetch('https://shop.example/storage/girder-bookshelf'),
+      sampleUnknown: () => this.runFetch('https://market.example/item/48213'),
+      preview: p ? { ...p, priceText: money(p.price) } : {}, previewUnknown: !!p && !p.known, pdraft: s.pdraft,
+      setPW: e => this.setPrev('w', e.target.value), setPD: e => this.setPrev('d', e.target.value), setPH: e => this.setPrev('h', e.target.value),
+      place: () => this.place(), discard: () => this.setState({ preview: null, fetchState: 'idle', url: '' }),
+      rows: items.map(it => ({ name: it.name, dims: this.furnDims(it), price: money(it.price), conflict: bad[it.id] || '', hasConflict: !!bad[it.id],
+        bg: it.id === sel ? 'color-mix(in srgb, var(--color-accent) 16%, transparent)' : 'transparent', onClick: () => this.setState({ sel: it.id }) })),
+      noItems: !items.length, total: '$' + items.reduce((a, i) => a + (i.price || 0), 0).toLocaleString('en-US'),
+      showPlan: !!pn.plan, show3d: !!pn.three, plan: deco(pn.plan), three: deco(pn.three),
+      isInset: mode === 'inset', isSplit: mode === 'split', isTabs: mode === 'tabs',
+      setInset: setMode('inset'), setSplit: setMode('split'), setTabs: setMode('tabs'),
+      swap: () => this.setState(st => ({ swap: !st.swap })), stop: e => e.stopPropagation(),
+      is2d: s.view === '2d', is3d: s.view === '3d', set2d: () => this.setState({ view: '2d' }), set3d: () => this.setState({ view: '3d' }),
+      allFit: !nBad, hasConflicts: !!nBad, conflictText: nBad + (nBad === 1 ? ' conflict' : ' conflicts'),
+      glRef: this.glRef, isReal: this.renderStyle() === 'realistic', isBlue: this.renderStyle() !== 'realistic', showRenderSeg: !!pn.three && !pn.three.inset,
+      setReal: () => this.setState({ renderSel: 'realistic' }), setBlue: () => this.setState({ renderSel: 'blueprint' }),
+      stageRef: this.stageRef, canvasRef: this.canvasRef, g, items2d, clear,
+      deselect: () => this.setState({ sel: null }), dragW: e => this.roomDown('w', e), dragL: e => this.roomDown('l', e),
+      orbitDown: e => this.orbitDown(e), onWheel: e => { const dy = e.deltaY; this.setState(st => ({ zoom: Math.max(0.6, Math.min(2.5, st.zoom * Math.exp(-dy * 0.001))) })); },
+      hasSel: !!si, hint2d: !si && !!pn.plan, hint3d: !si && !pn.plan,
+      selName: si ? si.name : '', selDims: si ? this.furnDims(si) : '', selNote: si ? (bad[si.id] || '') : '',
+      rotateSel: () => this.rotateSel(), removeSel: () => this.removeSel(),
+    };
+  }
+}
+</script>
+</body>
+</html>
