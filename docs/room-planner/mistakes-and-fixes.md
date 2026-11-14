@@ -187,3 +187,24 @@ Entry format:
 - **Root cause:** GNU-only address syntax.
 - **Fix:** Re-ran with a plain substitution and confirmed with `grep` that the mutation was applied; the test then failed as expected.
 - **How to avoid:** After a scripted mutation, confirm the file changed before trusting a green run.
+
+### Try again called `reset()`, which cannot retry a failed chunk load
+- **Date:** 2026-11-13
+- **What happened:** The plan had the load-failure screen's `Try again` button call Next's `reset()`. Caught by the task review, not by tests.
+- **Root cause:** Under the App Router, `next/dynamic` wraps the loader in one `React.lazy` created at module scope, and React caches a rejected import for good, so `reset()` re-renders into the same error.
+- **Fix:** The button reloads the page (`window.location.reload()`), plan Amendment 3. Verified live in Task 11 row P10: with the planner chunk aborted the error screen showed; after removing the abort, `Try again` started a new document (navigation type `reload`) and the planner loaded.
+- **How to avoid:** For any retry UI, check where the failed promise is cached before choosing how to retry; verify the retry live with a blocked request.
+
+### A canonical link was planned without checking where the site URL comes from
+- **Date:** 2026-11-13
+- **What happened:** The plan added `alternates.canonical` to the new page.
+- **Root cause:** `lib/site.ts` falls back to the per-deployment `VERCEL_URL` when `NEXT_PUBLIC_SITE_URL` is unset, so a static page could ship a canonical pointing at a deployment address; it would have been the site's first canonical link.
+- **Fix:** Removed (plan Amendment 3); the fallback is listed as a follow-up.
+- **How to avoid:** Before emitting absolute URLs, trace the base URL's source in every environment.
+
+### Plan asserted a clean console on `/` without measuring `main` first
+- **Date:** 2026-11-13
+- **What happened:** Task 11 row P2 expected "console has 0 errors" on `/`. The first load logged one error, `Failed to load resource: … 404 (Not Found) @ http://localhost:3000/favicon.ico`, so the row failed and the task stopped as BLOCKED. `/` on `main` (7ed434e) logs the same single error: the 404 predates this work, and the move added nothing.
+- **Root cause:** The plan wrote a "zero errors" expectation for a page the change does not own without loading that page on `main` to see its baseline. (The 404 itself comes from `public/index.html` declaring no icon while the site ships no favicon.)
+- **Fix:** Plan Amendment 4: P2's console clause now reads "the console shows no error or warning that the same page on `main` (port 3001) does not also show". P2 passes under it. The missing favicon is a follow-up outside this plan's files.
+- **How to avoid:** Before writing a "zero errors" (or any "must stay at N") expectation, measure the baseline on `main` in a fresh browser context, and write the expectation relative to it.
