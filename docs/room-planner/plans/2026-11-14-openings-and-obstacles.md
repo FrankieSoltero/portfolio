@@ -205,6 +205,14 @@ slide).
    openings are carried onto their walls with `rehomeOpenings(given, normalised, openings)`
    before they are validated, so they stay on the same physical walls.
 
+## Amendment 4 (2026-11-14, controller ruling during Task 9)
+
+Task 8 added a test in `room-planner/components/Stage/PlanView.test.tsx` asserting that
+no obstacle element is focusable in either mode. Task 9 makes obstacles buttons in room
+mode, which re-specifies that assertion. Task 9's file list also includes
+`PlanView.test.tsx` for that one test: door and window drawings are never focusable;
+obstacles have `tabindex="0"` in room mode and no `tabindex` in furnish mode.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
