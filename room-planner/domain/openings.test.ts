@@ -4,6 +4,7 @@ import {
   OPENING_PROBLEM_TEXT,
   WINDOW_DEFAULTS,
   addOpening,
+  openingName,
   openingSpan,
   rehomeOpenings,
   removeOpening,
@@ -78,6 +79,40 @@ describe('openingSpan', () => {
 
   it('is null for a wall id not in the outline', () => {
     expect(openingSpan(R, { ...D1, wallId: 'zz' })).toBeNull();
+  });
+});
+
+describe('openingName', () => {
+  it('names an opening by kind and wall alone when its wall has one opening', () => {
+    const w = win('w1', 'c2', 20);
+    expect(openingName(R, [D1, w], D1)).toBe('Door on wall 1');
+    expect(openingName(R, [D1, w], w)).toBe('Window on wall 2');
+  });
+
+  it('numbers two doors on one wall by offset, whatever their order in the list', () => {
+    const left: Door = { ...D1, id: 'dl', offset: 0 };
+    const right: Door = { ...D1, id: 'dr', offset: 56 };
+    for (const list of [[left, right], [right, left]]) {
+      expect(openingName(R, list, left)).toBe('Door on wall 1 (1 of 2)');
+      expect(openingName(R, list, right)).toBe('Door on wall 1 (2 of 2)');
+    }
+  });
+
+  it('counts every door and window on the wall, as the plan handles always have', () => {
+    const early = win('w3', 'c1', 60, 30);
+    const late = win('w2', 'c1', 100, 30);
+    const list = [late, D1, early, win('w1', 'c2', 20)];
+    expect(list.map((o) => openingName(R, list, o))).toEqual([
+      'Window on wall 1 (3 of 3)',
+      'Door on wall 1 (1 of 3)',
+      'Window on wall 1 (2 of 3)',
+      'Window on wall 2',
+    ]);
+  });
+
+  it('counts walls from 1 in outline order', () => {
+    const list = [win('w4', 'c4', 60, 32)];
+    expect(openingName(R, list, list[0] as Opening)).toBe('Window on wall 4');
   });
 });
 

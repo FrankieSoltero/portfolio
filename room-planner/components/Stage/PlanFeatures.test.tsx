@@ -58,19 +58,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('PlanFeatures', () => {
-  it('draws a door as a gap line, a leaf line and an arc path inside svg.plan-features', () => {
+  it('draws a door as a gap line inside svg.plan-features, and a leaf line and an arc path inside svg.plan-features-over', () => {
     load([D1], []);
     render(<PlanFeatures layout={LAYOUT} />);
     const svg = document.querySelector('svg.plan-features');
     expect(svg).not.toBeNull();
+    const over = document.querySelector('svg.plan-features-over');
     const expected = doorDrawing(D1, ROOM.outline, LAYOUT);
     if (expected === null) throw new Error('no drawing');
 
     const gap = svg?.querySelector('line.plan-door-gap[data-opening-id="d1"]');
     expect([attr(gap, 'x1'), attr(gap, 'y1'), attr(gap, 'x2'), attr(gap, 'y2')]).toEqual([50, 20, 114, 20]);
-    const leaf = svg?.querySelector('line.plan-door-leaf[data-opening-id="d1"]');
+    const leaf = over?.querySelector('line.plan-door-leaf[data-opening-id="d1"]');
     expect([attr(leaf, 'x1'), attr(leaf, 'y1'), attr(leaf, 'x2'), attr(leaf, 'y2')]).toEqual([50, 20, 50, 84]);
-    const arc = svg?.querySelector('path.plan-door-arc[data-opening-id="d1"]');
+    const arc = over?.querySelector('path.plan-door-arc[data-opening-id="d1"]');
     expect(arc?.getAttribute('d')).toBe(expected.arc);
     expect(arc?.getAttribute('d')).toBe('M 114 20 A 64 64 0 0 1 50 84');
   });
@@ -102,6 +103,61 @@ describe('PlanFeatures', () => {
     expect(rule('.plan-window-band')).toMatch(/stroke-width:\s*6;/);
     expect(rule('.plan-window')).toMatch(/stroke:\s*var\(--color-text\);/);
     expect(Number(/stroke-width:\s*([\d.]+);/.exec(rule('.plan-window'))?.[1])).toBeLessThanOrEqual(1.5);
+  });
+
+  it('draws a door\'s leaf and arc once each, in svg.plan-features-over, and its gap, the windows and obstacles where they were', () => {
+    load([D1, W1], [BOX, COLUMN]);
+    render(<PlanFeatures layout={LAYOUT} />);
+    const under = document.querySelector('svg.plan-features');
+    const over = document.querySelector('svg.plan-features-over');
+    expect(over).not.toBeNull();
+    expect(over).toHaveAttribute('aria-hidden', 'true');
+    // Moved, not copied: one leaf and one arc in the whole document, both in the overlay.
+    expect(document.querySelectorAll('.plan-door-leaf')).toHaveLength(1);
+    expect(document.querySelectorAll('.plan-door-arc')).toHaveLength(1);
+    expect(over?.querySelector('line.plan-door-leaf[data-opening-id="d1"]')).not.toBeNull();
+    expect(over?.querySelector('path.plan-door-arc[data-opening-id="d1"]')).not.toBeNull();
+    expect(under?.querySelector('.plan-door-leaf, .plan-door-arc')).toBeNull();
+    // The gap and the windows stay in the SVG under the furniture; the overlay holds nothing else.
+    expect(under?.querySelectorAll('line.plan-door-gap[data-opening-id="d1"]')).toHaveLength(1);
+    expect(under?.querySelectorAll('[data-opening-id="w1"]')).toHaveLength(4);
+    expect(over?.querySelectorAll('[data-opening-id]')).toHaveLength(2);
+    // Obstacles are not in the overlay and have no inline z-index, so they stay under the furniture.
+    for (const id of ['o1', 'o2']) {
+      expect(over?.contains(obstacleEl(id))).toBe(false);
+      expect(obstacleEl(id).style.zIndex).toBe('');
+    }
+  });
+
+  it('keeps the conflict class on a conflicting door\'s leaf and arc in the overlay', () => {
+    // 100 in tall: taller than the 96 in ceiling.
+    load([{ ...D1, height: 100 }], []);
+    render(<PlanFeatures layout={LAYOUT} />);
+    const over = document.querySelector('svg.plan-features-over');
+    expect(over?.querySelector('.plan-door-leaf')).toHaveClass('is-conflict');
+    expect(over?.querySelector('.plan-door-arc')).toHaveClass('is-conflict');
+  });
+
+  it('styles the overlay to take no pointer input, above the furniture and below the room editor and clearance lines', () => {
+    const css = readFileSync(resolve(process.cwd(), 'room-planner/components/Stage/stage.css'), 'utf8');
+    const rule = (selector: string): string => {
+      const at = css.indexOf(`\n${selector} {`);
+      if (at < 0) throw new Error(`no rule ${selector}`);
+      return css.slice(at, css.indexOf('}', at));
+    };
+    const z = (selector: string): number => Number(/z-index:\s*(\d+)/.exec(rule(selector))?.[1]);
+    const over = rule('.plan-features-over');
+    expect(over).toMatch(/pointer-events:\s*none;/);
+    expect(over).toMatch(/position:\s*absolute;/);
+    // Furniture uses z-index 1 to 4.
+    expect(z('.plan-features-over')).toBeGreaterThan(4);
+    expect(z('.plan-features-over')).toBeLessThan(z('.room-wall-hit'));
+    expect(z('.plan-features-over')).toBeLessThan(z('.plan-clearance'));
+    // pointer-events is inherited; nothing in the overlay turns it back on.
+    expect(rule('.plan-door-leaf')).not.toMatch(/pointer-events/);
+    expect(rule('.plan-door-arc')).not.toMatch(/pointer-events/);
+    // The under-furniture SVG keeps no z-index.
+    expect(rule('.plan-features')).not.toMatch(/z-index/);
   });
 
   it('draws nothing for an opening whose wall is missing', () => {
@@ -281,6 +337,21 @@ describe('PlanFeatures obstacles in room mode', () => {
     obstacleEl('o1').focus();
     await user.keyboard(' ');
     expect(useUiStore.getState().selectedObstacleId).toBe('o1');
+  });
+
+  it.each([
+    ['primary', 0],
+    ['secondary', 2],
+  ] as const)('a %s pointer down moves keyboard focus to the obstacle only for the primary button', (_name, button) => {
+    render(<PlanFeatures layout={LAYOUT} />);
+    const other = document.createElement('input');
+    document.body.append(other);
+    other.focus();
+    expect(document.activeElement).toBe(other);
+    fireEvent.pointerDown(obstacleEl('o1'), { clientX: 100, clientY: 100, button });
+    expect(document.activeElement).toBe(button === 0 ? obstacleEl('o1') : other);
+    fireEvent.pointerUp(window);
+    other.remove();
   });
 
   it('a drag moves the obstacle from its centre by the movement over the scale', () => {

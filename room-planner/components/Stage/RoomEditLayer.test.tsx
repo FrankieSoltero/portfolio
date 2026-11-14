@@ -8,6 +8,7 @@ import { createInitialDocument } from '../../domain/catalog';
 import { openingSpan } from '../../domain/openings';
 import { wallsOf } from '../../domain/outline';
 import { roomBounds } from '../../domain/shape';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import type { Corner, Door, Obstacle, Opening, Point, WindowOpening } from '../../domain/types';
 import { addCornerOnWall, dragCornerTo, placeOpeningOnWall, slideOpeningTo } from '../../state/actions';
 import { usePlanStore } from '../../state/planStore';
@@ -573,6 +574,66 @@ describe('RoomEditLayer opening handles', () => {
     openingHandle('Door on wall 1').focus();
     await user.keyboard(' ');
     expect(useUiStore.getState().selectedOpeningId).toBe('d1');
+  });
+});
+
+describe('RoomEditLayer handles take focus on a primary press', () => {
+  /** A control outside the plan, focused, standing in for a sidebar control (the Hinge radio). */
+  function focusElsewhere(): HTMLElement {
+    const other = document.createElement('input');
+    other.type = 'radio';
+    document.body.append(other);
+    other.focus();
+    expect(document.activeElement).toBe(other);
+    return other;
+  }
+
+  afterEach(() => {
+    fireEvent.pointerUp(window);
+    document.querySelectorAll('body > input').forEach((el) => el.remove());
+  });
+
+  it.each([
+    ['an opening handle', () => openingHandle('Door on wall 1')],
+    ['a corner handle', () => handle(2)],
+  ])('a primary pointer down on %s moves keyboard focus to it', (_name, target) => {
+    loadOpenings([D1, W1]);
+    renderLayer();
+    focusElsewhere();
+    const el = target();
+    fireEvent.pointerDown(el, { clientX: 100, clientY: 100, button: 0 });
+    expect(document.activeElement).toBe(el);
+  });
+
+  it.each([
+    ['an opening handle', () => openingHandle('Door on wall 1')],
+    ['a corner handle', () => handle(2)],
+  ])('a secondary pointer down on %s leaves focus where it was', (_name, target) => {
+    loadOpenings([D1, W1]);
+    renderLayer();
+    const other = focusElsewhere();
+    fireEvent.pointerDown(target(), { clientX: 100, clientY: 100, button: 2 });
+    expect(document.activeElement).toBe(other);
+  });
+
+  it('after a press on a door handle, ArrowRight slides the door and not the control focused before', async () => {
+    function Shortcuts(): null {
+      useKeyboardShortcuts();
+      return null;
+    }
+    loadOpenings([D1, W1]);
+    render(
+      <>
+        <Shortcuts />
+        <RoomEditLayer layout={layout} />
+      </>,
+    );
+    focusElsewhere();
+    const user = userEvent.setup();
+    fireEvent.pointerDown(openingHandle('Door on wall 1'), { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerUp(window);
+    await user.keyboard('{ArrowRight}');
+    expect(storedOpening('d1')?.offset).toBe(D1.offset + 1);
   });
 });
 

@@ -8,7 +8,7 @@ import { useConflicts } from '../../state/selectors';
 import { useUiStore } from '../../state/uiStore';
 import { doorDrawing, windowDrawing } from '../../view/planFeatures';
 import { planItemBox, type PlanLayout } from '../../view/planLayout';
-import { isPrimaryPress, useRoomModeDrag } from './RoomEditLayer';
+import { focusPressed, isPrimaryPress, useRoomModeDrag } from './RoomEditLayer';
 
 /** An obstacle's label is shown only when its box is wider than this on screen, in px. */
 const OBSTACLE_LABEL_MIN_W = 48;
@@ -18,11 +18,14 @@ function lineClass(base: string, conflict: boolean): string {
 }
 
 /**
- * The plan's doors, windows and fixed obstacles, drawn over the walls and under the furniture.
- * The doors and windows are a drawing only, hidden from assistive technology (the room editor puts
- * a handle on each). In furnish mode the obstacles are a drawing too; in room mode each is a
- * button (named by its label, `aria-pressed` when selected) that pointer down selects and drags,
- * and Enter or Space selects. Obstacle labels are React text, never markup.
+ * The plan's doors, windows and fixed obstacles. The door gaps, the windows and the obstacles are
+ * drawn over the walls and under the furniture; each door's leaf and swing arc are drawn in a
+ * second SVG over the furniture (stage.css gives it a z-index above the items), so furniture
+ * standing in a door's swing does not hide what it blocks. Both SVGs are a drawing only, hidden from
+ * assistive technology (the room editor puts a handle on each opening) and taking no pointer input.
+ * In furnish mode the obstacles are a drawing too; in room mode each is a button (named by its
+ * label, `aria-pressed` when selected) that pointer down selects, focuses and drags, and Enter or
+ * Space selects. Obstacle labels are React text, never markup.
  */
 export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
   const outline = usePlanStore((s) => s.room.outline);
@@ -35,8 +38,9 @@ export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
   const conflicts = useConflicts();
 
   // Moves the obstacle's centre from where it was at pointer down by the movement over the scale.
-  const onObstacleDown = (obstacle: Obstacle, e: React.PointerEvent): void => {
+  const onObstacleDown = (obstacle: Obstacle, e: React.PointerEvent<HTMLElement>): void => {
     if (!isPrimaryPress(e)) return;
+    focusPressed(e);
     selectObstacle(obstacle.id);
     const { scale } = layout;
     const { id, x: x0, y: y0 } = obstacle;
@@ -62,30 +66,17 @@ export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
   return (
     <>
       <svg className="plan-features" aria-hidden="true">
-        {doors.map((d) => {
-          const conflict = conflicts[d.id] !== undefined;
-          return (
-            <g key={d.id}>
-              <line
-                className={lineClass('plan-door-gap', conflict)}
-                data-opening-id={d.id}
-                x1={d.gap[0].x}
-                y1={d.gap[0].y}
-                x2={d.gap[1].x}
-                y2={d.gap[1].y}
-              />
-              <line
-                className={lineClass('plan-door-leaf', conflict)}
-                data-opening-id={d.id}
-                x1={d.leaf[0].x}
-                y1={d.leaf[0].y}
-                x2={d.leaf[1].x}
-                y2={d.leaf[1].y}
-              />
-              <path className={lineClass('plan-door-arc', conflict)} data-opening-id={d.id} d={d.arc} />
-            </g>
-          );
-        })}
+        {doors.map((d) => (
+          <line
+            key={d.id}
+            className={lineClass('plan-door-gap', conflicts[d.id] !== undefined)}
+            data-opening-id={d.id}
+            x1={d.gap[0].x}
+            y1={d.gap[0].y}
+            x2={d.gap[1].x}
+            y2={d.gap[1].y}
+          />
+        ))}
         {windows.map((w) => {
           const className = lineClass('plan-window', conflicts[w.id] !== undefined);
           // The band clears the wall line; the outside edge, the centre and the inside edge are drawn on it.
@@ -118,7 +109,7 @@ export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
               tabIndex: 0,
               'aria-label': obstacleName(o),
               'aria-pressed': isSelected,
-              onPointerDown: (e: React.PointerEvent) => onObstacleDown(o, e),
+              onPointerDown: (e: React.PointerEvent<HTMLElement>) => onObstacleDown(o, e),
               // Assistive technology activates a button with a synthetic click; selecting is idempotent.
               onClick: () => selectObstacle(o.id),
               onKeyDown: (e: React.KeyboardEvent) => onObstacleKey(o, e),
@@ -144,6 +135,25 @@ export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
           </div>
         );
       })}
+      {/* Over the furniture: the leaf and swing arc of each door. */}
+      <svg className="plan-features-over" aria-hidden="true">
+        {doors.map((d) => {
+          const conflict = conflicts[d.id] !== undefined;
+          return (
+            <g key={d.id}>
+              <line
+                className={lineClass('plan-door-leaf', conflict)}
+                data-opening-id={d.id}
+                x1={d.leaf[0].x}
+                y1={d.leaf[0].y}
+                x2={d.leaf[1].x}
+                y2={d.leaf[1].y}
+              />
+              <path className={lineClass('plan-door-arc', conflict)} data-opening-id={d.id} d={d.arc} />
+            </g>
+          );
+        })}
+      </svg>
     </>
   );
 }

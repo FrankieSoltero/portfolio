@@ -131,6 +131,14 @@ describe('RoomFeatures', () => {
     expect(screen.queryByText('None yet.')).toBeNull();
   });
 
+  it('names two doors on one wall as the plan handles do: (1 of 2) and (2 of 2) by offset', () => {
+    seed([DOOR, { ...DOOR, id: 'd0', offset: 0 }]);
+    render(<RoomFeatures />);
+    expect(rowNames()).toEqual(['Door on wall 1 (2 of 2)', 'Door on wall 1 (1 of 2)']);
+    act(() => useUiStore.getState().selectOpening('d0'));
+    expect(screen.getByRole('group', { name: 'Door on wall 1 (1 of 2)' })).toBeInTheDocument();
+  });
+
   it('selects a door, window or obstacle when its row is clicked, marking that row pressed', async () => {
     seed([DOOR, WINDOW], [BOX]);
     render(<RoomFeatures />);

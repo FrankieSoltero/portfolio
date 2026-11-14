@@ -1,8 +1,8 @@
 import { type ChangeEvent, type JSX, useId, useState } from 'react';
 import { CONFIG } from '../../config';
 import { obstacleName } from '../../domain/obstacles';
-import { wallsOf } from '../../domain/outline';
-import type { Door, Obstacle, Opening, Units, WindowOpening } from '../../domain/types';
+import { openingName } from '../../domain/openings';
+import type { Door, Obstacle, Units, WindowOpening } from '../../domain/types';
 import { furnInputStr, furnUnitLabel, parseLengthInput } from '../../domain/units';
 import {
   addObstacleAtCentre,
@@ -156,12 +156,6 @@ const ARMED_HELP: Readonly<Record<'door' | 'window', string>> = {
   window: 'Click a wall to place the window.',
 };
 
-/** `Door on wall <n>` / `Window on wall <n>`, n counted from 1 in outline order. */
-function openingName(opening: Opening, wallIds: readonly string[]): string {
-  const kind = opening.kind === 'door' ? 'Door' : 'Window';
-  return `${kind} on wall ${wallIds.indexOf(opening.wallId) + 1}`;
-}
-
 function DoorFields({ door }: { door: Door }) {
   return (
     <>
@@ -232,13 +226,12 @@ function RoomFeaturesPanel(): JSX.Element {
   const selectOpening = useUiStore((s) => s.selectOpening);
   const selectObstacle = useUiStore((s) => s.selectObstacle);
   const conflicts = useConflicts();
-  const wallIds = wallsOf(outline).map((w) => w.id);
   const selectedOpening = openings.find((o) => o.id === selectedOpeningId);
   const selectedObstacle = obstacles.find((o) => o.id === selectedObstacleId);
   const selected = selectedOpening ?? selectedObstacle;
   const selectedName =
     selectedOpening !== undefined
-      ? openingName(selectedOpening, wallIds)
+      ? openingName(outline, openings, selectedOpening)
       : selectedObstacle !== undefined
         ? obstacleName(selectedObstacle)
         : '';
@@ -247,7 +240,7 @@ function RoomFeaturesPanel(): JSX.Element {
   const rows: ListRow[] = [
     ...openings.map((o) => ({
       id: o.id,
-      name: openingName(o, wallIds),
+      name: openingName(outline, openings, o),
       selected: o.id === selectedOpeningId,
       select: () => selectOpening(o.id),
     })),

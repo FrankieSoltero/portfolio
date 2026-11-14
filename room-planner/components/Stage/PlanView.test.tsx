@@ -712,14 +712,17 @@ describe('PlanView doors, windows and obstacles', () => {
     render(<PlanView pane={MAIN} />);
     const L = seedLayout();
     const svg = document.querySelector('svg.plan-features');
-    expect(svg?.querySelectorAll('[data-opening-id="d1"]')).toHaveLength(3);
+    const over = document.querySelector('svg.plan-features-over');
+    // The gap is under the furniture; the leaf and arc are in the overlay over it.
+    expect(svg?.querySelectorAll('[data-opening-id="d1"]')).toHaveLength(1);
+    expect(over?.querySelectorAll('[data-opening-id="d1"]')).toHaveLength(2);
     expect(svg?.querySelectorAll('line.plan-window[data-opening-id="w1"]')).toHaveLength(3);
     expect(svg?.querySelectorAll('line.plan-window-band[data-opening-id="w1"]')).toHaveLength(1);
-    const arc = svg?.querySelector('path.plan-door-arc');
+    const arc = over?.querySelector('path.plan-door-arc');
     expect(arc?.getAttribute('d')).toBe(doorDrawing(D1, usePlanStore.getState().room.outline, L)?.arc);
     expect(document.querySelectorAll('div.plan-obstacle')).toHaveLength(2);
     // The drawings of doors and windows are never focusable; obstacles are buttons in room mode only.
-    for (const el of document.querySelectorAll('svg.plan-features, [data-opening-id]')) {
+    for (const el of document.querySelectorAll('svg.plan-features, svg.plan-features-over, [data-opening-id]')) {
       expect(el).not.toHaveAttribute('tabindex');
     }
     for (const el of document.querySelectorAll('[data-obstacle-id]')) {
@@ -734,8 +737,22 @@ describe('PlanView doors, windows and obstacles', () => {
       }
     }
     expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(over).toHaveAttribute('aria-hidden', 'true');
     // The furniture count is unaffected: the drawings use other data attributes.
     expect(document.querySelectorAll('[data-item-id]')).toHaveLength(2);
+  });
+
+  it.each(['furnish', 'room'] as const)('draws the door\'s leaf and arc in the overlay above the furniture in %s mode', (mode) => {
+    usePlanStore.getState().reset(withFeatures([D1, W1]));
+    useUiStore.getState().setMode(mode);
+    render(<PlanView pane={MAIN} />);
+    const over = document.querySelector('svg.plan-features-over');
+    expect(over?.querySelectorAll('.plan-door-leaf[data-opening-id="d1"], .plan-door-arc[data-opening-id="d1"]')).toHaveLength(2);
+    expect(document.querySelectorAll('.plan-door-leaf, .plan-door-arc')).toHaveLength(2);
+    expect(document.querySelector('svg.plan-features')?.querySelector('.plan-door-leaf, .plan-door-arc')).toBeNull();
+    // The bed is in D1's swing and conflicts; the overlay is not part of any item.
+    expect(itemEl('seed-bed').contains(over)).toBe(false);
+    expect(over?.closest('.plan-view')).not.toBeNull();
   });
 
   it('stacks room, walls, openings, obstacles, furniture and clearance lines in that order', () => {

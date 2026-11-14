@@ -154,6 +154,19 @@ export function openingSpan(outline: readonly Corner[], opening: Opening): Openi
 }
 
 /**
+ * The name the plan handle and the sidebar row both give `opening`: `Door on wall <n>` or
+ * `Window on wall <n>`, n counted from 1 in outline order, and when its wall has more than one door
+ * or window (both kinds counted together), its ordinal among them by offset, as in
+ * `Door on wall 1 (2 of 3)`. An opening whose wall is not in the outline is named for wall 0.
+ */
+export function openingName(outline: readonly Corner[], openings: readonly Opening[], opening: Opening): string {
+  const wallIndex = wallById(outline, opening.wallId)?.index ?? -1;
+  const name = `${opening.kind === 'door' ? 'Door' : 'Window'} on wall ${wallIndex + 1}`;
+  const onWall = openings.filter((o) => o.wallId === opening.wallId).sort((a, b) => a.offset - b.offset);
+  return onWall.length > 1 ? `${name} (${onWall.findIndex((o) => o.id === opening.id) + 1} of ${onWall.length})` : name;
+}
+
+/**
  * The first problem with the openings on `outline`, checked in the order: too-many-openings (more
  * than CONFIG.maxOpenings), opening-size (a width, height or sill outside its limits, or an offset
  * or size that is not a finite number), opening-off-wall (an unknown wall, or not fitting its wall),

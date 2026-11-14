@@ -72,11 +72,24 @@
   pointer-events: none;
 }
 
-/* Doors, windows and obstacles: drawn over the walls and under the furniture, with no z-index
+/* Door gaps, windows and obstacles: drawn over the walls and under the furniture, with no z-index
    (document order puts them below the items' z-index 1 to 4). Drawing only: no pointer input,
    except obstacles in room mode (.plan-obstacle.is-editable, under Room editing). */
 .plan-features {
   position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+/* Door leaves and swing arcs: over the furniture (z-index 5, above the items' 1 to 4), so a piece
+   standing in a door's swing does not hide it. No pointer input for anything in it (pointer-events
+   is inherited), so furniture under an arc is still pressed and dragged as before. */
+.plan-features-over {
+  position: absolute;
+  z-index: 5;
   left: 0;
   top: 0;
   width: 100%;
@@ -247,8 +260,11 @@
 
 /* ── Room editing ─────────────────────────────────────────────────────────── */
 /* Stacking in room mode, bottom to top: the editor's backdrop (no z-index), the inert furniture
-   (1 to 4), editable obstacles (5), wall bands (6), door and window handles (7) and corner
-   handles (8), all under the inset frame (9). Clearance lines (7) are not drawn in room mode. */
+   (1 to 4), editable obstacles (5), door leaves and swing arcs (.plan-features-over, 5, later in
+   document order, so over the obstacles; no pointer input), wall bands (6), door and window
+   handles (7) and corner handles (8), all under the inset frame (9). In furnish mode the leaves and
+   arcs (5) are over the furniture and under the clearance lines (7); clearance lines are not drawn
+   in room mode. */
 
 /* In room mode the furniture is inert: dimmed, and pointer input passes through to the plan. */
 .plan-item[inert] {

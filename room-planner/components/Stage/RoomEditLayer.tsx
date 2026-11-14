@@ -1,7 +1,7 @@
 import type React from 'react';
 import { createContext, useContext, useEffect, useRef, type JSX } from 'react';
 import { CONFIG } from '../../config';
-import { openingSpan } from '../../domain/openings';
+import { openingName, openingSpan } from '../../domain/openings';
 import { wallsOf, type Wall } from '../../domain/outline';
 import type { Corner, Opening, Point } from '../../domain/types';
 import { startDrag } from '../../hooks/startDrag';
@@ -84,27 +84,27 @@ export function isPrimaryPress(e: React.PointerEvent): boolean {
   return e.button === 0;
 }
 
-function midpoint(a: Point, b: Point): Point {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+/**
+ * Moves keyboard focus to the pressed handle or obstacle. The drag's pointer down prevents the
+ * default, which would otherwise focus it, so without this the arrow keys and Delete would still go
+ * to whatever control had focus before (a sidebar radio group, say) instead of the selection.
+ */
+export function focusPressed(e: React.PointerEvent<HTMLElement>): void {
+  e.currentTarget.focus({ preventScroll: true });
 }
 
-/**
- * The handle's accessible name: `Door on wall <n>` or `Window on wall <n>`, and when its wall has
- * more than one door or window, its ordinal among them by offset, as in `Door on wall 1 (2 of 3)`.
- */
-function openingHandleName(opening: Opening, wallIndex: number, openings: readonly Opening[]): string {
-  const name = `${opening.kind === 'door' ? 'Door' : 'Window'} on wall ${wallIndex + 1}`;
-  const onWall = openings.filter((o) => o.wallId === opening.wallId).sort((a, b) => a.offset - b.offset);
-  return onWall.length > 1 ? `${name} (${onWall.indexOf(opening) + 1} of ${onWall.length})` : name;
+function midpoint(a: Point, b: Point): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
 /**
  * The on-plan room editor shown in room mode, bottom to top: a transparent backdrop over the whole
  * plan (pointer down clears the room selection), a hit band along every wall (pointer down adds a
  * corner there, or places the armed door or window), a handle on every door and window (pointer
- * down selects it and slides it along its wall) and a handle on every corner (pointer down selects
- * it and drags it). Enter or Space on a handle selects it. The layer fills the plan view; positions
- * are pane pixels from `layout`, and the wall-click position is measured from the plan view's box.
+ * down selects and focuses it and slides it along its wall) and a handle on every corner (pointer
+ * down selects and focuses it and drags it). Enter or Space on a handle selects it. The layer fills
+ * the plan view; positions are pane pixels from `layout`, and the wall-click position is measured
+ * from the plan view's box.
  * Obstacles are made editable by PlanFeatures and stack between the backdrop and the wall bands.
  */
 export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
@@ -118,8 +118,9 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
   const beginDrag = useRoomModeDrag();
   const layerRef = useRef<HTMLDivElement>(null);
 
-  const onCornerDown = (corner: Corner, e: React.PointerEvent): void => {
+  const onCornerDown = (corner: Corner, e: React.PointerEvent<HTMLElement>): void => {
     if (!isPrimaryPress(e)) return;
+    focusPressed(e);
     selectCorner(corner.id);
     const { scale } = layout;
     const start = { x: corner.x, y: corner.y };
@@ -138,8 +139,9 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
   };
 
   // The opening slides by the pointer movement's component along its wall (unit direction u).
-  const onOpeningDown = (opening: Opening, u: Point, e: React.PointerEvent): void => {
+  const onOpeningDown = (opening: Opening, u: Point, e: React.PointerEvent<HTMLElement>): void => {
     if (!isPrimaryPress(e)) return;
+    focusPressed(e);
     selectOpening(opening.id);
     const { scale } = layout;
     const start = opening.offset;
@@ -196,7 +198,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
             key={opening.id}
             type="button"
             className="room-opening"
-            aria-label={openingHandleName(opening, span.wallIndex, openings)}
+            aria-label={openingName(outline, openings, opening)}
             aria-pressed={opening.id === selectedOpeningId}
             style={{ left: p.x, top: p.y }}
             onPointerDown={(e) => onOpeningDown(opening, span.u, e)}
