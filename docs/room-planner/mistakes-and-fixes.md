@@ -208,3 +208,11 @@ Entry format:
 - **Root cause:** The plan wrote a "zero errors" expectation for a page the change does not own without loading that page on `main` to see its baseline. (The 404 itself comes from `public/index.html` declaring no icon while the site ships no favicon.)
 - **Fix:** Plan Amendment 4: P2's console clause now reads "the console shows no error or warning that the same page on `main` (port 3001) does not also show". P2 passes under it. The missing favicon is a follow-up outside this plan's files.
 - **How to avoid:** Before writing a "zero errors" (or any "must stay at N") expectation, measure the baseline on `main` in a fresh browser context, and write the expectation relative to it.
+- **See also:** this is the same symptom as the 2026-11-12 entry "First load logged a favicon 404", recurring on a different page (the homepage); that entry's lesson was not applied to the homepage.
+
+### A log line went stale after a later task changed the fact it stated
+- **Date:** 2026-11-13
+- **What happened:** Task 1 wrote "Left as-is: `zod` 3.x" in `docs/fixes-log.md`. Task 2 then upgraded zod and added its own subsection without revisiting Task 1's line, so the audit record contradicted itself. The Task 2 review caught it and the final review confirmed it.
+- **Root cause:** Task 2 changed a fact that an earlier log entry stated, and only added new text instead of checking the older entry.
+- **Fix:** The Task 1 line now says it was left as-is at that step and points to the zod upgrade subsection.
+- **How to avoid:** When a task changes a fact an earlier log entry states, update that entry in the same commit.

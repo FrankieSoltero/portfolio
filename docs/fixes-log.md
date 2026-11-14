@@ -147,7 +147,8 @@
   Why: `next@15.5.29`, the newest 15.x, pins `postcss` to exactly `8.4.31`, so
   `npm audit fix` cannot move it; npm's only offered fix is Next 16 (a major).
   **Remove this override when Next is upgraded to 16.**
-- Left as-is (fixes are semver-major): `zod` 3.x (fix is 4.x) and `katex` 0.16.x
+- Left as-is at this step (fixes are semver-major): `zod` 3.x (fix is 4.x; upgraded in the next
+  step, see "zod upgrade" below) and `katex` 0.16.x
   (fix is 0.19.x, which also flags `rehype-katex` and `remark-math`).
 
 ### Verification
