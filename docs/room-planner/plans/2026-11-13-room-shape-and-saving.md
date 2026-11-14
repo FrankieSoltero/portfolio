@@ -132,6 +132,15 @@ In both interfaces the pane-size fields are renamed `viewWidth` and `viewHeight`
 (Task 4 for `SceneInput`, Task 5 for `BlueprintInput`); `outline` and `height` are the
 room, as the tasks say.
 
+## Amendment 3 (2026-11-13, controller ruling after Task 5)
+
+Task 5's "Prism drawing" row coloured prism sides by the item's own edge index. That
+reverses the two side colours for items at 90° and 270° compared with slice A, where
+sides were coloured by the plan axis they face. The rule is replaced: a side whose
+outward normal `(nx, ny)` has `|nx| > |ny|` uses the existing `sideX` colours, and
+every other side uses the existing `sideY` colours. At 0°, 90°, 180° and 270° this
+gives exactly the slice A colours.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
