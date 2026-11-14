@@ -3,11 +3,12 @@ import { CONFIG } from '../config';
 import { createInitialDocument, PARTS } from '../domain/catalog';
 import { boundsOf } from '../domain/polygon';
 import { footprintCorners, itemFootprint, partCorners, roomBounds, roomHeight } from '../domain/shape';
-import type { Item, Kind, Point } from '../domain/types';
+import { obstaclePolygon } from '../domain/obstacles';
+import type { Item, Kind, Obstacle, Point } from '../domain/types';
 import { placedItem, rectRoom } from '../test/fixtures';
 import { computeCameraPose } from './camera';
 import type { Vec3 } from './camera';
-import { buildPrisms, frontOf, makeProjector, sortPrisms } from './blueprintScene';
+import { buildPrisms, frontOf, makeProjector, obstaclePrisms, sortPrisms } from './blueprintScene';
 import type { Prism } from './blueprintScene';
 import type { PaneRect } from './panes';
 
@@ -31,7 +32,7 @@ function prism(id: string, x0: number, x1: number, y0: number, y1: number, z0 = 
   };
 }
 
-function prismFrom(id: string, pts: readonly [Point, Point, Point, Point], z0 = 0, z1 = 10): Prism {
+function prismFrom(id: string, pts: readonly Point[], z0 = 0, z1 = 10): Prism {
   return { pts, z0, z1, itemId: id, kind: 'box' };
 }
 
@@ -183,6 +184,35 @@ describe('buildPrisms', () => {
   });
 });
 
+/** A fixed obstacle with the given shape and size, centred at (x, y). */
+function obstacle(id: string, shape: Obstacle['shape'], x: number, y: number, width: number, depth: number,
+  height: number, elevation = 0): Obstacle {
+  return { id, shape, label: '', x, y, rotation: 0, width, depth, height, elevation };
+}
+
+describe('obstaclePrisms', () => {
+  it('extrudes a box obstacle from its elevation to elevation + height, flagged as an obstacle', () => {
+    const box = { ...obstacle('ob-1', 'box', 30, 130, 20, 10, 30, 40), rotation: 90 };
+    const [p, ...rest] = obstaclePrisms([box]);
+    expect(rest).toHaveLength(0);
+    expect(p).toEqual({ pts: obstaclePolygon(box), z0: 40, z1: 70, itemId: 'ob-1', kind: 'box', obstacle: true });
+    expect(p?.pts).toHaveLength(4);
+  });
+
+  it('gives a column its 16-point polygon, one prism per obstacle in order', () => {
+    const column = obstacle('ob-2', 'cylinder', 50, 50, 12, 12, 96);
+    const prisms = obstaclePrisms([obstacle('ob-1', 'box', 10, 10, 5, 5, 5), column]);
+    expect(prisms.map((p) => p.itemId)).toEqual(['ob-1', 'ob-2']);
+    expect(at(prisms, 1).pts).toHaveLength(16);
+    expect(at(prisms, 1).pts).toEqual(obstaclePolygon(column));
+    expect(at(prisms, 1)).toMatchObject({ z0: 0, z1: 96, kind: 'box', obstacle: true });
+  });
+
+  it('makes no prisms for no obstacles', () => {
+    expect(obstaclePrisms([])).toEqual([]);
+  });
+});
+
 describe('frontOf', () => {
   it('puts a in front when it is entirely left of b and the camera is left of a', () => {
     const a = prism('a', 0, 10, 0, 10);
@@ -252,6 +282,37 @@ describe('frontOf', () => {
     const diamondSide: Vec3 = [-100, -100, 5];
     expect(frontOf(diamond, square, diamondSide)).toBe(1);
     expect(frontOf(square, diamond, diamondSide)).toBe(-1);
+  });
+});
+
+describe('many-sided prisms', () => {
+  // A 16-sided column of radius 10 centred at (20, 5), x 10–30, beside a box at x 40–60.
+  const column = at(obstaclePrisms([obstacle('col', 'cylinder', 20, 5, 20, 20, 10)]), 0);
+  const box = prism('box', 40, 60, -5, 15);
+
+  it('decides a 16-sided column and a box side by side by the camera side', () => {
+    expect(column.pts).toHaveLength(16);
+    const left: Vec3 = [-100, 5, 5];
+    const right: Vec3 = [200, 5, 5];
+    expect(frontOf(column, box, left)).toBe(1);
+    expect(frontOf(box, column, left)).toBe(-1);
+    expect(frontOf(column, box, right)).toBe(-1);
+    expect(frontOf(box, column, right)).toBe(1);
+  });
+
+  it('uses all 16 points of the column: a box cutting into its far side is not separated from it', () => {
+    // The box x 0–12 overlaps the column's left edge at (10, 5), which is its point 8.
+    const cutting = prism('cut', 0, 12, -5, 15);
+    expect(frontOf(column, cutting, [-100, 5, 5])).toBe(0);
+    expect(frontOf(cutting, column, [-100, 5, 5])).toBe(0);
+  });
+
+  it('sorts the column and the box far to near, each once', () => {
+    expect(sortPrisms([column, box], [-100, 5, 5]).map((p) => p.itemId)).toEqual(['box', 'col']);
+    expect(sortPrisms([box, column], [200, 5, 5]).map((p) => p.itemId)).toEqual(['col', 'box']);
+    const sorted = sortPrisms([column, box, prism('third', 0, 70, 30, 40)], [35, 200, 80]);
+    expect(sorted).toHaveLength(3);
+    expect(new Set(sorted.map((p) => p.itemId))).toEqual(new Set(['col', 'box', 'third']));
   });
 });
 

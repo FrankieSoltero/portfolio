@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { roomBounds, roomHeight, roomOutline } from '../../domain/shape';
+import type { Obstacle, Opening } from '../../domain/types';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { readTokens } from '../../styles/tokens';
@@ -127,6 +128,28 @@ describe('BlueprintView', () => {
     expect(input?.viewWidth).toBe(1000);
     expect(input?.viewHeight).toBe(600);
     expect(input?.safeW).toBe(1000);
+  });
+
+  it('passes the room corners, openings and obstacles from the store, and redraws when they change', () => {
+    render(<BlueprintView pane={PANE} />);
+    flushFrames();
+    const plan = usePlanStore.getState();
+    const first = vi.mocked(drawBlueprint).mock.calls[0]?.[1];
+    expect(first?.outline).toBe(plan.room.outline);
+    expect(first?.openings).toBe(plan.openings);
+    expect(first?.obstacles).toBe(plan.obstacles);
+    const openings: Opening[] = [
+      { id: 'd1', kind: 'door', wallId: plan.room.outline[0]?.id ?? '', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' },
+    ];
+    const obstacles: Obstacle[] = [
+      { id: 'o1', shape: 'box', label: '', x: 30, y: 130, rotation: 90, width: 20, depth: 10, height: 30, elevation: 40 },
+    ];
+    act(() => usePlanStore.setState({ openings, obstacles }));
+    flushFrames();
+    expect(vi.mocked(drawBlueprint)).toHaveBeenCalledTimes(2);
+    const second = vi.mocked(drawBlueprint).mock.calls[1]?.[1];
+    expect(second?.openings).toBe(openings);
+    expect(second?.obstacles).toBe(obstacles);
   });
 
   it('coalesces store changes into at most one draw per animation frame', () => {

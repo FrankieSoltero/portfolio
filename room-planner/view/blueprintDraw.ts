@@ -1,24 +1,28 @@
 /**
  * Blueprint (2D canvas) line drawing of the room in perspective. Pure: it draws only
  * through the context it is given and touches no globals.
- * The room comes in as an outline and a height, and furniture as rotated prisms, so
- * nothing here depends on how the plan stores them.
+ * The room comes in as an outline and a height, furniture and obstacles as prisms, and doors
+ * and windows as holes in the walls, so nothing here depends on how the plan stores them.
  * Ported from prototype lines 578–666 (floor, grid, walls, boxes, labels).
  */
 import { boundsOf } from '../domain/polygon';
 import { itemFootprint } from '../domain/shape';
-import type { Conflicts, Item, Point, Units } from '../domain/types';
+import type { Conflicts, Corner, Item, Obstacle, Opening, Point, Units } from '../domain/types';
 import { fmtLen, gridStepInches } from '../domain/units';
 import type { Tokens } from '../styles/tokens';
-import { buildPrisms, makeProjector, sortPrisms } from './blueprintScene';
+import { buildPrisms, makeProjector, obstaclePrisms, sortPrisms } from './blueprintScene';
 import type { Prism } from './blueprintScene';
 import type { CameraPose, Vec3 } from './camera';
+import { wallHoles } from './wallHoles';
+import type { WallHole } from './wallHoles';
 
 /**
  * Everything one blueprint frame needs. `outline` is the room's corners (positive signed
- * area) and `height` its ceiling, in inches; `viewWidth`/`viewHeight` are the pane in CSS pixels.
+ * area; their ids match openings to walls) and `height` its ceiling, in inches;
+ * `viewWidth`/`viewHeight` are the pane in CSS pixels.
  */
-export interface BlueprintInput { outline: readonly Point[]; height: number; items: readonly Item[];
+export interface BlueprintInput { outline: readonly Corner[]; height: number; items: readonly Item[];
+  openings: readonly Opening[]; obstacles: readonly Obstacle[];
   selectedId: string | null; conflicts: Conflicts; units: Units; pose: CameraPose;
   viewWidth: number; safeW: number; viewHeight: number; tokens: Tokens }
 
@@ -51,15 +55,20 @@ type Project = (p: Vec3) => [number, number];
 interface PolyStyle { fill?: string; stroke?: string; lineWidth?: number;
   dash?: readonly number[]; alpha?: number }
 
-/** Starts a new closed path through the projected points. */
-function trace(g: CanvasRenderingContext2D, P: Project, pts: readonly Vec3[]): void {
-  g.beginPath();
+/** Adds a closed sub-path through the projected points to the current path. */
+function subPath(g: CanvasRenderingContext2D, P: Project, pts: readonly Vec3[]): void {
   pts.forEach((p, i) => {
     const [x, y] = P(p);
     if (i) g.lineTo(x, y);
     else g.moveTo(x, y);
   });
   g.closePath();
+}
+
+/** Starts a new closed path through the projected points. */
+function trace(g: CanvasRenderingContext2D, P: Project, pts: readonly Vec3[]): void {
+  g.beginPath();
+  subPath(g, P, pts);
 }
 
 function poly(g: CanvasRenderingContext2D, P: Project, pts: readonly Vec3[], s: PolyStyle): void {
@@ -85,10 +94,25 @@ function line(g: CanvasRenderingContext2D, P: Project, a: Vec3, b: Vec3, alpha: 
   g.globalAlpha = 1;
 }
 
+/** Face colours of a prism: its top (and underside), and its sides facing plan x and plan y. */
+interface PrismFills { top: string; sideX: string; sideY: string }
+
+function prismFills(b: Prism, sel: boolean, T: Tokens): PrismFills {
+  // Obstacles are fixed parts of the room, never selected as furniture: neutral, no accent.
+  if (b.obstacle) return { top: T.n100, sideX: T.n200, sideY: T.bg };
+  return {
+    top: sel ? T.a200 : (b.kind === 'rug' ? T.a100 : T.bg),
+    sideX: sel ? T.a300 : T.n200,
+    sideY: sel ? T.a400 : T.a200,
+  };
+}
+
 /**
  * Sides of `b` whose outward normal points toward `cam`, then its top when the camera is
- * above it. A side whose outward normal (nx, ny) has |nx| > |ny| faces plan x and takes the
- * `sideX` colour; every other side takes the `sideY` colour.
+ * above it, or its underside when it is raised off the floor and the camera is below it.
+ * A four-sided prism's sides go in `SIDE_ORDER`, any other prism's in index order. A side whose
+ * outward normal (nx, ny) has |nx| > |ny| faces plan x and takes the `sideX` colour; every
+ * other side takes the `sideY` colour.
  */
 function drawPrism(g: CanvasRenderingContext2D, P: Project, b: Prism, cam: Vec3, input: BlueprintInput): void {
   const T = input.tokens;
@@ -98,11 +122,10 @@ function drawPrism(g: CanvasRenderingContext2D, P: Project, b: Prism, cam: Vec3,
     lineWidth: sel ? SELECTED_LINE_WIDTH : 1,
     dash: input.conflicts[b.itemId] !== undefined ? CONFLICT_DASH : undefined,
   };
-  const top = sel ? T.a200 : (b.kind === 'rug' ? T.a100 : T.bg);
-  const sideX = sel ? T.a300 : T.n200;
-  const sideY = sel ? T.a400 : T.a200;
+  const { top, sideX, sideY } = prismFills(b, sel, T);
   const { pts, z0, z1 } = b;
-  for (const i of SIDE_ORDER) {
+  const order = pts.length === SIDE_ORDER.length ? SIDE_ORDER : pts.map((_p, i) => i);
+  for (const i of order) {
     const a = pts[i];
     const c = pts[(i + 1) % pts.length];
     if (!a || !c) continue;
@@ -115,28 +138,79 @@ function drawPrism(g: CanvasRenderingContext2D, P: Project, b: Prism, cam: Vec3,
     }
   }
   if (cam[2] > z1) poly(g, P, pts.map((p): Vec3 => [p.x, p.y, z1]), { ...style, fill: top });
+  else if (z0 > 0 && cam[2] < z0) poly(g, P, pts.map((p): Vec3 => [p.x, p.y, z0]), { ...style, fill: top });
 }
 
-/** One wall of the outline as a floor-to-ceiling quad, with its plan midpoint. */
-interface Wall { pts: Vec3[]; mid: Point; far: boolean }
+/** A door or window hole in a wall: its rectangle and, for a window, the line across it at mid-height. */
+interface Hole { pts: Vec3[]; mid: [Vec3, Vec3] | null }
+
+/** One wall of the outline as a floor-to-ceiling quad, with its plan midpoint and its holes. */
+interface Wall { pts: Vec3[]; mid: Point; far: boolean; holes: Hole[] }
+
+/** A hole's rectangle in plan space, on the wall from `a` along the unit direction `u`. */
+function holeOf(a: Point, u: Point, h: WallHole): Hole {
+  const at = (x: number, z: number): Vec3 => [a.x + u.x * x, a.y + u.y * x, z];
+  const zm = (h.z0 + h.z1) / 2;
+  return {
+    pts: [at(h.x0, h.z0), at(h.x1, h.z0), at(h.x1, h.z1), at(h.x0, h.z1)],
+    mid: h.glass ? [at(h.x0, zm), at(h.x1, zm)] : null,
+  };
+}
 
 /**
  * The outline's walls. A wall is "far" when the camera is on its inward side, where the
- * inward normal of a wall from a to b is (−(b.y − a.y), b.x − a.x).
+ * inward normal of a wall from a to b is (−(b.y − a.y), b.x − a.x). `holes` is one list per
+ * wall, in wall order (from `wallHoles`).
  */
-function wallsOf(outline: readonly Point[], height: number, cam: Vec3): Wall[] {
+function wallsOf(outline: readonly Point[], height: number, cam: Vec3, holes: readonly (readonly WallHole[])[]): Wall[] {
   const walls: Wall[] = [];
   outline.forEach((a, i) => {
     const b = outline[(i + 1) % outline.length];
     if (!b) return;
     const far = -(b.y - a.y) * (cam[0] - a.x) + (b.x - a.x) * (cam[1] - a.y) > 0;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const u = len === 0 ? { x: 0, y: 0 } : { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
     walls.push({
       pts: [[a.x, a.y, 0], [b.x, b.y, 0], [b.x, b.y, height], [a.x, a.y, height]],
       mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
       far,
+      holes: (holes[i] ?? []).map((h) => holeOf(a, u, h)),
     });
   });
   return walls;
+}
+
+/**
+ * A far wall: its translucent fill, then its outline. With holes the fill is one path of the
+ * wall and each hole, filled with the even-odd rule so the holes stay empty, and each hole's
+ * edges (and a window's mid-height line) are stroked after the outline.
+ */
+function drawFarWall(g: CanvasRenderingContext2D, P: Project, w: Wall, T: Tokens): void {
+  if (w.holes.length === 0) {
+    poly(g, P, w.pts, { fill: T.a100, alpha: FAR_WALL_ALPHA });
+  } else {
+    trace(g, P, w.pts);
+    for (const h of w.holes) subPath(g, P, h.pts);
+    g.globalAlpha = FAR_WALL_ALPHA;
+    g.fillStyle = T.a100;
+    g.fill('evenodd');
+    g.globalAlpha = 1;
+  }
+  poly(g, P, w.pts, { stroke: T.text });
+  drawHoleEdges(g, P, w.holes, { stroke: T.text }, T.text, 1);
+}
+
+/** Each hole's rectangle stroked in `style`, then a window's mid-height line in the same colour and alpha. */
+function drawHoleEdges(g: CanvasRenderingContext2D, P: Project, holes: readonly Hole[], style: PolyStyle,
+  colour: string, alpha: number): void {
+  for (const h of holes) {
+    poly(g, P, h.pts, style);
+    if (h.mid) {
+      g.setLineDash(style.dash ? [...style.dash] : []);
+      line(g, P, h.mid[0], h.mid[1], alpha, colour);
+      g.setLineDash([]);
+    }
+  }
 }
 
 function planDistSq(p: Point, cam: Vec3): number {
@@ -157,7 +231,8 @@ function label(g: CanvasRenderingContext2D, P: Project, T: Tokens, p: Vec3, txt:
 
 /**
  * Draws one blueprint frame: floor, grid clipped to the floor, far walls far to near,
- * rugs then painter-sorted prisms, near walls dashed, and the dimension labels on top.
+ * rugs then the painter-sorted furniture and obstacle prisms, near walls dashed (every wall
+ * with its door and window holes), and the dimension labels on top.
  * The caller sets the device-pixel transform; everything here is in CSS pixels.
  */
 export function drawBlueprint(g: CanvasRenderingContext2D, input: BlueprintInput): void {
@@ -179,18 +254,18 @@ export function drawBlueprint(g: CanvasRenderingContext2D, input: BlueprintInput
   for (let y = minY + gu; y < maxY - GRID_END_GAP; y += gu) line(g, P, [minX, y, 0], [maxX, y, 0], GRID_ALPHA, T.text);
   g.restore();
 
-  const walls = wallsOf(outline, H, cam);
+  const walls = wallsOf(outline, H, cam, wallHoles(outline, input.openings, H));
   const far = walls.filter((w) => w.far).sort((a, b) => planDistSq(b.mid, cam) - planDistSq(a.mid, cam));
-  for (const w of far) {
-    poly(g, P, w.pts, { fill: T.a100, alpha: FAR_WALL_ALPHA });
-    poly(g, P, w.pts, { stroke: T.text });
-  }
+  for (const w of far) drawFarWall(g, P, w, T);
 
   const { prisms, rugs } = buildPrisms(items);
-  for (const b of [...rugs, ...sortPrisms(prisms, cam)]) drawPrism(g, P, b, cam, input);
+  const solids = [...prisms, ...obstaclePrisms(input.obstacles)];
+  for (const b of [...rugs, ...sortPrisms(solids, cam)]) drawPrism(g, P, b, cam, input);
 
   for (const w of walls.filter((wall) => !wall.far)) {
-    poly(g, P, w.pts, { stroke: T.text, dash: NEAR_WALL_DASH, alpha: NEAR_WALL_ALPHA });
+    const near: PolyStyle = { stroke: T.text, dash: NEAR_WALL_DASH, alpha: NEAR_WALL_ALPHA };
+    poly(g, P, w.pts, near);
+    drawHoleEdges(g, P, w.holes, near, T.text, NEAR_WALL_ALPHA);
   }
 
   const cx = minX + bounds.w / 2;

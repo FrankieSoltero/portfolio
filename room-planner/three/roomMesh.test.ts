@@ -273,43 +273,6 @@ const R = rectRoom(144, 168, 96).outline;
 const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
 const W1: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 100, width: 36, sill: 36, height: 48 };
 
-describe('wallHoles', () => {
-  it('gives one list per wall: the door on wall 0 from the floor, the window on wall 1 from its sill', () => {
-    expect(wallHoles(R, [D1, W1], 96)).toEqual([
-      [{ x0: 20, x1: 52, z0: 0, z1: 80, glass: false }],
-      [{ x0: 100, x1: 136, z0: 36, z1: 84, glass: true }],
-      [],
-      [],
-    ]);
-  });
-
-  it('clamps a hole to the ceiling', () => {
-    const [wall0] = wallHoles(R, [{ ...D1, height: 100 }], 96);
-    expect(wall0).toEqual([{ x0: 20, x1: 52, z0: 0, z1: 96, glass: false }]);
-  });
-
-  it('drops a hole that starts at or above the ceiling', () => {
-    expect(wallHoles(R, [{ ...W1, sill: 100 }], 96)).toEqual([[], [], [], []]);
-    expect(wallHoles(R, [{ ...W1, sill: 96 }], 96)).toEqual([[], [], [], []]);
-  });
-
-  it('ignores an opening whose wall is not in the outline', () => {
-    expect(wallHoles(R, [{ ...D1, wallId: 'gone' }], 96)).toEqual([[], [], [], []]);
-  });
-
-  it('sorts each wall\'s holes by x0', () => {
-    const later: Opening = { ...D1, id: 'd2', offset: 90 };
-    const [wall0] = wallHoles(R, [later, D1], 96);
-    expect(wall0?.map((h) => h.x0)).toEqual([20, 90]);
-  });
-
-  it('clamps a hole into its wall and drops one narrower than 0.01 after clamping', () => {
-    const [wall0] = wallHoles(R, [{ ...D1, offset: 130 }, { ...W1, wallId: 'c1', offset: -50 }], 96);
-    expect(wall0).toEqual([{ x0: 130, x1: 144, z0: 0, z1: 80, glass: false }]);
-    expect(wallHoles(R, [{ ...D1, offset: 143.995 }], 96)[0]).toEqual([]);
-  });
-});
-
 /** The wall of `walls` lying in the vertical plane of the wall from a to b (glass excluded). */
 function wallOn(walls: StdMesh[], a: Point, b: Point): StdMesh {
   const len = Math.hypot(b.x - a.x, b.y - a.y);

@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
+import { obstaclePolygon } from '../domain/obstacles';
 import { boundsOf } from '../domain/polygon';
-import { footprintCorners, itemFootprint, roomHeight, roomOutline } from '../domain/shape';
+import { footprintCorners, itemFootprint, roomHeight } from '../domain/shape';
 import type { Footprint } from '../domain/shape';
-import type { CameraState, Conflicts, Item, Point, Units } from '../domain/types';
+import type { CameraState, Conflicts, Corner, Door, Item, Obstacle, Opening, Point, Units,
+  WindowOpening } from '../domain/types';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from './camera';
-import type { Vec3 } from './camera';
+import type { CameraPose, Vec3 } from './camera';
 import { placedItem } from '../test/fixtures';
 import { makeProjector } from './blueprintScene';
 import { drawBlueprint } from './blueprintDraw';
@@ -64,6 +66,8 @@ interface Paint {
   alpha: unknown;
   lineWidth: unknown;
   dash: unknown;
+  /** The arguments of the fill or stroke call, such as the fill rule. */
+  args: unknown[];
   /** The path's moveTo / lineTo points, in pane pixels. */
   coords: [number, number][];
 }
@@ -97,7 +101,7 @@ function replay(log: readonly Rec[]): { paints: Paint[]; texts: Text[]; rects: R
       case 'fill': case 'stroke':
         paints.push({ op: r.name, index, path, points,
           style: r.name === 'fill' ? state.fillStyle : state.strokeStyle,
-          alpha: state.globalAlpha, lineWidth: state.lineWidth, dash, coords: [...coords] });
+          alpha: state.globalAlpha, lineWidth: state.lineWidth, dash, args: r.args, coords: [...coords] });
         break;
       case 'fillText':
         texts.push({ index, text: String(r.args[0]), x: Number(r.args[1]), y: Number(r.args[2]),
@@ -125,15 +129,18 @@ const RUG: Item = placedItem({ id: 'rug-1', kind: 'rug', name: 'Wool rug', w: 60
 const CRATE: Item = placedItem({ id: 'crate-1', kind: 'box', name: 'Crate', w: 44, d: 30, h: 20, cx: 72, cy: 75 });
 
 function input(over: Partial<{ items: readonly Item[]; selectedId: string | null; conflicts: Conflicts;
-  units: Units; camera: CameraState; outline: readonly Point[]; height: number }> = {}): BlueprintInput {
+  units: Units; camera: CameraState; outline: readonly Corner[]; height: number; openings: readonly Opening[];
+  obstacles: readonly Obstacle[] }> = {}): BlueprintInput {
   const doc = createInitialDocument();
   const camera = over.camera ?? { ...CONFIG.camera };
-  const outline = over.outline ?? roomOutline(doc.room);
+  const outline = over.outline ?? doc.room.outline;
   const height = over.height ?? roomHeight(doc.room);
   return {
     outline,
     height,
     items: over.items ?? doc.items,
+    openings: over.openings ?? [],
+    obstacles: over.obstacles ?? [],
     selectedId: over.selectedId ?? null,
     conflicts: over.conflicts ?? {},
     units: over.units ?? 'ft',
@@ -198,12 +205,14 @@ function wallQuad(a: Point, b: Point, h: number): Vec3[] {
 }
 
 /** An L-shaped room in the 144 × 168 bounding box; the notch is at the bottom right. */
-const L_ROOM: readonly Point[] = [
-  { x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 96 }, { x: 72, y: 96 }, { x: 72, y: 168 }, { x: 0, y: 168 },
+const L_ROOM: readonly Corner[] = [
+  { id: 'l1', x: 0, y: 0 }, { id: 'l2', x: 144, y: 0 }, { id: 'l3', x: 144, y: 96 }, { id: 'l4', x: 72, y: 96 },
+  { id: 'l5', x: 72, y: 168 }, { id: 'l6', x: 0, y: 168 },
 ];
 /** A room off the origin with its top-right corner cut: bounds 20..160 × 10..180. */
-const CUT_ROOM: readonly Point[] = [
-  { x: 20, y: 10 }, { x: 120, y: 10 }, { x: 160, y: 50 }, { x: 160, y: 180 }, { x: 20, y: 180 },
+const CUT_ROOM: readonly Corner[] = [
+  { id: 'k1', x: 20, y: 10 }, { id: 'k2', x: 120, y: 10 }, { id: 'k3', x: 160, y: 50 }, { id: 'k4', x: 160, y: 180 },
+  { id: 'k5', x: 20, y: 180 },
 ];
 
 function strokeOfPath(paints: readonly Paint[], path: number): Paint | undefined {
@@ -492,5 +501,230 @@ describe('drawBlueprint', () => {
       expect(t.x).toBeCloseTo(expected[i]?.[0] ?? NaN, 9);
       expect(t.y).toBeCloseTo((expected[i]?.[1] ?? NaN) + 1, 9);
     });
+  });
+});
+
+/** The seed room's corners: 144 × 168 × 96; walls c1 (top) and c2 (right) are far from the default camera. */
+const ROOM = createInitialDocument().room.outline;
+const corner = (id: string): Corner => {
+  const c = ROOM.find((k) => k.id === id);
+  if (!c) throw new Error(`missing corner ${id}`);
+  return c;
+};
+const nextCorner = (id: string): Corner => at(ROOM, (ROOM.findIndex((k) => k.id === id) + 1) % ROOM.length);
+
+const DOOR: Door = { id: 'door-1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+const WINDOW: WindowOpening = { id: 'win-1', kind: 'window', wallId: 'c2', offset: 100, width: 36, sill: 36, height: 48 };
+
+/** A hole's rectangle on the wall starting at corner `wallId`: x along the wall, z up. */
+function holeQuad(wallId: string, x0: number, x1: number, z0: number, z1: number): Vec3[] {
+  const a = corner(wallId);
+  const b = nextCorner(wallId);
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const u = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+  const p = (x: number, z: number): Vec3 => [a.x + u.x * x, a.y + u.y * x, z];
+  return [p(x0, z0), p(x1, z0), p(x1, z1), p(x0, z1)];
+}
+
+/** The mid-height line across a hole on the wall starting at corner `wallId`. */
+function midLine(wallId: string, x0: number, x1: number, z0: number, z1: number): Vec3[] {
+  const q = holeQuad(wallId, x0, x1, z0, z1);
+  const z = (z0 + z1) / 2;
+  return [[at(q, 0)[0], at(q, 0)[1], z], [at(q, 1)[0], at(q, 1)[1], z]];
+}
+
+/** Non-grid two-point strokes: the mid lines of window holes. */
+function midLines(paints: readonly Paint[]): Paint[] {
+  return paints.filter((p) => p.op === 'stroke' && p.points === 2 && p.alpha !== 0.09);
+}
+
+function nearStrokes(paints: readonly Paint[]): Paint[] {
+  return paints.filter((p) => p.op === 'stroke' && JSON.stringify(p.dash) === '[4,5]');
+}
+
+describe('drawBlueprint wall holes', () => {
+  it('fills a far wall with a door as one evenodd path with the hole inside, then strokes wall and hole', () => {
+    const inp = input({ items: [], openings: [DOOR] });
+    const { paints } = draw(inp);
+    const far = paints.filter((p) => p.op === 'fill' && p.alpha === 0.6);
+    expect(far).toHaveLength(2);
+    const holed = far.filter((p) => p.points === 8);
+    expect(holed).toHaveLength(1);
+    const wall = at(holed, 0);
+    expect(wall).toMatchObject({ style: T.a100, args: ['evenodd'] });
+    expectPoints(wall.coords.slice(0, 4), projectAll(inp, wallQuad(corner('c1'), corner('c2'), 96)));
+    const hole = projectAll(inp, holeQuad('c1', 20, 52, 0, 80));
+    expectSamePoints(wall.coords.slice(4), hole);
+    // The other far wall keeps its plain fill.
+    const plain = at(far.filter((p) => p !== wall), 0);
+    expect(plain).toMatchObject({ points: 4, args: [] });
+    // The wall's outline, then the hole's edges, stroked like the wall outline and not filled.
+    expect(strokeOfPath(paints, wall.path + 1)).toMatchObject({ style: T.text, alpha: 1, lineWidth: 1, points: 4 });
+    expectPoints(strokeOfPath(paints, wall.path + 1)?.coords ?? [],
+      projectAll(inp, wallQuad(corner('c1'), corner('c2'), 96)));
+    const edge = strokeOfPath(paints, wall.path + 2);
+    expect(edge).toMatchObject({ style: T.text, alpha: 1, lineWidth: 1, points: 4, dash: [] });
+    expectSamePoints(edge?.coords ?? [], hole);
+    expect(paints.some((p) => p.op === 'fill' && p.path === wall.path + 2)).toBe(false);
+    expect(midLines(paints)).toHaveLength(0);
+  });
+
+  it('cuts every hole of a wall into its fill and strokes each one', () => {
+    const second: Opening = { ...WINDOW, id: 'win-2', wallId: 'c1', offset: 80 };
+    const inp = input({ items: [], openings: [DOOR, second] });
+    const { paints } = draw(inp);
+    const wall = at(paints.filter((p) => p.op === 'fill' && p.alpha === 0.6 && p.points === 12), 0);
+    expect(wall.args).toEqual(['evenodd']);
+    expectSamePoints(wall.coords.slice(4, 8), projectAll(inp, holeQuad('c1', 20, 52, 0, 80)));
+    expectSamePoints(wall.coords.slice(8), projectAll(inp, holeQuad('c1', 80, 116, 36, 84)));
+    expectSamePoints(strokeOfPath(paints, wall.path + 2)?.coords ?? [], projectAll(inp, holeQuad('c1', 20, 52, 0, 80)));
+    expectSamePoints(strokeOfPath(paints, wall.path + 3)?.coords ?? [],
+      projectAll(inp, holeQuad('c1', 80, 116, 36, 84)));
+  });
+
+  it('strokes a hole in a near wall with the near walls\' dashed style', () => {
+    const inp = input({ items: [], openings: [{ ...DOOR, wallId: 'c3' }] });
+    const { paints } = draw(inp);
+    const near = nearStrokes(paints);
+    expect(near).toHaveLength(3);
+    const wall = at(near.filter((p) => sameKeys(p.coords, projectAll(inp, wallQuad(corner('c3'), corner('c4'), 96)))), 0);
+    const hole = strokeOfPath(paints, wall.path + 1);
+    expect(hole).toMatchObject({ style: T.text, alpha: 0.35, lineWidth: 1, points: 4, dash: [4, 5] });
+    expectSamePoints(hole?.coords ?? [], projectAll(inp, holeQuad('c3', 20, 52, 0, 80)));
+    expect(paints.some((p) => p.op === 'fill' && p.path === hole?.path)).toBe(false);
+    // The far walls are untouched.
+    expect(paints.filter((p) => p.op === 'fill' && p.alpha === 0.6).map((p) => p.points)).toEqual([4, 4]);
+  });
+
+  it('draws a line across a far window at mid-height, after its edges', () => {
+    const inp = input({ items: [], openings: [WINDOW] });
+    const { paints } = draw(inp);
+    const wall = at(paints.filter((p) => p.op === 'fill' && p.points === 8), 0);
+    const lines = midLines(paints);
+    expect(lines).toHaveLength(1);
+    const mid = at(lines, 0);
+    expect(mid).toMatchObject({ style: T.text, alpha: 1, lineWidth: 1, dash: [] });
+    expect(mid.path).toBe(wall.path + 3);
+    expectPoints(mid.coords, projectAll(inp, midLine('c2', 100, 136, 36, 84)));
+  });
+
+  it('draws a dashed mid-height line across a near window', () => {
+    const inp = input({ items: [], openings: [{ ...WINDOW, wallId: 'c4', offset: 20 }] });
+    const { paints } = draw(inp);
+    const lines = midLines(paints);
+    expect(lines).toHaveLength(1);
+    expect(at(lines, 0)).toMatchObject({ style: T.text, alpha: 0.35, dash: [4, 5] });
+    expectPoints(at(lines, 0).coords, projectAll(inp, midLine('c4', 20, 56, 36, 84)));
+  });
+
+  it('makes the same canvas calls as with no openings when an opening\'s wall is not in the outline', () => {
+    const plain = draw(input()).log;
+    expect(draw(input({ openings: [{ ...DOOR, wallId: 'gone' }] })).log).toEqual(plain);
+  });
+});
+
+/** A fixed obstacle with the given shape and size, centred at (x, y). */
+function obstacle(id: string, shape: Obstacle['shape'], x: number, y: number, width: number, depth: number,
+  height: number, elevation = 0): Obstacle {
+  return { id, shape, label: '', x, y, rotation: 0, width, depth, height, elevation };
+}
+
+/** The frame's input with the camera moved to `position`, looking at the same target. */
+function withCamera(inp: BlueprintInput, position: Vec3): BlueprintInput {
+  const pose: CameraPose = { ...inp.pose, position };
+  return { ...inp, pose };
+}
+
+describe('drawBlueprint obstacles', () => {
+  // Unturned crate, x 50–94, y 60–90, 20 tall.
+  it('paints an obstacle box in neutral fills: n200 plan-x side, bg plan-y side, n100 top', () => {
+    const { paints } = draw(input({ items: [], obstacles: [obstacle('ob-1', 'box', 72, 84, 20, 10, 30)] }));
+    const faces = faceFills(paints);
+    expect(faces.map((f) => f.style)).toEqual([T.n200, T.bg, T.n100]);
+    for (const f of faces) {
+      expect(f.points).toBe(4);
+      expect(strokeOfPath(paints, f.path)).toMatchObject({ style: T.text, lineWidth: 1, dash: [] });
+    }
+  });
+
+  it('sorts obstacles with the furniture: drawn after a crate it stands in front of, before one it hides behind', () => {
+    const front = obstacle('ob-1', 'box', 70, 115, 20, 10, 30);
+    const behind = obstacle('ob-1', 'box', 70, 25, 20, 10, 30);
+    const crate = [T.n200, T.a200, T.bg];
+    const ob = [T.n200, T.bg, T.n100];
+    expect(faceFills(draw(input({ items: [CRATE], obstacles: [front] })).paints).map((f) => f.style))
+      .toEqual([...crate, ...ob]);
+    expect(faceFills(draw(input({ items: [CRATE], obstacles: [behind] })).paints).map((f) => f.style))
+      .toEqual([...ob, ...crate]);
+  });
+
+  it('draws a column\'s camera-facing sides in index order, coloured by the plan axis each faces, then its top', () => {
+    const column = obstacle('col-1', 'cylinder', 72, 84, 20, 20, 30);
+    const inp = input({ items: [], obstacles: [column] });
+    const faces = faceFills(draw(inp).paints);
+    const cam = inp.pose.position;
+    const pts = obstaclePolygon(column);
+    const expected = pts.flatMap((a, i) => {
+      const c = at(pts, (i + 1) % pts.length);
+      const facing = (cam[0] - a.x) * (c.y - a.y) - (cam[1] - a.y) * (c.x - a.x) > 0;
+      if (!facing) return [];
+      return [{ style: Math.abs(c.y - a.y) > Math.abs(c.x - a.x) ? T.n200 : T.bg,
+        coords: projectAll(inp, [[a.x, a.y, 0], [c.x, c.y, 0], [c.x, c.y, 30], [a.x, a.y, 30]]) }];
+    });
+    expect(expected.length).toBeGreaterThan(4);
+    expect(new Set(expected.map((e) => e.style))).toEqual(new Set([T.n200, T.bg]));
+    expect(faces).toHaveLength(expected.length + 1);
+    expected.forEach((e, k) => {
+      expect(at(faces, k).style).toBe(e.style);
+      expectPoints(at(faces, k).coords, e.coords);
+    });
+    const top = at(faces, expected.length);
+    expect(top).toMatchObject({ style: T.n100, points: 16 });
+    expectPoints(top.coords, projectAll(inp, pts.map((p): Vec3 => [p.x, p.y, 30])));
+  });
+
+  it('draws a raised obstacle\'s underside only when the camera is below it, and its top only from above', () => {
+    const raised = obstacle('ob-1', 'box', 72, 84, 20, 10, 30, 40);
+    const base = input({ items: [], obstacles: [raised] });
+    const [cx, cy] = base.pose.position;
+    const pts = obstaclePolygon(raised);
+    const flat = (inp: BlueprintInput, z: number) => projectAll(inp, pts.map((p): Vec3 => [p.x, p.y, z]));
+
+    const below = withCamera(base, [cx, cy, 20]);
+    const fromBelow = faceFills(draw(below).paints);
+    const under = at(fromBelow, fromBelow.length - 1);
+    expect(under).toMatchObject({ style: T.n100, points: 4 });
+    expectPoints(under.coords, flat(below, 40));
+    expect(fromBelow.some((f) => sameKeys(f.coords, flat(below, 70)))).toBe(false);
+
+    const above = withCamera(base, [cx, cy, 200]);
+    const fromAbove = faceFills(draw(above).paints);
+    expectPoints(at(fromAbove, fromAbove.length - 1).coords, flat(above, 70));
+    expect(fromAbove.some((f) => sameKeys(f.coords, flat(above, 40)))).toBe(false);
+
+    const level = withCamera(base, [cx, cy, 55]);
+    const fromLevel = faceFills(draw(level).paints);
+    expect(fromLevel.some((f) => sameKeys(f.coords, flat(level, 40)) || sameKeys(f.coords, flat(level, 70)))).toBe(false);
+    expect(fromLevel.length).toBeGreaterThan(0);
+  });
+
+  it('never draws the underside of an obstacle standing on the floor', () => {
+    const grounded = obstacle('ob-1', 'box', 72, 84, 20, 10, 30);
+    const base = input({ items: [], obstacles: [grounded] });
+    const inp = withCamera(base, [base.pose.position[0], base.pose.position[1], -10]);
+    const pts = obstaclePolygon(grounded);
+    const faces = faceFills(draw(inp).paints);
+    expect(faces.some((f) => sameKeys(f.coords, projectAll(inp, pts.map((p): Vec3 => [p.x, p.y, 0]))))).toBe(false);
+  });
+
+  it('strokes a conflicted obstacle dashed [5, 4]', () => {
+    const { paints } = draw(input({ items: [], obstacles: [obstacle('ob-1', 'box', 72, 84, 20, 10, 30)],
+      conflicts: { 'ob-1': 'Blocks a door' } }));
+    const faces = faceFills(paints);
+    expect(faces).toHaveLength(3);
+    for (const f of faces) {
+      expect(f.dash).toEqual([5, 4]);
+      expect(strokeOfPath(paints, f.path)?.dash).toEqual([5, 4]);
+    }
   });
 });

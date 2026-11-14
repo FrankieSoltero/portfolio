@@ -1,20 +1,22 @@
 /**
- * Blueprint (2D canvas) scene maths: furniture part prisms, painter's-order sorting
- * and the perspective projector. Pure, in plan space (x right, y down, z up).
- * Geometry comes only from the shape accessors (`itemFootprint`, `partCorners`).
+ * Blueprint (2D canvas) scene maths: furniture part and obstacle prisms, painter's-order
+ * sorting and the perspective projector. Pure, in plan space (x right, y down, z up).
+ * Geometry comes only from the shape accessors (`itemFootprint`, `partCorners`, `obstaclePolygon`).
  * Ported from prototype lines 463–470 (`front`), 586–599 (projection) and 621–641 (boxes, ordering).
  */
 import { CONFIG } from '../config';
 import { PARTS } from '../domain/catalog';
+import { obstaclePolygon } from '../domain/obstacles';
 import { itemFootprint, partCorners } from '../domain/shape';
-import type { Item, Kind, Point } from '../domain/types';
+import type { Item, Kind, Obstacle, Point } from '../domain/types';
 import type { CameraPose, Vec3 } from './camera';
 
 /**
- * One part of an item as an upright prism: a four-corner plan footprint (back-left,
- * back-right, front-right, front-left; positive signed area) extruded from z0 to z1.
+ * One part of an item, or one fixed obstacle, as an upright prism: a convex plan polygon of
+ * 3 or more points with positive signed area, extruded from z0 to z1. A furniture part has four
+ * corners (back-left, back-right, front-right, front-left); an obstacle is flagged `obstacle`.
  */
-export interface Prism { pts: readonly [Point, Point, Point, Point]; z0: number; z1: number; itemId: string; kind: Kind }
+export interface Prism { pts: readonly Point[]; z0: number; z1: number; itemId: string; kind: Kind; obstacle?: true }
 
 /** Smallest camera-space depth the projector divides by, so points behind the camera stay finite. */
 const MIN_DEPTH = 1;
@@ -37,10 +39,21 @@ export function buildPrisms(items: readonly Item[]): { prisms: Prism[]; rugs: Pr
   return { prisms, rugs };
 }
 
+/**
+ * One prism per obstacle, in order: its plan polygon (`obstaclePolygon`: four corners for a box,
+ * 16 for a column) extruded from its elevation to elevation + height.
+ */
+export function obstaclePrisms(obstacles: readonly Obstacle[]): Prism[] {
+  return obstacles.map((o) => ({
+    pts: obstaclePolygon(o), z0: o.elevation, z1: o.elevation + o.height,
+    itemId: o.id, kind: 'box', obstacle: true,
+  }));
+}
+
 /** A candidate separating axis: a unit plan direction, or the vertical. */
 type Axis = { kind: 'z' } | { kind: 'plan'; nx: number; ny: number };
 
-/** Unit normals of the prism's four edges, in edge order. */
+/** Unit normals of the prism's edges, in edge order. */
 function edgeAxes(p: Prism): Axis[] {
   const axes: Axis[] = [];
   p.pts.forEach((a, i) => {

@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
-import { roomBounds, roomHeight, roomOutline } from '../../domain/shape';
+import { roomBounds, roomHeight } from '../../domain/shape';
 import { startDrag } from '../../hooks/startDrag';
 import { useConflicts } from '../../state/selectors';
 import { usePlanStore } from '../../state/planStore';
@@ -26,6 +26,8 @@ export function BlueprintView({ pane }: { pane: PaneRect }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const room = usePlanStore((s) => s.room);
   const items = usePlanStore((s) => s.items);
+  const openings = usePlanStore((s) => s.openings);
+  const obstacles = usePlanStore((s) => s.obstacles);
   const units = usePlanStore((s) => s.units);
   const selectedId = useUiStore((s) => s.selectedId);
   const camera = useUiStore((s) => s.camera);
@@ -56,8 +58,9 @@ export function BlueprintView({ pane }: { pane: PaneRect }): JSX.Element {
       if (!g) return;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       drawBlueprint(g, {
-        outline: roomOutline(room), height: roomHeight(room),
-        items, selectedId, conflicts, units,
+        // The corners themselves, not just their points: their ids match openings to walls.
+        outline: room.outline, height: roomHeight(room),
+        items, openings, obstacles, selectedId, conflicts, units,
         pose: computeCameraPose(roomBounds(room), roomHeight(room), camera, pane),
         viewWidth: pane.w, safeW: pane.safeW, viewHeight: pane.h, tokens,
       });
@@ -66,7 +69,7 @@ export function BlueprintView({ pane }: { pane: PaneRect }): JSX.Element {
       cancelAnimationFrame(frame);
       clearTimeout(retry);
     };
-  }, [room, items, units, selectedId, camera, conflicts, pane, redraw]);
+  }, [room, items, openings, obstacles, units, selectedId, camera, conflicts, pane, redraw]);
 
   // Label widths are measured with the web font, so redraw once it has loaded.
   useEffect(() => {
