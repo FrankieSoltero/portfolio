@@ -2,7 +2,8 @@ import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SelectionBar } from '../components/SelectionBar';
 import { CONFIG } from '../config';
-import type { Corner, Item } from '../domain/types';
+import { createInitialDocument } from '../domain/catalog';
+import type { Corner, Door, Item, Obstacle } from '../domain/types';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { startDrag } from './startDrag';
@@ -338,6 +339,137 @@ describe('useKeyboardShortcuts in room mode', () => {
     press(document.body, 'ArrowLeft');
     expect(corner('c2')).toEqual({ id: 'c2', x: 144, y: 0 });
     expect(bed()).toMatchObject({ x: 71, y: 42.5 });
+  });
+});
+
+describe('useKeyboardShortcuts in room mode with a door, window or obstacle', () => {
+  /** On the top wall c1, 20 in from (0, 0), 32 in wide. */
+  const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+  const BOX: Obstacle = { id: 'o1', shape: 'box', label: 'Radiator', x: 30, y: 100, rotation: 0, width: 30, depth: 8, height: 30, elevation: 0 };
+
+  function door(): Door | undefined {
+    return usePlanStore.getState().openings.find((o): o is Door => o.id === 'd1' && o.kind === 'door');
+  }
+
+  function box(): Obstacle | undefined {
+    return usePlanStore.getState().obstacles.find((o) => o.id === 'o1');
+  }
+
+  beforeEach(() => {
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1], obstacles: [BOX] });
+    renderHook(() => useKeyboardShortcuts());
+    useUiStore.getState().setMode('room');
+  });
+
+  it.each([
+    ['ArrowRight', false, 21],
+    ['ArrowDown', false, 21],
+    ['ArrowLeft', false, 19],
+    ['ArrowUp', false, 19],
+    ['ArrowRight', true, 32],
+    ['ArrowDown', true, 32],
+    ['ArrowLeft', true, 8],
+    ['ArrowUp', true, 8],
+  ] as const)('%s (Shift %s) slides the selected door to offset %d and prevents default', (key, shiftKey, offset) => {
+    useUiStore.getState().selectOpening('d1');
+    const ev = press(document.body, key, { shiftKey });
+    expect(door()?.offset).toBe(offset);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(box()).toMatchObject({ x: 30, y: 100 });
+  });
+
+  it.each([
+    ['ArrowRight', false, 31, 100],
+    ['ArrowLeft', false, 29, 100],
+    ['ArrowDown', false, 30, 101],
+    ['ArrowUp', false, 30, 99],
+    ['ArrowRight', true, 42, 100],
+    ['ArrowUp', true, 30, 88],
+  ] as const)('%s (Shift %s) nudges the selected obstacle to (%d, %d) and prevents default', (key, shiftKey, x, y) => {
+    useUiStore.getState().selectObstacle('o1');
+    const ev = press(document.body, key, { shiftKey });
+    expect(box()).toMatchObject({ x, y });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(door()?.offset).toBe(20);
+  });
+
+  it.each([
+    ['r', false, 90],
+    ['R', false, 90],
+    ['R', true, 15],
+    ['r', true, 15],
+  ] as const)('%s (Shift %s) turns the selected obstacle %d°', (key, shiftKey, rotation) => {
+    useUiStore.getState().selectObstacle('o1');
+    press(document.body, key, { shiftKey });
+    expect(box()?.rotation).toBe(rotation);
+  });
+
+  it('R with a door selected changes nothing', () => {
+    useUiStore.getState().selectOpening('d1');
+    const before = usePlanStore.getState();
+    press(document.body, 'r');
+    expect(usePlanStore.getState().openings).toBe(before.openings);
+    expect(usePlanStore.getState().obstacles).toBe(before.obstacles);
+  });
+
+  it.each(['Delete', 'Backspace'])('%s removes the selected door and clears the selection', (key) => {
+    useUiStore.getState().selectOpening('d1');
+    press(document.body, key);
+    expect(door()).toBeUndefined();
+    expect(useUiStore.getState().selectedOpeningId).toBeNull();
+    expect(box()).toBeDefined();
+  });
+
+  it.each(['Delete', 'Backspace'])('%s removes the selected obstacle and clears the selection', (key) => {
+    useUiStore.getState().selectObstacle('o1');
+    press(document.body, key);
+    expect(box()).toBeUndefined();
+    expect(useUiStore.getState().selectedObstacleId).toBeNull();
+    expect(door()).toBeDefined();
+  });
+
+  it.each(['door', 'window'] as const)('Escape with the %s tool armed sets the tool back to corner', (tool) => {
+    useUiStore.getState().setRoomTool(tool);
+    press(document.body, 'Escape');
+    expect(useUiStore.getState().roomTool).toBe('corner');
+  });
+
+  it.each([
+    ['door', () => useUiStore.getState().selectOpening('d1')],
+    ['obstacle', () => useUiStore.getState().selectObstacle('o1')],
+  ] as const)('Escape clears a selected %s and changes nothing else', (_kind, selectIt) => {
+    selectIt();
+    const before = usePlanStore.getState();
+    press(document.body, 'Escape');
+    const ui = useUiStore.getState();
+    expect([ui.selectedCornerId, ui.selectedOpeningId, ui.selectedObstacleId]).toEqual([null, null, null]);
+    expect(usePlanStore.getState().openings).toBe(before.openings);
+    expect(usePlanStore.getState().obstacles).toBe(before.obstacles);
+  });
+
+  it.each(['text', 'number', 'radio'])('arrows with focus in a %s input are ignored', (type) => {
+    useUiStore.getState().selectOpening('d1');
+    const ev = press(focused('input', type), 'ArrowRight');
+    expect(door()?.offset).toBe(20);
+    expect(ev.defaultPrevented).toBe(false);
+    useUiStore.getState().selectObstacle('o1');
+    press(focused('input', type), 'ArrowDown');
+    expect(box()).toMatchObject({ x: 30, y: 100 });
+  });
+
+  it.each([
+    ['input', 'text'],
+    ['input', 'number'],
+    ['textarea', undefined],
+    ['select', undefined],
+  ] as const)('R and Delete with focus in %s %s are ignored', (tag, type) => {
+    useUiStore.getState().selectObstacle('o1');
+    press(focused(tag, type), 'R');
+    press(focused(tag, type), 'Delete');
+    expect(box()).toMatchObject({ rotation: 0 });
+    useUiStore.getState().selectOpening('d1');
+    press(focused(tag, type), 'Backspace');
+    expect(door()).toBeDefined();
   });
 });
 

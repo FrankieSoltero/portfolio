@@ -1,6 +1,8 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { obstacleFootprint } from '../../domain/obstacles';
+import { dragObstacleTo } from '../../state/actions';
 import type { Door, Obstacle, Opening, WindowOpening } from '../../domain/types';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
@@ -8,6 +10,13 @@ import { planDoc, rectRoom } from '../../test/fixtures';
 import { doorDrawing, windowDrawing } from '../../view/planFeatures';
 import { planItemBox, type PlanLayout } from '../../view/planLayout';
 import { PlanFeatures } from './PlanFeatures';
+import { FreezePlanLayoutContext } from './RoomEditLayer';
+
+// The actions run for real; the spy records how the obstacles call it.
+vi.mock('../../state/actions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../state/actions')>();
+  return { ...actual, dragObstacleTo: vi.fn(actual.dragObstacleTo) };
+});
 
 const ROOM = rectRoom(144, 168, 96);
 const LAYOUT: PlanLayout = { scale: 2, ox: 10, oy: 20 };
@@ -40,6 +49,7 @@ function drawnElements(): Element[] {
 beforeEach(() => {
   usePlanStore.getState().reset();
   useUiStore.getState().reset();
+  vi.mocked(dragObstacleTo).mockClear();
 });
 
 // Vitest globals are off, so Testing Library cannot register its own cleanup.
@@ -147,5 +157,150 @@ describe('PlanFeatures', () => {
     const after = usePlanStore.getState();
     expect(after.openings).toBe(before.openings);
     expect(after.obstacles).toBe(before.obstacles);
+  });
+});
+
+describe('PlanFeatures obstacles in furnish mode', () => {
+  it('have no role, are not editable and take no focus', () => {
+    load([], [BOX, COLUMN]);
+    render(<PlanFeatures layout={LAYOUT} />);
+    for (const id of ['o1', 'o2']) {
+      const el = obstacleEl(id);
+      expect(el).not.toHaveAttribute('role');
+      expect(el).not.toHaveAttribute('tabindex');
+      expect(el).not.toHaveAttribute('aria-pressed');
+      expect(el).not.toHaveClass('is-editable');
+    }
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+});
+
+describe('PlanFeatures obstacles in room mode', () => {
+  function stored(id: string): Obstacle | undefined {
+    return usePlanStore.getState().obstacles.find((o) => o.id === id);
+  }
+
+  beforeEach(() => {
+    load([D1, W1], [BOX, COLUMN, { ...COLUMN, id: 'o3', label: '', x: 60, y: 60 }, { ...BOX, id: 'o4', label: '', x: 60, y: 100 }]);
+    useUiStore.getState().setMode('room');
+  });
+
+  it('are buttons named by their label, or Box / Column when it is empty, in the tab order and editable', () => {
+    render(<PlanFeatures layout={LAYOUT} />);
+    const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(names).toEqual(['Radiator', 'Column', 'Column', 'Box']);
+    for (const id of ['o1', 'o2', 'o3', 'o4']) {
+      const el = obstacleEl(id);
+      expect(el).toHaveAttribute('role', 'button');
+      expect(el).toHaveAttribute('tabindex', '0');
+      expect(el).not.toHaveAttribute('aria-hidden');
+      expect(el).toHaveClass('is-editable');
+      expect(el).toHaveAttribute('aria-pressed', 'false');
+    }
+    // The doors and windows stay a drawing.
+    expect(document.querySelector('svg.plan-features')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('aria-pressed and is-selected reflect the selected obstacle', () => {
+    useUiStore.getState().selectObstacle('o2');
+    render(<PlanFeatures layout={LAYOUT} />);
+    expect(obstacleEl('o2')).toHaveAttribute('aria-pressed', 'true');
+    expect(obstacleEl('o2')).toHaveClass('is-selected');
+    expect(obstacleEl('o1')).toHaveAttribute('aria-pressed', 'false');
+    expect(obstacleEl('o1')).not.toHaveClass('is-selected');
+  });
+
+  it('pointer down selects the obstacle and does not reach the plan background', () => {
+    useUiStore.getState().selectCorner('c2');
+    const onParent = vi.fn();
+    render(
+      <div onPointerDown={onParent}>
+        <PlanFeatures layout={LAYOUT} />
+      </div>,
+    );
+    fireEvent.pointerDown(obstacleEl('o1'), { clientX: 100, clientY: 100 });
+    expect(useUiStore.getState().selectedObstacleId).toBe('o1');
+    expect(useUiStore.getState().selectedCornerId).toBeNull();
+    expect(obstacleEl('o1')).toHaveAttribute('aria-pressed', 'true');
+    expect(onParent).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window);
+  });
+
+  it('Enter and Space on a focused obstacle select it', async () => {
+    const user = userEvent.setup();
+    render(<PlanFeatures layout={LAYOUT} />);
+    obstacleEl('o2').focus();
+    await user.keyboard('{Enter}');
+    expect(useUiStore.getState().selectedObstacleId).toBe('o2');
+    obstacleEl('o1').focus();
+    await user.keyboard(' ');
+    expect(useUiStore.getState().selectedObstacleId).toBe('o1');
+  });
+
+  it('a drag moves the obstacle from its centre by the movement over the scale', () => {
+    render(<PlanFeatures layout={LAYOUT} />);
+    fireEvent.pointerDown(obstacleEl('o2'), { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 120, clientY: 90 });
+    expect(dragObstacleTo).toHaveBeenLastCalledWith('o2', 110, 95);
+    expect(stored('o2')).toMatchObject({ x: 110, y: 95 });
+    fireEvent.pointerMove(window, { clientX: 125, clientY: 91 });
+    expect(dragObstacleTo).toHaveBeenLastCalledWith('o2', 112.5, 95.5);
+    fireEvent.pointerUp(window);
+    vi.mocked(dragObstacleTo).mockClear();
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+    expect(dragObstacleTo).not.toHaveBeenCalled();
+  });
+
+  it('pointer cancel ends the drag and releases a frozen layout', () => {
+    const freeze = vi.fn();
+    render(
+      <FreezePlanLayoutContext value={freeze}>
+        <PlanFeatures layout={LAYOUT} />
+      </FreezePlanLayoutContext>,
+    );
+    fireEvent.pointerDown(obstacleEl('o2'), { clientX: 100, clientY: 100 });
+    expect(freeze).toHaveBeenLastCalledWith(LAYOUT);
+    fireEvent.pointerCancel(window);
+    expect(freeze).toHaveBeenLastCalledWith(null);
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+    expect(dragObstacleTo).not.toHaveBeenCalled();
+  });
+
+  it('once the mode is no longer room, further moves edit nothing, even back in room mode', () => {
+    render(<PlanFeatures layout={LAYOUT} />);
+    fireEvent.pointerDown(obstacleEl('o2'), { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 120, clientY: 90 });
+    const moved = usePlanStore.getState().obstacles;
+    act(() => useUiStore.getState().setMode('furnish'));
+    fireEvent.pointerMove(window, { clientX: 140, clientY: 90 });
+    act(() => useUiStore.getState().setMode('room'));
+    fireEvent.pointerMove(window, { clientX: 160, clientY: 90 });
+    expect(usePlanStore.getState().obstacles).toBe(moved);
+    fireEvent.pointerUp(window);
+  });
+
+  it('unmounting mid-drag ends the drag', () => {
+    const freeze = vi.fn();
+    const { unmount } = render(
+      <FreezePlanLayoutContext value={freeze}>
+        <PlanFeatures layout={LAYOUT} />
+      </FreezePlanLayoutContext>,
+    );
+    fireEvent.pointerDown(obstacleEl('o2'), { clientX: 100, clientY: 100 });
+    unmount();
+    expect(freeze).toHaveBeenLastCalledWith(null);
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 150 });
+    expect(dragObstacleTo).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window);
+  });
+
+  it('back in furnish mode the obstacles are a drawing again', () => {
+    render(<PlanFeatures layout={LAYOUT} />);
+    act(() => useUiStore.getState().setMode('furnish'));
+    expect(obstacleEl('o1')).toHaveAttribute('aria-hidden', 'true');
+    expect(obstacleEl('o1')).not.toHaveAttribute('role');
+    expect(obstacleEl('o1')).not.toHaveClass('is-editable');
+    fireEvent.pointerDown(obstacleEl('o1'), { clientX: 100, clientY: 100 });
+    expect(useUiStore.getState().selectedObstacleId).toBeNull();
   });
 });

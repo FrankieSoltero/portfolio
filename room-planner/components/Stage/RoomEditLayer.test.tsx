@@ -1,11 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../../config';
+import { createInitialDocument } from '../../domain/catalog';
+import { openingSpan } from '../../domain/openings';
 import { wallsOf } from '../../domain/outline';
 import { roomBounds } from '../../domain/shape';
-import type { Corner, Point } from '../../domain/types';
-import { addCornerOnWall, dragCornerTo } from '../../state/actions';
+import type { Corner, Door, Obstacle, Opening, Point, WindowOpening } from '../../domain/types';
+import { addCornerOnWall, dragCornerTo, placeOpeningOnWall, slideOpeningTo } from '../../state/actions';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import type { PaneRect } from '../../view/panes';
@@ -15,7 +19,13 @@ import { FreezePlanLayoutContext, RoomEditLayer } from './RoomEditLayer';
 // The actions run for real; the spies record how the layer calls them.
 vi.mock('../../state/actions', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../state/actions')>();
-  return { ...actual, dragCornerTo: vi.fn(actual.dragCornerTo), addCornerOnWall: vi.fn(actual.addCornerOnWall) };
+  return {
+    ...actual,
+    dragCornerTo: vi.fn(actual.dragCornerTo),
+    addCornerOnWall: vi.fn(actual.addCornerOnWall),
+    placeOpeningOnWall: vi.fn(actual.placeOpeningOnWall),
+    slideOpeningTo: vi.fn(actual.slideOpeningTo),
+  };
 });
 
 const MAIN: PaneRect = { left: 0, top: 0, w: 1000, h: 600, z: 1, inset: false, divider: false, safeW: 608 };
@@ -30,6 +40,8 @@ beforeEach(() => {
   layout = computePlanLayout(roomBounds(usePlanStore.getState().room), MAIN);
   vi.mocked(dragCornerTo).mockClear();
   vi.mocked(addCornerOnWall).mockClear();
+  vi.mocked(placeOpeningOnWall).mockClear();
+  vi.mocked(slideOpeningTo).mockClear();
 });
 
 afterEach(() => {
@@ -296,5 +308,330 @@ describe('RoomEditLayer wall hit targets', () => {
     expect(usePlanStore.getState().room).toBe(before);
     expect(useUiStore.getState().roomProblem).toBe('That wall would be too short.');
     expect(wallHits()).toHaveLength(4);
+  });
+});
+
+/** Door on the top wall c1, 20 in from (0, 0), 32 in wide. */
+const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+/** Window on the right wall c2, 100 in from (144, 0), 36 in wide. */
+const W1: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 100, width: 36, sill: 24, height: 48 };
+const BOX: Obstacle = { id: 'o1', shape: 'box', label: 'Radiator', x: 30, y: 140, rotation: 0, width: 30, depth: 8, height: 30, elevation: 0 };
+
+function loadOpenings(openings: Opening[], obstacles: Obstacle[] = []): void {
+  usePlanStore.getState().reset({ ...createInitialDocument(), openings, obstacles });
+  useUiStore.getState().setMode('room');
+  layout = computePlanLayout(roomBounds(usePlanStore.getState().room), MAIN);
+}
+
+function openingHandle(name: string): HTMLElement {
+  return screen.getByRole('button', { name });
+}
+
+function storedOpening(id: string): Opening | undefined {
+  return usePlanStore.getState().openings.find((o) => o.id === id);
+}
+
+function wallHit(id: string): HTMLElement {
+  const el = document.querySelector<HTMLElement>(`.room-wall-hit[data-wall-id="${id}"]`);
+  if (!el) throw new Error(`no hit target for wall ${id}`);
+  return el;
+}
+
+describe('RoomEditLayer placing doors and windows', () => {
+  it('with the door tool, pointer down on a wall places a door there and adds no corner', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    const onParent = vi.fn();
+    renderLayer(onParent);
+    act(() => useUiStore.getState().setRoomTool('door'));
+    const outline = usePlanStore.getState().room.outline;
+    const p = toPane({ x: 72, y: 5 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    expect(placeOpeningOnWall).toHaveBeenCalledTimes(1);
+    const [wallId, at] = vi.mocked(placeOpeningOnWall).mock.calls[0] ?? [];
+    expect(wallId).toBe('c1');
+    expect(at?.x).toBeCloseTo(72, 9);
+    expect(at?.y).toBeCloseTo(5, 9);
+    expect(addCornerOnWall).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().room.outline).toBe(outline);
+    // Centred on the click: offset 72 − 32 / 2.
+    expect(storedOpening(NEW_ID)).toMatchObject({ kind: 'door', wallId: 'c1', offset: 56 });
+    expect(useUiStore.getState().roomTool).toBe('corner');
+    expect(openingHandle('Door on wall 1')).toHaveAttribute('aria-pressed', 'true');
+    expect(onParent).not.toHaveBeenCalled();
+  });
+
+  it('with the window tool, pointer down on the right wall places a window on wall 2', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    useUiStore.getState().setRoomTool('window');
+    renderLayer();
+    const p = toPane({ x: 144, y: 84 }, layout);
+    fireEvent.pointerDown(wallHit('c2'), { clientX: p.x, clientY: p.y, button: 0 });
+    expect(vi.mocked(placeOpeningOnWall).mock.calls[0]?.[0]).toBe('c2');
+    expect(storedOpening(NEW_ID)).toMatchObject({ kind: 'window', wallId: 'c2' });
+    expect(openingHandle('Window on wall 2')).toBeInTheDocument();
+  });
+
+  it.each(['corner', 'door', 'window'] as const)('a secondary-button pointer down on a wall does nothing (%s tool)', (tool) => {
+    useUiStore.getState().setRoomTool(tool);
+    useUiStore.getState().selectCorner(tool === 'corner' ? 'c3' : null);
+    const onParent = vi.fn();
+    renderLayer(onParent);
+    const before = usePlanStore.getState();
+    const p = toPane({ x: 72, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 2 });
+    expect(addCornerOnWall).not.toHaveBeenCalled();
+    expect(placeOpeningOnWall).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().room).toBe(before.room);
+    expect(usePlanStore.getState().openings).toBe(before.openings);
+    expect(useUiStore.getState().roomTool).toBe(tool);
+    expect(useUiStore.getState().selectedCornerId).toBe(tool === 'corner' ? 'c3' : null);
+    expect(onParent).not.toHaveBeenCalled();
+  });
+
+  it('marks the layer is-placing only while a door or window tool is armed', () => {
+    renderLayer();
+    const layer = document.querySelector('.room-edit-layer');
+    expect(layer).not.toHaveClass('is-placing');
+    act(() => useUiStore.getState().setRoomTool('door'));
+    expect(layer).toHaveClass('is-placing');
+    act(() => useUiStore.getState().setRoomTool('window'));
+    expect(layer).toHaveClass('is-placing');
+    act(() => useUiStore.getState().setRoomTool('corner'));
+    expect(layer).not.toHaveClass('is-placing');
+  });
+});
+
+describe('RoomEditLayer opening handles', () => {
+  it('draws a button.room-opening centred on each opening, named by kind and wall, between the wall bands and the corner handles', () => {
+    loadOpenings([D1, W1]);
+    renderLayer();
+    const outline = usePlanStore.getState().room.outline;
+    const handles = [...document.querySelectorAll<HTMLElement>('button.room-opening')];
+    expect(handles.map((h) => h.getAttribute('aria-label'))).toEqual(['Door on wall 1', 'Window on wall 2']);
+    [D1, W1].forEach((o, i) => {
+      const el = handles[i];
+      if (!el) throw new Error('missing handle');
+      expect(el).toHaveAttribute('type', 'button');
+      expect(el).toHaveAttribute('aria-pressed', 'false');
+      const span = openingSpan(outline, o);
+      if (!span) throw new Error('no span');
+      const mid = toPane({ x: (span.a.x + span.b.x) / 2, y: (span.a.y + span.b.y) / 2 }, layout);
+      expect(px(el, 'left')).toBeCloseTo(mid.x, 3);
+      expect(px(el, 'top')).toBeCloseTo(mid.y, 3);
+      for (const band of wallHits()) {
+        expect(band.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+      expect(el.compareDocumentPosition(handle(1)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+  });
+
+  it('names a handle by kind and wall alone when its wall has one opening', () => {
+    loadOpenings([D1, W1]);
+    renderLayer();
+    const names = [...document.querySelectorAll('button.room-opening')].map((h) => h.getAttribute('aria-label'));
+    expect(names).toEqual(['Door on wall 1', 'Window on wall 2']);
+  });
+
+  it('adds the ordinal by offset among the wall\'s openings when the wall has more than one', () => {
+    // Stored out of offset order: the ordinal follows the offset along the wall, not the list.
+    const late: WindowOpening = { ...W1, id: 'w2', wallId: 'c1', offset: 100, width: 30 };
+    const early: WindowOpening = { ...W1, id: 'w3', wallId: 'c1', offset: 60, width: 30 };
+    loadOpenings([late, D1, early, W1]);
+    renderLayer();
+    const names = [...document.querySelectorAll('button.room-opening')].map((h) => h.getAttribute('aria-label'));
+    expect(names).toEqual(['Window on wall 1 (3 of 3)', 'Door on wall 1 (1 of 3)', 'Window on wall 1 (2 of 3)', 'Window on wall 2']);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('draws no handle for an opening whose wall is missing', () => {
+    loadOpenings([D1]);
+    usePlanStore.setState({ openings: [{ ...D1, wallId: 'zz' }] });
+    renderLayer();
+    expect(document.querySelectorAll('.room-opening')).toHaveLength(0);
+  });
+
+  it('aria-pressed reflects the selected opening', () => {
+    loadOpenings([D1, W1]);
+    useUiStore.getState().selectOpening('w1');
+    renderLayer();
+    expect(openingHandle('Window on wall 2')).toHaveAttribute('aria-pressed', 'true');
+    expect(openingHandle('Door on wall 1')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('pointer down on a handle selects its opening and does not reach the plan background', () => {
+    loadOpenings([D1, W1]);
+    useUiStore.getState().selectCorner('c2');
+    const onParent = vi.fn();
+    renderLayer(onParent);
+    fireEvent.pointerDown(openingHandle('Door on wall 1'), { clientX: 100, clientY: 100 });
+    expect(useUiStore.getState().selectedOpeningId).toBe('d1');
+    expect(useUiStore.getState().selectedCornerId).toBeNull();
+    expect(onParent).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window);
+  });
+
+  it('Enter and Space on a focused handle select its opening', async () => {
+    loadOpenings([D1, W1]);
+    const user = userEvent.setup();
+    renderLayer();
+    openingHandle('Window on wall 2').focus();
+    await user.keyboard('{Enter}');
+    expect(useUiStore.getState().selectedOpeningId).toBe('w1');
+    openingHandle('Door on wall 1').focus();
+    await user.keyboard(' ');
+    expect(useUiStore.getState().selectedOpeningId).toBe('d1');
+  });
+});
+
+describe('RoomEditLayer opening drag', () => {
+  it('slides a door on a horizontal wall by the movement along the wall over the scale', () => {
+    loadOpenings([D1, W1]);
+    renderLayer();
+    const s = layout.scale;
+    fireEvent.pointerDown(openingHandle('Door on wall 1'), { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 100 + 10 * s, clientY: 107 });
+    expect(slideOpeningTo).toHaveBeenLastCalledWith('d1', expect.closeTo(30, 9));
+    expect(storedOpening('d1')?.offset).toBe(30);
+    fireEvent.pointerMove(window, { clientX: 100 + 12.4 * s, clientY: 60 });
+    expect(slideOpeningTo).toHaveBeenLastCalledWith('d1', expect.closeTo(32.4, 9));
+    expect(storedOpening('d1')?.offset).toBe(32);
+    fireEvent.pointerUp(window);
+  });
+
+  it('slides a window on a vertical wall by the vertical movement only', () => {
+    loadOpenings([D1, W1]);
+    renderLayer();
+    const s = layout.scale;
+    fireEvent.pointerDown(openingHandle('Window on wall 2'), { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 100 - 6 * s });
+    expect(slideOpeningTo).toHaveBeenLastCalledWith('w1', expect.closeTo(94, 9));
+    expect(storedOpening('w1')?.offset).toBe(94);
+    fireEvent.pointerUp(window);
+  });
+
+  it('freezes the layout for the drag and releases it on pointer up; later moves do nothing', () => {
+    loadOpenings([D1]);
+    const freeze = vi.fn();
+    render(
+      <FreezePlanLayoutContext value={freeze}>
+        <RoomEditLayer layout={layout} />
+      </FreezePlanLayoutContext>,
+    );
+    fireEvent.pointerDown(openingHandle('Door on wall 1'), { clientX: 100, clientY: 100 });
+    expect(freeze).toHaveBeenLastCalledWith(layout);
+    fireEvent.pointerUp(window);
+    expect(freeze).toHaveBeenLastCalledWith(null);
+    vi.mocked(slideOpeningTo).mockClear();
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 100 });
+    expect(slideOpeningTo).not.toHaveBeenCalled();
+  });
+
+  it('pointer cancel ends the drag and releases the layout', () => {
+    loadOpenings([D1]);
+    const freeze = vi.fn();
+    render(
+      <FreezePlanLayoutContext value={freeze}>
+        <RoomEditLayer layout={layout} />
+      </FreezePlanLayoutContext>,
+    );
+    fireEvent.pointerDown(openingHandle('Door on wall 1'), { clientX: 100, clientY: 100 });
+    fireEvent.pointerCancel(window);
+    expect(freeze).toHaveBeenLastCalledWith(null);
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 100 });
+    expect(slideOpeningTo).not.toHaveBeenCalled();
+  });
+
+  it('once the mode is no longer room, further moves edit nothing, even back in room mode', () => {
+    loadOpenings([D1]);
+    renderLayer();
+    const s = layout.scale;
+    fireEvent.pointerDown(openingHandle('Door on wall 1'), { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 100 + 10 * s, clientY: 100 });
+    expect(storedOpening('d1')?.offset).toBe(30);
+    const moved = usePlanStore.getState().openings;
+    useUiStore.getState().setMode('furnish');
+    fireEvent.pointerMove(window, { clientX: 100 + 20 * s, clientY: 100 });
+    useUiStore.getState().setMode('room');
+    fireEvent.pointerMove(window, { clientX: 100 + 30 * s, clientY: 100 });
+    expect(usePlanStore.getState().openings).toBe(moved);
+    fireEvent.pointerUp(window);
+  });
+
+  it('unmounting mid-drag releases the layout freeze', () => {
+    loadOpenings([D1]);
+    const freeze = vi.fn();
+    const { unmount } = render(
+      <FreezePlanLayoutContext value={freeze}>
+        <RoomEditLayer layout={layout} />
+      </FreezePlanLayoutContext>,
+    );
+    fireEvent.pointerDown(openingHandle('Door on wall 1'), { clientX: 100, clientY: 100 });
+    expect(freeze).toHaveBeenLastCalledWith(layout);
+    unmount();
+    expect(freeze).toHaveBeenLastCalledWith(null);
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 100 });
+    expect(slideOpeningTo).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window);
+  });
+});
+
+describe('RoomEditLayer background', () => {
+  function backdrop(): HTMLElement {
+    const el = document.querySelector<HTMLElement>('.room-edit-backdrop');
+    if (!el) throw new Error('no backdrop');
+    return el;
+  }
+
+  it('is a full-size element before the wall bands, hidden from assistive technology', () => {
+    renderLayer();
+    expect(backdrop()).toHaveAttribute('aria-hidden', 'true');
+    const firstBand = wallHits()[0];
+    if (!firstBand) throw new Error('no wall band');
+    expect(backdrop().compareDocumentPosition(firstBand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([
+    ['corner', () => useUiStore.getState().selectCorner('c2')],
+    ['opening', () => useUiStore.getState().selectOpening('d1')],
+    ['obstacle', () => useUiStore.getState().selectObstacle('o1')],
+  ] as const)('pointer down on it clears a selected %s', (_kind, selectIt) => {
+    loadOpenings([D1], [BOX]);
+    selectIt();
+    renderLayer();
+    fireEvent.pointerDown(backdrop());
+    const ui = useUiStore.getState();
+    expect([ui.selectedCornerId, ui.selectedOpeningId, ui.selectedObstacleId]).toEqual([null, null, null]);
+  });
+});
+
+describe('room editor stacking (stage.css)', () => {
+  // Vitest runs from the repo root; under jsdom import.meta.url is not a file URL.
+  const css = readFileSync(resolve(process.cwd(), 'room-planner/components/Stage/stage.css'), 'utf8');
+
+  /** The z-index of the rule whose selector is exactly `selector`. */
+  function zIndex(selector: string): number {
+    const at = css.indexOf(`\n${selector} {`);
+    if (at < 0) throw new Error(`no rule ${selector}`);
+    const body = css.slice(at, css.indexOf('}', at));
+    const m = /z-index:\s*(\d+)/.exec(body);
+    if (!m?.[1]) throw new Error(`no z-index in ${selector}`);
+    return Number(m[1]);
+  }
+
+  it('orders editable obstacles, wall bands, opening handles and corner handles bottom to top, all above the furniture and below the inset frame', () => {
+    const order = ['.plan-obstacle.is-editable', '.room-wall-hit', '.room-opening', '.room-corner'].map(zIndex);
+    // Furniture uses z-index 1 to 4; the inset frame is 9.
+    expect(order[0]).toBeGreaterThan(4);
+    for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1] ?? Infinity);
+    expect(order[order.length - 1]).toBeLessThan(9);
+  });
+
+  it('opening handles are at least 24 px across and every new control has a focus-visible outline', () => {
+    const rule = css.slice(css.indexOf('\n.room-opening {'), css.indexOf('}', css.indexOf('\n.room-opening {')));
+    expect(Number(/\bwidth:\s*(\d+)px/.exec(rule)?.[1])).toBeGreaterThanOrEqual(24);
+    expect(Number(/\bheight:\s*(\d+)px/.exec(rule)?.[1])).toBeGreaterThanOrEqual(24);
+    expect(css).toMatch(/\n\.room-opening:focus-visible \{[^}]*outline: 2px solid/);
+    expect(css).toMatch(/\n\.plan-obstacle\.is-editable:focus-visible \{[^}]*outline: 2px solid/);
+    expect(css).toMatch(/\n\.room-edit-layer\.is-placing \.room-wall-hit \{[^}]*cursor: crosshair/);
   });
 });

@@ -73,7 +73,8 @@
 }
 
 /* Doors, windows and obstacles: drawn over the walls and under the furniture, with no z-index
-   (document order puts them below the items' z-index 1 to 4). Drawing only: no pointer input. */
+   (document order puts them below the items' z-index 1 to 4). Drawing only: no pointer input,
+   except obstacles in room mode (.plan-obstacle.is-editable, under Room editing). */
 .plan-features {
   position: absolute;
   left: 0;
@@ -238,29 +239,101 @@
 }
 
 /* ── Room editing ─────────────────────────────────────────────────────────── */
+/* Stacking in room mode, bottom to top: the editor's backdrop (no z-index), the inert furniture
+   (1 to 4), editable obstacles (5), wall bands (6), door and window handles (7) and corner
+   handles (8), all under the inset frame (9). Clearance lines (7) are not drawn in room mode. */
+
 /* In room mode the furniture is inert: dimmed, and pointer input passes through to the plan. */
 .plan-item[inert] {
   opacity: 0.35;
   pointer-events: none;
 }
 
+/* The editor fills the plan view and takes no pointer input itself; its parts opt back in. It has
+   no z-index, so its parts stack with the obstacles in the plan view. */
+.room-edit-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* Transparent, over the whole plan: a pointer down on the empty plan clears the room selection. */
+.room-edit-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+}
+
+/* An obstacle in room mode is a button: over the furniture, under the wall bands, so a wall band
+   wins where an obstacle touches its wall. The selected border wins over the conflict border. */
+.plan-obstacle.is-editable {
+  z-index: 5;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.plan-obstacle.is-editable:hover {
+  border-color: var(--color-accent);
+}
+.plan-obstacle.is-selected {
+  border: 2px solid var(--color-accent);
+}
+.plan-obstacle.is-editable:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: 2px;
+}
+
 /* A wall's hit band: its inline left/top/width/height put it along the wall from its start
-   corner, turned about that corner. Over the furniture, under the corner handles. */
+   corner, turned about that corner. Over the obstacles, under the door, window and corner handles. */
 .room-wall-hit {
   position: absolute;
-  z-index: 5;
+  z-index: 6;
   transform-origin: 0 50%;
   cursor: copy;
   touch-action: none;
+  pointer-events: auto;
 }
 .room-wall-hit:hover {
   background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+/* With a door or window tool armed, a wall click places it. */
+.room-edit-layer.is-placing .room-wall-hit {
+  cursor: crosshair;
+}
+
+/* Door and window handles, centred on their inline left/top (the middle of the opening): a
+   24 px square, over the wall bands and under the corner handles. Dragging slides the opening. */
+.room-opening {
+  position: absolute;
+  z-index: 7;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--color-text);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-bg) 80%, transparent);
+  cursor: grab;
+  touch-action: none;
+  pointer-events: auto;
+}
+.room-opening:hover {
+  border-color: var(--color-accent);
+}
+.room-opening[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 40%, var(--color-bg));
+}
+.room-opening:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: 3px;
 }
 
 /* Corner handles, centred on their inline left/top. */
 .room-corner {
   position: absolute;
-  z-index: 6;
+  z-index: 8;
   box-sizing: border-box;
   width: 16px;
   height: 16px;
@@ -271,6 +344,7 @@
   background: var(--color-bg);
   cursor: move;
   touch-action: none;
+  pointer-events: auto;
 }
 .room-corner:hover {
   border-color: var(--color-accent);

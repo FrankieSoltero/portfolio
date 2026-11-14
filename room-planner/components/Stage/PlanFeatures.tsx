@@ -1,10 +1,14 @@
+import type React from 'react';
 import type { JSX } from 'react';
 import { obstacleFootprint } from '../../domain/obstacles';
-import type { Door, WindowOpening } from '../../domain/types';
+import type { Door, Obstacle, WindowOpening } from '../../domain/types';
+import { dragObstacleTo } from '../../state/actions';
 import { usePlanStore } from '../../state/planStore';
 import { useConflicts } from '../../state/selectors';
+import { useUiStore } from '../../state/uiStore';
 import { doorDrawing, windowDrawing } from '../../view/planFeatures';
 import { planItemBox, type PlanLayout } from '../../view/planLayout';
+import { useRoomModeDrag } from './RoomEditLayer';
 
 /** An obstacle's label is shown only when its box is wider than this on screen, in px. */
 const OBSTACLE_LABEL_MIN_W = 48;
@@ -13,16 +17,43 @@ function lineClass(base: string, conflict: boolean): string {
   return conflict ? `${base} is-conflict` : base;
 }
 
+/** The obstacle's label, or `Box` / `Column` when it has none (as the sidebar names it). */
+function obstacleName(obstacle: Obstacle): string {
+  if (obstacle.label !== '') return obstacle.label;
+  return obstacle.shape === 'box' ? 'Box' : 'Column';
+}
+
 /**
  * The plan's doors, windows and fixed obstacles, drawn over the walls and under the furniture.
- * Drawing only: nothing here takes pointer or key input or focus, and it is hidden from assistive
- * technology (the sidebar lists these things). Obstacle labels are React text, never markup.
+ * The doors and windows are a drawing only, hidden from assistive technology (the room editor puts
+ * a handle on each). In furnish mode the obstacles are a drawing too; in room mode each is a
+ * button (named by its label, `aria-pressed` when selected) that pointer down selects and drags,
+ * and Enter or Space selects. Obstacle labels are React text, never markup.
  */
 export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
   const outline = usePlanStore((s) => s.room.outline);
   const openings = usePlanStore((s) => s.openings);
   const obstacles = usePlanStore((s) => s.obstacles);
+  const roomMode = useUiStore((s) => s.mode === 'room');
+  const selectedObstacleId = useUiStore((s) => s.selectedObstacleId);
+  const selectObstacle = useUiStore((s) => s.selectObstacle);
+  const beginDrag = useRoomModeDrag();
   const conflicts = useConflicts();
+
+  // Moves the obstacle's centre from where it was at pointer down by the movement over the scale.
+  const onObstacleDown = (obstacle: Obstacle, e: React.PointerEvent): void => {
+    selectObstacle(obstacle.id);
+    const { scale } = layout;
+    const { id, x: x0, y: y0 } = obstacle;
+    beginDrag(e, (dx, dy) => dragObstacleTo(id, x0 + dx / scale, y0 + dy / scale), { freeze: layout });
+  };
+
+  // Only Enter and Space are handled here; every other key reaches the window-level shortcuts.
+  const onObstacleKey = (obstacle: Obstacle, e: React.KeyboardEvent): void => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    selectObstacle(obstacle.id);
+  };
 
   const doors = openings
     .filter((o): o is Door => o.kind === 'door')
@@ -79,18 +110,33 @@ export function PlanFeatures({ layout }: { layout: PlanLayout }): JSX.Element {
       </svg>
       {obstacles.map((o) => {
         const box = planItemBox(obstacleFootprint(o), layout);
+        const isSelected = roomMode && o.id === selectedObstacleId;
         const className = [
           'plan-obstacle',
           o.shape === 'cylinder' && 'is-round',
           conflicts[o.id] !== undefined && 'is-conflict',
+          roomMode && 'is-editable',
+          isSelected && 'is-selected',
         ]
           .filter(Boolean)
           .join(' ');
+        const editing = roomMode
+          ? {
+              role: 'button',
+              tabIndex: 0,
+              'aria-label': obstacleName(o),
+              'aria-pressed': isSelected,
+              onPointerDown: (e: React.PointerEvent) => onObstacleDown(o, e),
+              // Assistive technology activates a button with a synthetic click; selecting is idempotent.
+              onClick: () => selectObstacle(o.id),
+              onKeyDown: (e: React.KeyboardEvent) => onObstacleKey(o, e),
+            }
+          : { 'aria-hidden': true };
         return (
           <div
             key={o.id}
             data-obstacle-id={o.id}
-            aria-hidden="true"
+            {...editing}
             className={className}
             style={{
               left: box.left,

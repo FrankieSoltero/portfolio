@@ -717,9 +717,20 @@ describe('PlanView doors, windows and obstacles', () => {
     const arc = svg?.querySelector('path.plan-door-arc');
     expect(arc?.getAttribute('d')).toBe(doorDrawing(D1, usePlanStore.getState().room.outline, L)?.arc);
     expect(document.querySelectorAll('div.plan-obstacle')).toHaveLength(2);
-    // None is focusable or exposed; the sidebar lists them.
-    for (const el of document.querySelectorAll('svg.plan-features, [data-opening-id], [data-obstacle-id]')) {
+    // The drawings of doors and windows are never focusable; obstacles are buttons in room mode only.
+    for (const el of document.querySelectorAll('svg.plan-features, [data-opening-id]')) {
       expect(el).not.toHaveAttribute('tabindex');
+    }
+    for (const el of document.querySelectorAll('[data-obstacle-id]')) {
+      if (mode === 'room') {
+        expect(el).toHaveAttribute('tabindex', '0');
+        expect(el).toHaveAttribute('role', 'button');
+        expect(el).not.toHaveAttribute('aria-hidden');
+      } else {
+        expect(el).not.toHaveAttribute('tabindex');
+        expect(el).not.toHaveAttribute('role');
+        expect(el).toHaveAttribute('aria-hidden', 'true');
+      }
     }
     expect(svg).toHaveAttribute('aria-hidden', 'true');
     // The furniture count is unaffected: the drawings use other data attributes.
