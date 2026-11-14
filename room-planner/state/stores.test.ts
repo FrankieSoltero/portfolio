@@ -7,7 +7,7 @@ import type { Item, PlanDocument, ProductPreview } from '../domain/types';
 import { nudgeSelected, placePreview, removeSelected, rotateSelected } from './actions';
 import { usePlanStore } from './planStore';
 import { totalPrice, useConflicts, useSelectedItem } from './selectors';
-import { useUiStore } from './uiStore';
+import { type UiState, useUiStore } from './uiStore';
 
 // Captured before any test (or reset) runs, so the "fresh store" rows check real initial state.
 const freshPlan = usePlanStore.getState();
@@ -214,6 +214,89 @@ describe('uiStore', () => {
     });
     useUiStore.getState().toggleInsetSwap();
     expect(useUiStore.getState().insetSwapped).toBe(false);
+  });
+
+  it('starts in furnish mode with no corner, problem, notice or save block', () => {
+    expect(freshUi).toMatchObject({
+      mode: 'furnish',
+      selectedCornerId: null,
+      roomProblem: null,
+      notice: null,
+      saveBlocked: false,
+    });
+  });
+
+  it('setMode room enters room mode and clears the item selection', () => {
+    useUiStore.getState().select('seed-bed');
+    useUiStore.getState().setMode('room');
+    expect(useUiStore.getState()).toMatchObject({ mode: 'room', selectedId: null });
+  });
+
+  it('setMode room clears the item selection even when already in room mode', () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().select('seed-bed');
+    useUiStore.getState().setMode('room');
+    expect(useUiStore.getState()).toMatchObject({ mode: 'room', selectedId: null });
+  });
+
+  it('setMode furnish clears the selected corner and the room problem', () => {
+    const ui = useUiStore.getState();
+    ui.setMode('room');
+    ui.selectCorner('c2');
+    ui.setRoomProblem('Walls cross');
+    useUiStore.getState().setMode('furnish');
+    expect(useUiStore.getState()).toMatchObject({
+      mode: 'furnish', selectedCornerId: null, roomProblem: null,
+    });
+  });
+
+  it('setMode furnish clears the corner and problem even when already in furnish mode', () => {
+    const ui = useUiStore.getState();
+    ui.selectCorner('c2');
+    ui.setRoomProblem('Walls cross');
+    useUiStore.getState().setMode('furnish');
+    expect(useUiStore.getState()).toMatchObject({
+      mode: 'furnish', selectedCornerId: null, roomProblem: null,
+    });
+  });
+
+  it('room-editing setters each set their field and nothing else', () => {
+    const cases: [() => void, Partial<UiState>][] = [
+      [() => useUiStore.getState().selectCorner('c2'), { selectedCornerId: 'c2' }],
+      [() => useUiStore.getState().setRoomProblem('x'), { roomProblem: 'x' }],
+      [() => useUiStore.getState().setNotice('y'), { notice: 'y' }],
+      [() => useUiStore.getState().setSaveBlocked(true), { saveBlocked: true }],
+      [() => useUiStore.getState().selectCorner(null), { selectedCornerId: null }],
+    ];
+    for (const [apply, change] of cases) {
+      // Start from non-default values so a setter that clears another field is caught.
+      const ui = useUiStore.getState();
+      ui.reset();
+      ui.select('seed-bed');
+      ui.selectCorner('c1');
+      ui.setRoomProblem('p');
+      ui.setNotice('n');
+      const before = useUiStore.getState();
+      apply();
+      expect(useUiStore.getState()).toEqual({ ...before, ...change });
+    }
+  });
+
+  it('reset restores furnish mode and clears the room-editing fields', () => {
+    const ui = useUiStore.getState();
+    ui.setMode('room');
+    ui.selectCorner('c2');
+    ui.setRoomProblem('x');
+    ui.setNotice('y');
+    ui.setSaveBlocked(true);
+    useUiStore.getState().reset();
+    expect(useUiStore.getState()).toMatchObject({
+      mode: 'furnish',
+      selectedCornerId: null,
+      roomProblem: null,
+      notice: null,
+      saveBlocked: false,
+    });
   });
 });
 

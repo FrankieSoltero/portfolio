@@ -1,11 +1,22 @@
 import { create } from 'zustand';
 import { CONFIG } from '../config';
-import type { CameraState, LayoutMode, ProductPreview, RenderStyle, StageTab } from '../domain/types';
+import type { CameraState, EditMode, LayoutMode, ProductPreview, RenderStyle, StageTab } from '../domain/types';
 import type { LookupErrorCode } from '../services/productLookup';
 
-/** Workspace view state: selection, layout, 3D view and the product-lookup flow. Not saved. */
+/**
+ * Workspace view state: selection, layout, 3D view, the product-lookup flow, room editing
+ * and notices. Not saved.
+ */
 export interface UiState {
   selectedId: string | null;
+  mode: EditMode;
+  selectedCornerId: string | null;
+  /** Why the last room edit was refused, shown while editing the room. */
+  roomProblem: string | null;
+  /** A general message for the visitor, such as a storage problem. */
+  notice: string | null;
+  /** True when this session must not save the plan. */
+  saveBlocked: boolean;
   layout: LayoutMode;
   insetSwapped: boolean;
   tab: StageTab;
@@ -29,17 +40,43 @@ export interface UiState {
   updatePreviewDim(axis: 'w' | 'd' | 'h', inches: number): void;
   /** Records that WebGL failed and falls back to the blueprint render style. */
   markWebglUnavailable(): void;
+  /**
+   * Switches edit mode. Entering 'room' clears the item selection; entering 'furnish' clears
+   * the selected corner and the room problem. Applies the clears even if the mode is unchanged.
+   */
+  setMode(m: EditMode): void;
+  selectCorner(id: string | null): void;
+  setRoomProblem(text: string | null): void;
+  setNotice(text: string | null): void;
+  setSaveBlocked(b: boolean): void;
   reset(): void;
 }
 
 type UiData = Pick<
   UiState,
-  'selectedId' | 'layout' | 'insetSwapped' | 'tab' | 'renderStyle' | 'camera' | 'webglAvailable' | 'lookup'
+  | 'selectedId'
+  | 'mode'
+  | 'selectedCornerId'
+  | 'roomProblem'
+  | 'notice'
+  | 'saveBlocked'
+  | 'layout'
+  | 'insetSwapped'
+  | 'tab'
+  | 'renderStyle'
+  | 'camera'
+  | 'webglAvailable'
+  | 'lookup'
 >;
 
 function initialUi(): UiData {
   return {
     selectedId: null,
+    mode: 'furnish',
+    selectedCornerId: null,
+    roomProblem: null,
+    notice: null,
+    saveBlocked: false,
     layout: 'inset',
     insetSwapped: false,
     tab: '2d',
@@ -68,5 +105,11 @@ export const useUiStore = create<UiState>()((set) => ({
         : s,
     ),
   markWebglUnavailable: () => set({ webglAvailable: false, renderStyle: 'blueprint' }),
+  setMode: (mode) =>
+    set(mode === 'room' ? { mode, selectedId: null } : { mode, selectedCornerId: null, roomProblem: null }),
+  selectCorner: (selectedCornerId) => set({ selectedCornerId }),
+  setRoomProblem: (roomProblem) => set({ roomProblem }),
+  setNotice: (notice) => set({ notice }),
+  setSaveBlocked: (saveBlocked) => set({ saveBlocked }),
   reset: () => set(initialUi()),
 }));
