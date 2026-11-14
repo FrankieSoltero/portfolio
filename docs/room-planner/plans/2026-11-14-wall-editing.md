@@ -847,3 +847,10 @@ output.
    and `slideWall(Q, 'q1', 160, IDS)` → `crossing`; for the triangle `t1 (0,0)`, `t2 (120,0)`,
    `t3 (60,100)`, `slideWall(TRI, 't1', 110, IDS)` → `crossing` and
    `slideWall(TRI, 't1', 50, IDS)` → ok with `t1 (30,50)`, `t2 (90,50)`, `t3` unchanged.
+3. **Task 2, rule 5: only added corners split a straight chain.** Read literally, the rule
+   refused `corner-in-opening` for an opening that runs past the chain's last corner, where
+   an existing test expects `opening-off-wall` (the old behaviour). Ruling: an opening is
+   placed on the segment that the added corners assign it to (its start decides when it lies
+   past the chain's end), and `settle` then refuses a misfit as `opening-off-wall`. Only an
+   opening lying across an added corner refuses `corner-in-opening`. Found by Task 2's
+   implementer; the plan author's rule contradicted a test the same task says must pass.
