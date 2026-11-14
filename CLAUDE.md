@@ -10,7 +10,7 @@ the pixel-frame `box-shadow` recipes, every component, the icon system, content 
 and step-by-step "how to add a project/skill/section" recipes. Do not design or edit
 without reading it — the visual language is strict and easy to break.
 
-## Two sections, one game (hybrid skin)
+## Three sections (8-bit, papers, room planner)
 - **`/` (8-bit character sheet)** — everything below applies to it. Lives in `public/`
   and is served as a static file (a rewrite in `next.config.ts` maps `/` to
   `public/index.html`). Still build-free.
@@ -20,6 +20,12 @@ without reading it — the visual language is strict and easy to break.
   readable faces (IBM Plex Sans/Mono). **Never set body copy in pixel type.** Spec:
   `docs/superpowers/specs/2026-07-02-papers-8bit-hybrid-design.md` (supersedes
   PLAN.md §4's paper-white direction); tokens live in `app/papers/papers.css`.
+- **`/room-planner` (room layout tool)** — React + three.js, client-side only. Source in
+  `room-planner/`, route in `app/room-planner/`. It has its **own design language**
+  (the Industry design system in `room-planner/styles/industry.css`), **not the 8-bit
+  skin**. Its styles must stay scoped to `.room-planner`; this is enforced by
+  `room-planner/styles/scoping.test.ts`. No backend (plans are in memory). Run
+  `npm run check` before committing. Docs in `docs/room-planner/`.
 
 ## Files
 - `public/index.html` — the 8-bit site. Add/edit projects in the `quests` array and

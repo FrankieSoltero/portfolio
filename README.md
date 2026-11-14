@@ -1,6 +1,6 @@
-# Francisco Soltero — 8-bit Portfolio + Papers
+# Francisco Soltero — 8-bit Portfolio + Papers + Room Planner
 
-Two sections, two deliberately different design languages:
+Three sections, three deliberately different design languages:
 
 - **`/`** — an NES/SNES game-UI portfolio built as a single **Design Component**: one
   HTML template plus a small JS logic class, rendered client-side by `support.js`.
@@ -8,13 +8,16 @@ Two sections, two deliberately different design languages:
 - **`/papers`** — AI research-paper breakdowns with small-scale reproductions, rendered
   by Next.js (App Router) from MDX files in `content/papers/`. Styled as a technical
   experiment log (IBM Plex, Run Cards), not the 8-bit theme.
+- **`/room-planner`** — a room layout tool: 2D plan and 3D check, React and three.js,
+  client-side only. Source in `room-planner/`, mounted by `app/room-planner/`. Has its
+  own design language (Industry), not the 8-bit theme.
 
 ## Run locally
 
 ```bash
 npm install
 npm run dev
-# then open http://localhost:3000/  (8-bit site) and /papers
+# then open http://localhost:3000/  (8-bit site), /papers and /room-planner
 ```
 
 `next.config.ts` rewrites `/` to `public/index.html`, so the character sheet is served
@@ -35,12 +38,31 @@ byte-identical with zero build processing.
 - `content/papers/*.mdx` — one file per paper; copy `_template.mdx` to start a post.
 - `lib/papers.ts` — typed content layer (zod-validated frontmatter).
 - `public/Francisco_Soltero_Resume.pdf` — wired to the RESUME / SAVE FILE buttons.
+- `room-planner/` — the Room Planner source (React + three.js). `PlannerRoot.tsx`
+  renders the `.room-planner` wrapper and imports the self-hosted fonts and stylesheets.
+  Styles live in `room-planner/styles/` and must stay scoped to `.room-planner`
+  (enforced by `room-planner/styles/scoping.test.ts`). No backend: plans live in memory
+  and reset on refresh; product lookup is a mock (`services/mockProductLookup.ts`).
+- `app/room-planner/` — the `/room-planner` route: `page.tsx`, `PlannerLoader.tsx`
+  (loads the planner client-side only) and `error.tsx` (load-failure screen).
+- `docs/room-planner/` — specs, plans, plan reviews, verification notes, the read-only
+  `design_handoff/` reference and `mistakes-and-fixes.md`. See its `README.md`.
 
 ## Publishing a paper
 
 1. Copy `content/papers/_template.mdx` to `content/papers/<slug>.mdx`.
 2. Fill the frontmatter (schema enforced at build time by `lib/papers.ts`).
 3. Set `status: "published"` and push — the RSS feed and sitemap update automatically.
+
+## Checks
+
+- `npm run typecheck` — `tsc --noEmit`.
+- `npm run lint` — ESLint on `room-planner` and `app/room-planner` only.
+- `npm test` — Vitest (config in `vitest.config.mts`): planner and route tests.
+- `npm run check` — typecheck, lint, tests, then build. Run it before committing.
+
+`package.json` pins `postcss` under `next` with an `overrides` entry; see
+`docs/fixes-log.md` for why.
 
 ## Deploy
 

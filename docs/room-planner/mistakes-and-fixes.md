@@ -136,3 +136,54 @@ Entry format:
 - **How to avoid:** When a component owns a WebGL renderer, call `forceContextLoss()` on teardown
   and remove any context-lost listeners first. In the live check, exercise repeated mount and
   unmount of every WebGL view and confirm the console stays clean.
+
+## 2026-11-13 — Move into the portfolio
+
+### Plan assumed `npm audit fix` would clear `postcss`
+- **Date:** 2026-11-13
+- **What happened:** Task 1 was planned to end at 0 critical, 1 high. After `npm audit fix` there were 2 high: `zod` and `postcss`.
+- **Root cause:** The planner read `fixAvailable: true` in `npm audit --json` for `postcss` as "fixable without a breaking change". `next@15.5.29`, the newest 15.x, pins `postcss` to exactly `8.4.31`; the advisory covers `<=8.5.22`; npm's only real fix was Next.js 16.
+- **Fix:** The implementer stopped and reported instead of forcing it. The owner chose an `overrides` entry pinning `postcss` under `next` to `8.5.33` (plan Amendment 1). Build and papers HTML were verified identical.
+- **How to avoid:** Before writing an audit target into a plan, run `npm audit fix --dry-run` and read what it would actually change. Remove the override when Next.js is upgraded to 16.
+
+### Plan's audit target contradicted the spec
+- **Date:** 2026-11-13
+- **What happened:** The first plan-review round blocked the plan: the spec said the audit "must stay at 0 findings", but the portfolio already had 11 findings before this work.
+- **Root cause:** The spec was written before running `npm audit` on the portfolio.
+- **Fix:** The owner amended the target (non-breaking fixes plus the zod 3 to 4 upgrade; the 4 low KaTeX findings stay).
+- **How to avoid:** Measure the baseline of any "must stay at N" requirement before writing it.
+
+### Vitest config named `vitest.config.ts` printed a warning on every run
+- **Date:** 2026-11-13
+- **What happened:** "ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1)".
+- **Root cause:** The portfolio's `package.json` has no `"type": "module"`, so Vite loads a `.ts` config as CommonJS. The standalone planner had `"type": "module"`.
+- **Fix:** Renamed to `vitest.config.mts` (plan Amendment 2). The file is outside `tsconfig.json`'s include, so `npm run typecheck` does not cover it.
+- **How to avoid:** When moving tooling between packages, compare `"type"` in `package.json` first.
+
+### npm saved installed versions instead of the planned ranges
+- **Date:** 2026-11-13
+- **What happened:** After `npm install <pkg>@^x.y.z`, six dev dependency ranges in `package.json` read as the installed version (for example `^6.3.0`), not the plan's range.
+- **Root cause:** npm rewrites the saved range to the resolved version.
+- **Fix:** Ranges reset by hand to the plan's values, then `npm install` to resync the lockfile.
+- **How to avoid:** After installing, diff `package.json` against the intended ranges.
+
+### A broad `pkill -f next-server` was used to stop a test server
+- **Date:** 2026-11-13
+- **What happened:** In Task 2 the implementer stopped its server with a targeted kill and also a broad `pkill`.
+- **Root cause:** Habit; no other server happened to be running.
+- **Fix:** Standing instructions now say to stop a server only by its PID or port (`lsof -ti :<port> | xargs kill`).
+- **How to avoid:** Several agents can share one working tree; never kill by process name.
+
+### Scripted CSS replace matched a substring
+- **Date:** 2026-11-13
+- **What happened:** In Task 5 a scripted replace of `body { margin: 0;` also matched inside `.card-body { margin: 0;`.
+- **Root cause:** The pattern was not anchored to the start of a line.
+- **Fix:** A per-replacement "exactly one match" assertion stopped the script before it wrote anything; patterns were then anchored on a newline. The resulting diff was reviewed line by line.
+- **How to avoid:** Assert the match count of every scripted replacement.
+
+### GNU-only `sed` syntax silently did nothing on macOS
+- **Date:** 2026-11-13
+- **What happened:** In Task 7 a mutation check used `sed '0,/re/s//…/'`; BSD sed did not apply it, so the mutated run showed all tests passing.
+- **Root cause:** GNU-only address syntax.
+- **Fix:** Re-ran with a plain substitution and confirmed with `grep` that the mutation was applied; the test then failed as expected.
+- **How to avoid:** After a scripted mutation, confirm the file changed before trusting a green run.
