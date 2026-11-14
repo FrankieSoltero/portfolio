@@ -155,3 +155,38 @@
   `/sitemap.xml` still present.
 - `/papers` and `/papers/grokking` HTML served before and after are identical once
   `/_next/static/…` paths and the build id are normalised away.
+
+### zod upgrade (clears the last high finding)
+- `zod` 3.25.76 → 4.6.7 (`package.json` range `^3.25.67` → `^4.6.7`), clearing
+  GHSA-mrhx-c7xc-m3w5 (affects `zod` below 4.6.6). Audit now: 0 critical, 0 high,
+  0 moderate, 4 low.
+- `lib/papers.ts`: no code change needed. Every API it uses (`z.object`, `z.string`,
+  `.min`, `.regex(re, message)`, `.optional`, `.url`, `z.enum`, `z.array`, `z.infer`,
+  `safeParse`, `error.issues`) still exists in zod 4; `.url()` is only deprecated.
+- Checked with a probe of 26 frontmatter cases run on both versions: the same cases
+  are accepted and rejected, at the same field paths. Our own messages (`date must be
+  YYYY-MM-DD`, `slug must be lowercase kebab-case`) are unchanged; zod's built-in
+  messages are worded differently (e.g. `Required` is now `Invalid input: expected
+  string, received undefined`). One data difference: zod 4's `.url()` trims
+  surrounding spaces from the value it returns (`" https://x "` → `"https://x"`);
+  no current paper has a padded URL.
+- Build with `date: "2026/01/01"` in `content/papers/grokking.mdx` fails with the same
+  text on both versions: `Invalid frontmatter in content/papers/grokking.mdx:` /
+  `  - date: date must be YYYY-MM-DD`.
+
+### Remaining low findings (left on purpose)
+All four come from one advisory, GHSA-238p-pmpm-9mq7 (KaTeX: existing prototype
+pollution can bypass trust restrictions, `katex` >=0.11.0 <0.18.2).
+
+| Package | Installed | Advisory | npm's offered fix |
+|---------|-----------|----------|-------------------|
+| `katex` | 0.16.47 | GHSA-238p-pmpm-9mq7 | `katex` 0.19.1 |
+| `rehype-katex` | 7.0.1 | via `katex` | `rehype-katex` 1.2.0 |
+| `remark-math` | 6.0.0 | via `micromark-extension-math` | `remark-math` 3.0.1 |
+| `micromark-extension-math` | 3.1.0 | via `katex` | `remark-math` 3.0.1 |
+
+Why they stay: each fix is a breaking change to the papers math rendering — npm flags
+all three as semver-major (`katex` 0.16 → 0.19, and the `rehype-katex` / `remark-math`
+"fixes" are downgrades to old major versions with different plugin APIs). The advisory
+needs prototype pollution that already exists; KaTeX here renders only the repo's own
+MDX content, not user input.
