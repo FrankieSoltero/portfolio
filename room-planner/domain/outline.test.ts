@@ -19,6 +19,7 @@ import {
   wallFrame,
   wallSlideStops,
   wallsOf,
+  type LengthAnchor,
   type OutlineResult,
   type StartingShape,
 } from './outline';
@@ -89,6 +90,9 @@ const M64: Corner[] = [
   { id: 'a', x: 610, y: 100 },
   { id: 'b', x: 0, y: 100 },
 ];
+const V = named(
+  ['v1', 0, 0], ['v2', 100, 0], ['v3', 100, 100], ['v4', 108, 100], ['v5', 108, 150], ['v6', 0, 150],
+);
 const IDS = { start: 'x1', end: 'x2' };
 // Amendment 2 of the wall-editing plan.
 const TRI = named(['t1', 0, 0], ['t2', 120, 0], ['t3', 60, 100]);
@@ -391,9 +395,9 @@ describe('removeCorner', () => {
 });
 
 describe('setWallLength', () => {
-  it('moves only the wall end corner along the wall', () => {
+  it('moves the wall end and slides the next wall', () => {
     const out = okOutline(setWallLength(RECT, 'c1', 120));
-    expect(out).toEqual([RECT[0], { id: 'c2', x: 120, y: 0 }, RECT[2], RECT[3]]);
+    expect(out).toEqual([RECT[0], { id: 'c2', x: 120, y: 0 }, { id: 'c3', x: 120, y: 168 }, RECT[3]]);
   });
 
   it('keeps the direction of an angled wall', () => {
@@ -425,6 +429,101 @@ describe('setWallLength', () => {
 
   it('leaves the outline unchanged for an unknown wall', () => {
     expect(setWallLength(RECT, 'nope', 100)).toEqual({ ok: true, outline: RECT });
+  });
+
+  it('moves the wall start and slides the previous wall', () => {
+    expect(okOutline(setWallLength(R, 'c1', 120, 'start'))).toEqual(
+      named(['c1', 24, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 24, 168]),
+    );
+  });
+
+  it('moves both ends by half the change each', () => {
+    expect(okOutline(setWallLength(R, 'c1', 120, 'both'))).toEqual(
+      named(['c1', 12, 0], ['c2', 132, 0], ['c3', 132, 168], ['c4', 12, 168]),
+    );
+  });
+
+  it('moves the end corner along a diagonal next wall, keeping its angle', () => {
+    expect(okOutline(setWallLength(Q, 'q1', 110))).toEqual(
+      withCorners(Q, { id: 'q2', x: 110, y: 0 }, { id: 'q3', x: 150, y: 40 }),
+    );
+  });
+
+  it('slides a perpendicular previous wall when the start moves', () => {
+    expect(okOutline(setWallLength(Q, 'q1', 110, 'start'))).toEqual(
+      withCorners(Q, { id: 'q1', x: -10, y: 0 }, { id: 'q5', x: -10, y: 150 }),
+    );
+  });
+
+  it('moves the end corner along a next wall that runs in the same direction', () => {
+    expect(okOutline(setWallLength(T, 'm1', 60))).toEqual(withCorners(T, { id: 'm2', x: 108, y: 0 }));
+  });
+
+  it('moves both ends along neighbours that run in the same direction', () => {
+    expect(okOutline(setWallLength(T, 'm1', 60, 'both'))).toEqual(
+      withCorners(T, { id: 'm1', x: 42, y: 0 }, { id: 'm2', x: 102, y: 0 }),
+    );
+  });
+
+  const TYPED_OK: [string, readonly Corner[], string, number, LengthAnchor][] = [
+    ['end, rectangle', R, 'c1', 120, 'end'],
+    ['start, rectangle', R, 'c1', 120, 'start'],
+    ['both, rectangle', R, 'c1', 120, 'both'],
+    ['end, diagonal neighbour', Q, 'q1', 110, 'end'],
+    ['start, perpendicular neighbour', Q, 'q1', 110, 'start'],
+    ['same-direction neighbour at the end', T, 'm1', 60, 'end'],
+    ['same-direction neighbours, both', T, 'm1', 60, 'both'],
+    ['start alone', V, 'v1', 112, 'start'],
+  ];
+
+  it.each(TYPED_OK)('keeps the direction of every wall (%s)', (_, outline, wallId, length, anchor) => {
+    const out = okOutline(setWallLength(outline, wallId, length, anchor));
+    const beforeWalls = wallsOf(outline);
+    for (const w of wallsOf(out)) {
+      const was = beforeWalls.find((b) => b.id === w.id);
+      if (was === undefined) continue;
+      const u = wallFrame(w).u;
+      const v = wallFrame(was).u;
+      expect(Math.abs(u.x * v.y - u.y * v.x)).toBeLessThanOrEqual(CONFIG.sameDirectionSlack);
+    }
+  });
+
+  it.each(TYPED_OK)('reaches the typed length (%s)', (_, outline, wallId, length, anchor) => {
+    const out = okOutline(setWallLength(outline, wallId, length, anchor));
+    const wall = wallsOf(out).find((w) => w.id === wallId);
+    expect(wall).toBeDefined();
+    expect(Math.abs((wall?.length ?? Number.NaN) - length)).toBeLessThanOrEqual(0.02);
+  });
+
+  it('leaves the outline equal to the input when the length is the same', () => {
+    expect(setWallLength(R, 'c1', 144, 'both')).toEqual({ ok: true, outline: R });
+  });
+
+  it('refuses 5.9 and -1 as short-wall and NaN as too-large, and leaves an unknown wall unchanged', () => {
+    expect(setWallLength(R, 'c1', 5.9)).toEqual({ ok: false, problem: 'short-wall' });
+    expect(setWallLength(R, 'c1', -1)).toEqual({ ok: false, problem: 'short-wall' });
+    expect(setWallLength(R, 'c1', Number.NaN)).toEqual({ ok: false, problem: 'too-large' });
+    expect(setWallLength(R, 'nope', 100)).toEqual({ ok: true, outline: R });
+  });
+
+  it('refuses a length that makes the room too large', () => {
+    expect(setWallLength(R, 'c1', 800)).toEqual({ ok: false, problem: 'too-large' });
+  });
+
+  it('moves the start alone where moving the end would leave a short wall', () => {
+    expect(okOutline(setWallLength(V, 'v1', 112, 'start'))).toEqual(
+      withCorners(V, { id: 'v1', x: -12, y: 0 }, { id: 'v6', x: -12, y: 150 }),
+    );
+  });
+
+  it('refuses the whole edit when the second step of both is refused', () => {
+    // The end step slides v2 out to x = 106, leaving wall v3 (106,100)→(108,100) 2 in long.
+    expect(setWallLength(V, 'v1', 112, 'both')).toEqual({ ok: false, problem: 'short-wall' });
+  });
+
+  it('uses no id from newId when no corner is added', () => {
+    const out = okOutline(setWallLength(R, 'c1', 120, 'end', () => 'unused'));
+    expect(out.map((c) => c.id)).not.toContain('unused');
   });
 });
 

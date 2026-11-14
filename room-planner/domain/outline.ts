@@ -189,22 +189,77 @@ export function removeCorner(outline: readonly Corner[], id: string): OutlineRes
   return settle(outline.filter((c) => c.id !== id));
 }
 
+/** Which end of a wall a typed length moves: its start corner, its end corner, or both by half. */
+export type LengthAnchor = 'start' | 'both' | 'end';
+
 /**
- * Sets wall `wallId` to `length` by moving its end corner along the wall's direction; the start
- * corner and every other corner stay. An unknown wall leaves the outline unchanged; a length that
- * is not a finite number is refused as too-large, and one below CONFIG.wallMin as short-wall.
+ * Lengthens wall `wallId` by `delta` (negative shortens) at its end corner B, keeping every angle:
+ * when the next wall runs in the same direction, B moves along the wall; otherwise the next wall
+ * slides so B moves along the wall. The wall must have a length; an unknown wall leaves the outline
+ * unchanged.
  */
-export function setWallLength(outline: readonly Corner[], wallId: string, length: number): OutlineResult {
+function moveWallEnd(outline: readonly Corner[], wallId: string, delta: number, newId: () => string): OutlineResult {
+  const walls = wallsOf(outline);
+  const wall = walls.find((w) => w.id === wallId);
+  if (wall === undefined) return unchanged(outline);
+  const next = walls[(wall.index + 1) % walls.length];
+  const { u } = wallFrame(wall);
+  const B = wall.b;
+  if (sameDirection(unit({ x: next.b.x - B.x, y: next.b.y - B.y }), u)) {
+    return settle(outline.map((c) => (c.id === B.id ? { id: B.id, x: B.x + u.x * delta, y: B.y + u.y * delta } : c)));
+  }
+  const { n } = wallFrame(next);
+  return slideWall(outline, next.id, delta * (u.x * n.x + u.y * n.y), { start: newId(), end: newId() });
+}
+
+/**
+ * Lengthens wall `wallId` by `delta` (negative shortens) at its start corner A, keeping every angle:
+ * when the previous wall runs in the same direction, A moves back along the wall; otherwise the
+ * previous wall slides so A moves along the wall. The wall must have a length; an unknown wall leaves
+ * the outline unchanged.
+ */
+function moveWallStart(outline: readonly Corner[], wallId: string, delta: number, newId: () => string): OutlineResult {
+  const walls = wallsOf(outline);
+  const wall = walls.find((w) => w.id === wallId);
+  if (wall === undefined) return unchanged(outline);
+  const previous = walls[(wall.index - 1 + walls.length) % walls.length];
+  const { u } = wallFrame(wall);
+  const A = wall.a;
+  if (sameDirection(unit({ x: A.x - previous.a.x, y: A.y - previous.a.y }), u)) {
+    return settle(outline.map((c) => (c.id === A.id ? { id: A.id, x: A.x - u.x * delta, y: A.y - u.y * delta } : c)));
+  }
+  const { n } = wallFrame(previous);
+  return slideWall(outline, previous.id, -delta * (u.x * n.x + u.y * n.y), { start: newId(), end: newId() });
+}
+
+/**
+ * Sets wall `wallId` to `length`, keeping the direction of every wall. `anchor` says which end
+ * moves: 'end' moves the end corner, 'start' the start corner, and 'both' moves the start by half
+ * the change and then the end by the other half (a refusal of either half refuses the whole edit).
+ * At the moving end, a neighbour running in the same direction has the corner moved along the wall;
+ * any other neighbour slides (see slideWall), which can add or remove corners, new ones taking ids
+ * from `newId`. An unknown wall leaves the outline unchanged; a length that is not a finite number
+ * is refused as too-large, and one below CONFIG.wallMin as short-wall.
+ */
+export function setWallLength(
+  outline: readonly Corner[],
+  wallId: string,
+  length: number,
+  anchor: LengthAnchor = 'end',
+  newId: () => string = () => crypto.randomUUID(),
+): OutlineResult {
   if (!Number.isFinite(length)) return notFinite();
   const wall = wallsOf(outline).find((w) => w.id === wallId);
   if (wall === undefined) return unchanged(outline);
   if (length < CONFIG.wallMin - LIMIT_SLACK) return { ok: false, problem: 'short-wall' };
-  const { a, b } = wall;
   // A zero-length wall has no direction; validateOutline never accepts one, so nothing to keep.
   if (wall.length === 0) return { ok: false, problem: 'short-wall' };
-  const k = length / wall.length;
-  const end = { id: b.id, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
-  return settle(outline.map((c) => (c.id === b.id ? end : c)));
+  const delta = length - wall.length;
+  if (anchor === 'end') return moveWallEnd(outline, wallId, delta, newId);
+  if (anchor === 'start') return moveWallStart(outline, wallId, delta, newId);
+  const first = moveWallStart(outline, wallId, delta / 2, newId);
+  if (!first.ok) return first;
+  return moveWallEnd(first.outline, wallId, delta / 2, newId);
 }
 
 /** A slide shorter than this (in) leaves the outline unchanged. */
