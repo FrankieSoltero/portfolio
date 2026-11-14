@@ -330,13 +330,14 @@
 }
 
 /* A wall's length label, centred on its inline left/top (just outside the wall's midpoint). It
-   shares the wall bands' level and follows them in the document, so it is drawn over them. */
+   shares the wall bands' level and follows them in the document, so it is drawn over them. The
+   thin border and text cursor say it can be clicked to type a length. */
 .room-wall-label {
   position: absolute;
   z-index: 6;
-  padding: 2px 4px;
+  padding: 1px 6px;
   transform: translate(-50%, -50%);
-  border: 0;
+  border: 1px solid color-mix(in srgb, var(--color-text) 35%, transparent);
   border-radius: 3px;
   font-family: var(--font-heading);
   font-size: 12px;
@@ -344,11 +345,12 @@
   white-space: nowrap;
   color: var(--color-text);
   background: var(--color-bg);
-  cursor: pointer;
+  cursor: text;
   pointer-events: auto;
 }
 .room-wall-label:hover {
   color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 .room-wall-label[aria-pressed="true"] {
   color: var(--color-accent-700);
@@ -356,6 +358,53 @@
 .room-wall-label:focus-visible {
   outline: 2px solid var(--color-accent-700);
   outline-offset: 3px;
+}
+
+/* The length editor that takes a label's place, centred on the same point and drawn above the
+   corner handles: a number input with its unit, then the three which-end radios. */
+.room-wall-editor {
+  position: absolute;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  pointer-events: auto;
+}
+.room-wall-editor .input-suffix-wrap > .input {
+  width: 88px;
+}
+.room-wall-editor-ends {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+}
+.room-wall-editor-end {
+  width: 30px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.room-wall-editor-end[aria-checked="true"] {
+  color: var(--color-bg);
+  background: var(--color-accent);
+}
+.room-wall-editor-end:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: -2px;
+}
+/* Turned inline to the wall's angle, so the arrows point along the wall. */
+.room-wall-editor-arrow {
+  display: inline-block;
 }
 
 /* Door and window handles, centred on their inline left/top (the middle of the opening): a
