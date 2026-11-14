@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Point } from '../domain/types';
+import type { Corner, Door, Opening, Point, WindowOpening } from '../domain/types';
 import type { Tokens } from '../styles/tokens';
-import { buildRoom, createFloorTexture } from './roomMesh';
+import { rectRoom } from '../test/fixtures';
+import { buildRoom, createFloorTexture, wallHoles, type WallHole } from './roomMesh';
 
 const RECT: readonly Point[] = [{ x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 168 }, { x: 0, y: 168 }];
 /** The 6-corner L-shape; (72, 84) is the reflex corner. */
@@ -264,5 +265,197 @@ describe('createFloorTexture', () => {
       expect(runs[0]).toEqual(runs[1]);
       expect(runs[0]?.length).toBeGreaterThan(16);
     });
+  });
+});
+
+/** The room R of the brief: 144 × 168 × 96, corners c1…c4. */
+const R = rectRoom(144, 168, 96).outline;
+const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+const W1: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 100, width: 36, sill: 36, height: 48 };
+
+describe('wallHoles', () => {
+  it('gives one list per wall: the door on wall 0 from the floor, the window on wall 1 from its sill', () => {
+    expect(wallHoles(R, [D1, W1], 96)).toEqual([
+      [{ x0: 20, x1: 52, z0: 0, z1: 80, glass: false }],
+      [{ x0: 100, x1: 136, z0: 36, z1: 84, glass: true }],
+      [],
+      [],
+    ]);
+  });
+
+  it('clamps a hole to the ceiling', () => {
+    const [wall0] = wallHoles(R, [{ ...D1, height: 100 }], 96);
+    expect(wall0).toEqual([{ x0: 20, x1: 52, z0: 0, z1: 96, glass: false }]);
+  });
+
+  it('drops a hole that starts at or above the ceiling', () => {
+    expect(wallHoles(R, [{ ...W1, sill: 100 }], 96)).toEqual([[], [], [], []]);
+    expect(wallHoles(R, [{ ...W1, sill: 96 }], 96)).toEqual([[], [], [], []]);
+  });
+
+  it('ignores an opening whose wall is not in the outline', () => {
+    expect(wallHoles(R, [{ ...D1, wallId: 'gone' }], 96)).toEqual([[], [], [], []]);
+  });
+
+  it('sorts each wall\'s holes by x0', () => {
+    const later: Opening = { ...D1, id: 'd2', offset: 90 };
+    const [wall0] = wallHoles(R, [later, D1], 96);
+    expect(wall0?.map((h) => h.x0)).toEqual([20, 90]);
+  });
+
+  it('clamps a hole into its wall and drops one narrower than 0.01 after clamping', () => {
+    const [wall0] = wallHoles(R, [{ ...D1, offset: 130 }, { ...W1, wallId: 'c1', offset: -50 }], 96);
+    expect(wall0).toEqual([{ x0: 130, x1: 144, z0: 0, z1: 80, glass: false }]);
+    expect(wallHoles(R, [{ ...D1, offset: 143.995 }], 96)[0]).toEqual([]);
+  });
+});
+
+/** The wall of `walls` lying in the vertical plane of the wall from a to b (glass excluded). */
+function wallOn(walls: StdMesh[], a: Point, b: Point): StdMesh {
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const n = inwardNormal(a, b);
+  const onPlane = (m: StdMesh) => worldVertices(m).every((p) =>
+    Math.abs((p.x - a.x) * n.x + (p.z - a.y) * n.z) < 1e-9);
+  const found = walls.filter((w) => !w.material.transparent && onPlane(w)
+    && worldVertices(w).some((p) => Math.abs(p.x - b.x) + Math.abs(p.z - b.y) < 1e-9)
+    && len > 0);
+  if (found.length !== 1 || !found[0]) throw new Error(`expected one wall on (${a.x},${a.y})–(${b.x},${b.y})`);
+  return found[0];
+}
+
+/** Every vertex of the mesh as (along, up) in the frame of the wall from a to b. */
+function wallFrame(mesh: THREE.Mesh, a: Point, b: Point): THREE.Vector2[] {
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const ux = (b.x - a.x) / len;
+  const uy = (b.y - a.y) / len;
+  return worldVertices(mesh).map((p) => new THREE.Vector2((p.x - a.x) * ux + (p.z - a.y) * uy, p.y));
+}
+
+/** True when some triangle of the mesh contains the point `along` in from a and `up` above the floor. */
+function covers(mesh: THREE.Mesh, a: Point, b: Point, along: number, up: number): boolean {
+  const v = wallFrame(mesh, a, b);
+  const p = new THREE.Vector2(along, up);
+  return triangles(mesh.geometry).some(([i, j, k]) => {
+    const [pa, pb, pc] = [v[i], v[j], v[k]] as [THREE.Vector2, THREE.Vector2, THREE.Vector2];
+    const side = (s: THREE.Vector2, t: THREE.Vector2) => (t.x - s.x) * (p.y - s.y) - (t.y - s.y) * (p.x - s.x);
+    const d1 = side(pa, pb);
+    const d2 = side(pb, pc);
+    const d3 = side(pc, pa);
+    const neg = d1 < -1e-9 || d2 < -1e-9 || d3 < -1e-9;
+    const pos = d1 > 1e-9 || d2 > 1e-9 || d3 > 1e-9;
+    return !(neg && pos);
+  });
+}
+
+/** Total area of the mesh's triangles. */
+function areaOf(mesh: THREE.Mesh): number {
+  const v = worldVertices(mesh);
+  return triangles(mesh.geometry).reduce((sum, [a, b, c]) => {
+    const [pa, pb, pc] = [v[a], v[b], v[c]] as [THREE.Vector3, THREE.Vector3, THREE.Vector3];
+    return sum + pb.clone().sub(pa).cross(pc.clone().sub(pa)).length() / 2;
+  }, 0);
+}
+
+function expectFacesInward(mesh: THREE.Mesh, a: Point, b: Point): void {
+  const n = inwardNormal(a, b);
+  const normals = frontNormals(mesh);
+  expect(normals.length).toBeGreaterThan(0);
+  for (const normal of normals) expectVec(normal, n.x, n.y, n.z);
+}
+
+const [C1, C2, C3] = R as [Corner, Corner, Corner, Corner];
+
+describe('buildRoom with holes', () => {
+  const holes = (openings: Opening[]): WallHole[][] => wallHoles(R, openings, H);
+
+  it('cuts a door (touching the floor) out of its wall, which still faces inward', () => {
+    const { walls } = split(buildRoom(R, H, TOKENS, null, holes([D1])));
+    const wall = wallOn(walls, C1, C2);
+    expect(covers(wall, C1, C2, 36, 40)).toBe(false);
+    expect(covers(wall, C1, C2, 10, 40)).toBe(true);
+    expect(covers(wall, C1, C2, 36, 90)).toBe(true);
+    expect(covers(wall, C1, C2, 100, 5)).toBe(true);
+    expectFacesInward(wall, C1, C2);
+    expect(areaOf(wall)).toBeCloseTo(144 * 96 - 32 * 80, 6);
+    expect(wall.material.side).toBe(THREE.FrontSide);
+    expect(wall.receiveShadow).toBe(true);
+    expect(wall.castShadow).toBe(false);
+    expect(wall.material.color.getHexString()).toBe('f5f5f8');
+    expect(wall.material.roughness).toBe(1);
+  });
+
+  it('cuts a window (strictly inside) out of its wall, covering below and above it', () => {
+    const { walls } = split(buildRoom(R, H, TOKENS, null, holes([W1])));
+    const wall = wallOn(walls, C2, C3);
+    expect(covers(wall, C2, C3, 118, 60)).toBe(false);
+    expect(covers(wall, C2, C3, 118, 20)).toBe(true);
+    expect(covers(wall, C2, C3, 118, 90)).toBe(true);
+    expect(covers(wall, C2, C3, 90, 60)).toBe(true);
+    expect(covers(wall, C2, C3, 150, 60)).toBe(true);
+    expectFacesInward(wall, C2, C3);
+    expect(areaOf(wall)).toBeCloseTo(168 * 96 - 36 * 48, 6);
+  });
+
+  it('cuts a full-height opening (touching floor and ceiling), leaving the wall either side', () => {
+    const { walls } = split(buildRoom(R, H, TOKENS, null, holes([{ ...D1, height: 120 }])));
+    const wall = wallOn(walls, C1, C2);
+    for (const up of [1, 40, 95]) expect(covers(wall, C1, C2, 36, up)).toBe(false);
+    expect(covers(wall, C1, C2, 10, 95)).toBe(true);
+    expect(covers(wall, C1, C2, 60, 1)).toBe(true);
+    expectFacesInward(wall, C1, C2);
+    expect(areaOf(wall)).toBeCloseTo(144 * 96 - 32 * 96, 6);
+  });
+
+  it('cuts two holes from one wall', () => {
+    const second: Opening = { ...W1, id: 'w2', wallId: 'c1', offset: 80 };
+    const { walls } = split(buildRoom(R, H, TOKENS, null, holes([D1, second])));
+    const wall = wallOn(walls, C1, C2);
+    expect(covers(wall, C1, C2, 36, 40)).toBe(false);
+    expect(covers(wall, C1, C2, 98, 60)).toBe(false);
+    expect(covers(wall, C1, C2, 66, 60)).toBe(true);
+    expect(covers(wall, C1, C2, 98, 20)).toBe(true);
+    expectFacesInward(wall, C1, C2);
+    expect(areaOf(wall)).toBeCloseTo(144 * 96 - 32 * 80 - 36 * 48, 6);
+  });
+
+  it('fills a window hole with one transparent pane in the wall plane, facing inward, casting no shadow', () => {
+    const group = buildRoom(R, H, TOKENS, null, holes([W1]));
+    group.updateMatrixWorld(true);
+    const glass = meshes(group).filter((m) => m.material.transparent);
+    expect(glass).toHaveLength(1);
+    const [pane] = glass as [StdMesh];
+    const v = wallFrame(pane, C2, C3);
+    const along = v.map((p) => p.x);
+    const up = v.map((p) => p.y);
+    expect(Math.min(...along)).toBeCloseTo(100, 9);
+    expect(Math.max(...along)).toBeCloseTo(136, 9);
+    expect(Math.min(...up)).toBeCloseTo(36, 9);
+    expect(Math.max(...up)).toBeCloseTo(84, 9);
+    for (const p of worldVertices(pane)) expect(p.x).toBeCloseTo(144, 9);
+    expectFacesInward(pane, C2, C3);
+    expect(pane.material.transparent).toBe(true);
+    expect(pane.material.opacity).toBeLessThan(1);
+    expect(pane.material.opacity).toBeGreaterThan(0);
+    expect(pane.castShadow).toBe(false);
+    expect(pane.material.color.getHexString()).toBe('dde1ff');
+  });
+
+  it('puts no pane in a door', () => {
+    const group = buildRoom(R, H, TOKENS, null, holes([D1]));
+    expect(meshes(group).filter((m) => m.material.transparent)).toHaveLength(0);
+    expect(meshes(group)).toHaveLength(5);
+  });
+
+  it('builds the same meshes with empty hole lists as without the argument', () => {
+    const plain = split(buildRoom(L_SHAPE, H, TOKENS, null));
+    const empty = split(buildRoom(L_SHAPE, H, TOKENS, null, L_SHAPE.map(() => [])));
+    expect(meshes(buildRoom(L_SHAPE, H, TOKENS, null, L_SHAPE.map(() => [])))).toHaveLength(7);
+    const shape = (walls: StdMesh[]) => walls.map((w) => ({
+      type: w.geometry.type,
+      v: uniqueKeys(worldVertices(w)),
+      n: frontNormals(w).map(key),
+    }));
+    expect(shape(empty.walls)).toEqual(shape(plain.walls));
+    expect(uniqueKeys(worldVertices(empty.floor))).toEqual(uniqueKeys(worldVertices(plain.floor)));
   });
 });

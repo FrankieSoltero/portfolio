@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
 import { boundsOf } from '../domain/polygon';
-import { itemFootprint, roomBounds, roomHeight, roomOutline } from '../domain/shape';
-import type { Conflicts, Item, Point } from '../domain/types';
+import { itemFootprint, roomBounds, roomHeight } from '../domain/shape';
+import type { Conflicts, Corner, Door, Item, Obstacle, Opening, WindowOpening } from '../domain/types';
 import { rectRoom } from '../test/fixtures';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from '../view/camera';
@@ -20,8 +20,9 @@ vi.mock('../domain/shape', async (importOriginal) => {
 
 const ROOM = rectRoom(144, 168, 96);
 /** The 6-corner L-shape moved off the origin; its bounding box is (10, 20)–(154, 188). */
-const L_SHAPE: readonly Point[] = [
-  { x: 10, y: 20 }, { x: 82, y: 20 }, { x: 82, y: 104 }, { x: 154, y: 104 }, { x: 154, y: 188 }, { x: 10, y: 188 },
+const L_SHAPE: readonly Corner[] = [
+  { id: 'l1', x: 10, y: 20 }, { id: 'l2', x: 82, y: 20 }, { id: 'l3', x: 82, y: 104 }, { id: 'l4', x: 154, y: 104 },
+  { id: 'l5', x: 154, y: 188 }, { id: 'l6', x: 10, y: 188 },
 ];
 
 const TOKENS: Tokens = {
@@ -68,12 +69,14 @@ function seedItems(): Item[] {
 }
 
 function input(over: Partial<SceneInput> = {}): SceneInput {
-  const outline = over.outline ?? roomOutline(ROOM);
+  const outline = over.outline ?? ROOM.outline;
   const height = over.height ?? roomHeight(ROOM);
   return {
     outline,
     height,
     items: seedItems(),
+    openings: [],
+    obstacles: [],
     selectedId: null,
     conflicts: {},
     pose: computeCameraPose(boundsOf(outline), height, { ...CONFIG.camera }, PANE),
@@ -257,7 +260,7 @@ describe('SceneRenderer', () => {
     expect(first).toBeDefined();
     if (!first) return;
     // A fresh array with equal coordinates is the same room.
-    sr.update(input({ outline: roomOutline(ROOM).map((p) => ({ ...p })) }));
+    sr.update(input({ outline: ROOM.outline.map((p) => ({ ...p })) }));
     expect(roomGroup()).toBe(first);
     const watch = watchDisposal(first);
     expect(watch.total).toBeGreaterThan(0);
@@ -268,7 +271,7 @@ describe('SceneRenderer', () => {
       }
     });
     expect(textures).toHaveLength(1);
-    sr.update(input({ outline: roomOutline(rectRoom(150, 168, 96)) }));
+    sr.update(input({ outline: rectRoom(150, 168, 96).outline }));
     const second = roomGroup();
     expect(second).toBeDefined();
     expect(second).not.toBe(first);
@@ -435,5 +438,160 @@ describe('SceneRenderer', () => {
     sr.dispose();
     sr.update(input());
     expect(fake.renders).toHaveLength(1);
+  });
+
+  describe('doors and windows', () => {
+    const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+    const W1: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 100, width: 36, sill: 36, height: 48 };
+
+    function transparentMeshes(): THREE.Mesh[] {
+      const out: THREE.Mesh[] = [];
+      roomGroup()?.traverse((n) => {
+        if (n instanceof THREE.Mesh && n.material instanceof THREE.Material && n.material.transparent) out.push(n);
+      });
+      return out;
+    }
+
+    it('cuts the openings into the room walls and glazes the window', () => {
+      sr.update(input({ openings: [D1, W1] }));
+      const room = roomGroup();
+      const meshes = room?.children.filter((c) => c instanceof THREE.Mesh) ?? [];
+      // One floor, four walls and one window pane.
+      expect(meshes).toHaveLength(6);
+      expect(transparentMeshes()).toHaveLength(1);
+      const walls = meshes.filter((m) => m instanceof THREE.Mesh && !(m.geometry instanceof THREE.PlaneGeometry)
+        && !(m.material as THREE.Material).transparent && m.position.y !== 0);
+      // The door's wall and the window's wall are cut; the other two stay whole planes.
+      expect(walls).toHaveLength(2);
+    });
+
+    it('does not rebuild the room for equal openings in a fresh list', () => {
+      sr.update(input({ openings: [D1, W1] }));
+      const first = roomGroup();
+      sr.update(input({ openings: [{ ...D1 }, { ...W1 }] }));
+      expect(roomGroup()).toBe(first);
+    });
+
+    const changes: [string, Opening[]][] = [
+      ['offset', [{ ...D1, offset: 21 }, W1]],
+      ['width', [{ ...D1, width: 33 }, W1]],
+      ['height', [{ ...D1, height: 81 }, W1]],
+      ['sill', [D1, { ...W1, sill: 30 }]],
+      ['count', [D1]],
+    ];
+    for (const [what, next] of changes) {
+      it(`rebuilds the room when an opening's ${what} changes, disposing the old one`, () => {
+        sr.update(input({ openings: [D1, W1] }));
+        const first = roomGroup();
+        if (!first) throw new Error('no room group');
+        const watch = watchDisposal(first);
+        sr.update(input({ openings: next }));
+        const second = roomGroup();
+        expect(second).toBeDefined();
+        expect(second).not.toBe(first);
+        expect(lastScene().children).not.toContain(first);
+        expect(watch.disposed()).toBe(watch.total);
+      });
+    }
+
+    it('rebuilds the room when the first opening is added', () => {
+      sr.update(input());
+      const first = roomGroup();
+      sr.update(input({ openings: [D1] }));
+      expect(roomGroup()).not.toBe(first);
+    });
+  });
+
+  describe('obstacles', () => {
+    const BOX: Obstacle = {
+      id: 'o1', shape: 'box', label: '', x: 30, y: 130, rotation: 90, width: 20, depth: 10, height: 30, elevation: 40,
+    };
+    const COLUMN: Obstacle = {
+      id: 'o2', shape: 'cylinder', label: '', x: 50, y: 60, rotation: 0, width: 12, depth: 12, height: 96, elevation: 0,
+    };
+
+    function solidOf(id: string): THREE.Mesh {
+      const solid = groupOf(id)?.children.find((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+      if (!solid) throw new Error(`no solid for ${id}`);
+      return solid;
+    }
+
+    it('adds a group per obstacle, placed and turned like furniture', () => {
+      sr.update(input({ obstacles: [BOX, COLUMN] }));
+      const box = groupOf('o1');
+      expect(box).toBeDefined();
+      expect(box?.position.x).toBeCloseTo(30, 10);
+      expect(box?.position.y).toBe(0);
+      expect(box?.position.z).toBeCloseTo(130, 10);
+      expect(box?.rotation.y).toBeCloseTo(-Math.PI / 2, 10);
+      expect(solidOf('o1').geometry).toBeInstanceOf(THREE.BoxGeometry);
+      expect(solidOf('o1').position.y).toBeCloseTo(55, 10);
+      expect(solidOf('o2').geometry).toBeInstanceOf(THREE.CylinderGeometry);
+    });
+
+    it('only moves a group when the obstacle moves or turns', () => {
+      sr.update(input({ obstacles: [BOX] }));
+      const before = groupOf('o1');
+      sr.update(input({ obstacles: [{ ...BOX, x: 70, y: 90, rotation: 0 }] }));
+      const after = groupOf('o1');
+      expect(after).toBe(before);
+      expect(after?.position.x).toBeCloseTo(70, 10);
+      expect(after?.position.z).toBeCloseTo(90, 10);
+      expect(after?.rotation.y).toBeCloseTo(0, 10);
+    });
+
+    const resizes: [string, Partial<Obstacle>][] = [
+      ['shape', { shape: 'cylinder' }],
+      ['width', { width: 21 }],
+      ['depth', { depth: 11 }],
+      ['height', { height: 31 }],
+      ['elevation', { elevation: 0 }],
+    ];
+    for (const [what, patch] of resizes) {
+      it(`rebuilds a group when the obstacle's ${what} changes, disposing the old one`, () => {
+        sr.update(input({ obstacles: [BOX] }));
+        const before = groupOf('o1');
+        if (!before) throw new Error('no obstacle group');
+        const watch = watchDisposal(before);
+        sr.update(input({ obstacles: [{ ...BOX, ...patch }] }));
+        const after = groupOf('o1');
+        expect(after).toBeDefined();
+        expect(after).not.toBe(before);
+        expect(lastScene().children).not.toContain(before);
+        expect(watch.disposed()).toBe(watch.total);
+        expect(after?.position.x).toBeCloseTo(30, 10);
+      });
+    }
+
+    it('removes and disposes the group of an obstacle that is gone', () => {
+      sr.update(input({ obstacles: [BOX, COLUMN] }));
+      const before = groupOf('o1');
+      if (!before) throw new Error('no obstacle group');
+      const watch = watchDisposal(before);
+      sr.update(input({ obstacles: [COLUMN] }));
+      expect(groupOf('o1')).toBeUndefined();
+      expect(groupOf('o2')).toBeDefined();
+      expect(lastScene().children).not.toContain(before);
+      expect(watch.disposed()).toBe(watch.total);
+    });
+
+    it('shows the outline of a conflicting obstacle in the text colour, and hides it once resolved', () => {
+      sr.update(input({ obstacles: [BOX, COLUMN], conflicts: { o1: 'Outside the room' } }));
+      const ol = outlineOf('o1');
+      expect(ol.visible).toBe(true);
+      expect(ol.material.color.getHex()).toBe(new THREE.Color(TOKENS.text).getHex());
+      expect(outlineOf('o2').visible).toBe(false);
+      sr.update(input({ obstacles: [BOX, COLUMN] }));
+      expect(outlineOf('o1').visible).toBe(false);
+    });
+
+    it('releases every obstacle resource on dispose', () => {
+      sr.update(input({ obstacles: [BOX, COLUMN] }));
+      const scene = lastScene();
+      const watch = watchDisposal(scene);
+      sr.dispose();
+      expect(scene.children).toHaveLength(0);
+      expect(watch.disposed()).toBe(watch.total);
+    });
   });
 });

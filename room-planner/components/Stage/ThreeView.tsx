@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
-import { roomBounds, roomHeight, roomOutline } from '../../domain/shape';
+import { roomBounds, roomHeight } from '../../domain/shape';
 import { startDrag } from '../../hooks/startDrag';
 import { useConflicts } from '../../state/selectors';
 import { usePlanStore } from '../../state/planStore';
@@ -24,6 +24,8 @@ export default function ThreeView({ pane }: { pane: PaneRect }): JSX.Element {
   const [renderer, setRenderer] = useState<SceneRenderer | null>(null);
   const room = usePlanStore((s) => s.room);
   const items = usePlanStore((s) => s.items);
+  const openings = usePlanStore((s) => s.openings);
+  const obstacles = usePlanStore((s) => s.obstacles);
   const selectedId = useUiStore((s) => s.selectedId);
   const camera = useUiStore((s) => s.camera);
   const setCamera = useUiStore((s) => s.setCamera);
@@ -67,9 +69,10 @@ export default function ThreeView({ pane }: { pane: PaneRect }): JSX.Element {
     if (!renderer) return;
     const frame = requestAnimationFrame(() => {
       renderer.update({
-        outline: roomOutline(room),
+        // The corners themselves, not just their points: their ids match openings to walls.
+        outline: room.outline,
         height: roomHeight(room),
-        items, selectedId, conflicts,
+        items, openings, obstacles, selectedId, conflicts,
         pose: computeCameraPose(roomBounds(room), roomHeight(room), camera, pane),
         viewWidth: pane.w,
         viewHeight: pane.h,
@@ -77,7 +80,7 @@ export default function ThreeView({ pane }: { pane: PaneRect }): JSX.Element {
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [renderer, room, items, selectedId, conflicts, camera, pane]);
+  }, [renderer, room, items, openings, obstacles, selectedId, conflicts, camera, pane]);
 
   // React's onWheel listener is passive and cannot stop the page scrolling.
   useEffect(() => {

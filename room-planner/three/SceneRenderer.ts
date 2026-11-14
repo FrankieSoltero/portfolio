@@ -1,25 +1,29 @@
 /**
  * On-demand WebGL renderer for the realistic 3D pane. Keeps one scene in sync with the plan:
- * the room is rebuilt when its outline or height changes by value, each item's model is rebuilt when its
- * `modelKey` changes and otherwise only moved, and every removed subtree is disposed.
+ * the room is rebuilt when its outline, height or wall holes (doors and windows) change by value,
+ * each item's model is rebuilt when its `modelKey` changes and otherwise only moved, each obstacle
+ * likewise when its shape, size or elevation changes, and every removed subtree is disposed.
  * Each `update` renders exactly once. Ported from prototype lines 473–485 and 547–577.
  */
 import * as THREE from 'three';
 import { CONFIG } from '../config';
+import { obstacleFootprint } from '../domain/obstacles';
 import { boundsOf } from '../domain/polygon';
 import { itemFootprint } from '../domain/shape';
-import type { Conflicts, Item, Point } from '../domain/types';
+import type { Conflicts, Corner, Item, Obstacle, Opening } from '../domain/types';
 import type { Tokens } from '../styles/tokens';
 import type { CameraPose } from '../view/camera';
 import { modelKey, resolveModel } from './modelSource';
-import { buildRoom, createFloorTexture } from './roomMesh';
+import { buildObstacle } from './obstacleMesh';
+import { buildRoom, createFloorTexture, wallHoles } from './roomMesh';
 
 /**
  * Everything one frame needs. `outline` and `height` are the room's corners (plan space, positive
- * signed area) and ceiling height in inches; `viewWidth` and `viewHeight` are the canvas size in
- * CSS px.
+ * signed area; their ids match openings to walls) and ceiling height in inches; `viewWidth` and
+ * `viewHeight` are the canvas size in CSS px.
  */
-export interface SceneInput { outline: readonly Point[]; height: number; items: readonly Item[];
+export interface SceneInput { outline: readonly Corner[]; height: number; items: readonly Item[];
+  openings: readonly Opening[]; obstacles: readonly Obstacle[];
   selectedId: string | null; conflicts: Conflicts; pose: CameraPose; viewWidth: number;
   viewHeight: number; pixelRatio: number }
 
@@ -73,6 +77,11 @@ function disposeTree(root: THREE.Object3D): void {
 
 interface FurnitureEntry { key: string; group: THREE.Group }
 
+/** What an obstacle's mesh is built from; a change to any of these rebuilds its group. */
+function obstacleKey(o: Obstacle): string {
+  return `${o.shape}|${o.width}|${o.depth}|${o.height}|${o.elevation}`;
+}
+
 export class SceneRenderer {
   private readonly renderer: RendererLike;
   private readonly tokens: Tokens;
@@ -81,6 +90,7 @@ export class SceneRenderer {
   private readonly hemi: THREE.HemisphereLight;
   private readonly sun: THREE.DirectionalLight;
   private readonly furniture = new Map<string, FurnitureEntry>();
+  private readonly obstacles = new Map<string, FurnitureEntry>();
   private room: THREE.Group | null = null;
   private roomKey = '';
   private size = { width: 0, height: 0, pixelRatio: 0 };
@@ -108,8 +118,9 @@ export class SceneRenderer {
   update(input: SceneInput): void {
     if (this.disposed) return;
     this.syncSize(input);
-    this.syncRoom(input.outline, input.height);
+    this.syncRoom(input.outline, input.height, input.openings);
     this.syncFurniture(input);
+    this.syncObstacles(input);
     this.syncCamera(input);
     this.renderer.render(this.scene, this.camera);
   }
@@ -128,6 +139,8 @@ export class SceneRenderer {
     this.roomKey = '';
     this.furniture.forEach((entry) => disposeTree(entry.group));
     this.furniture.clear();
+    this.obstacles.forEach((entry) => disposeTree(entry.group));
+    this.obstacles.clear();
     this.hemi.dispose();
     this.sun.dispose();
     this.scene.clear();
@@ -143,15 +156,21 @@ export class SceneRenderer {
     this.size = { width, height, pixelRatio };
   }
 
-  /** Rebuilds the room and refits the sun when the outline's coordinates or the height change. */
-  private syncRoom(outline: readonly Point[], height: number): void {
-    const key = `${outline.map((p) => `${p.x},${p.y}`).join(';')}|${height}`;
+  /**
+   * Rebuilds the room and refits the sun when the outline's coordinates, the height or the holes
+   * the openings cut in the walls change by value.
+   */
+  private syncRoom(outline: readonly Corner[], height: number, openings: readonly Opening[]): void {
+    const holes = wallHoles(outline, openings, height);
+    const holesKey = holes.map((list) => list.map((h) => `${h.x0},${h.x1},${h.z0},${h.z1},${h.glass ? 1 : 0}`).join('/'))
+      .join(';');
+    const key = `${outline.map((p) => `${p.x},${p.y}`).join(';')}|${height}|${holesKey}`;
     if (key === this.roomKey) return;
     if (this.room) {
       this.scene.remove(this.room);
       disposeTree(this.room);
     }
-    this.room = buildRoom(outline, height, this.tokens, createFloorTexture());
+    this.room = buildRoom(outline, height, this.tokens, createFloorTexture(), holes);
     this.room.name = ROOM_NAME;
     this.scene.add(this.room);
     this.roomKey = key;
@@ -202,6 +221,42 @@ export class SceneRenderer {
       if (seen.has(id)) return;
       this.removeGroup(entry.group);
       this.furniture.delete(id);
+    });
+  }
+
+  /**
+   * Creates a group per obstacle, rebuilds it when its shape, size or elevation changes, otherwise
+   * only moves and turns it, and disposes the groups of removed obstacles. A conflicting obstacle
+   * shows its outline box in the text colour, as conflicting furniture does.
+   */
+  private syncObstacles({ obstacles, conflicts }: SceneInput): void {
+    const seen = new Set<string>();
+    for (const o of obstacles) {
+      seen.add(o.id);
+      const key = obstacleKey(o);
+      let entry = this.obstacles.get(o.id);
+      if (!entry || entry.key !== key) {
+        if (entry) this.removeGroup(entry.group);
+        const group = buildObstacle(o, this.tokens);
+        group.name = o.id;
+        entry = { key, group };
+        this.scene.add(group);
+        this.obstacles.set(o.id, entry);
+      }
+      const fp = obstacleFootprint(o);
+      entry.group.position.set(fp.cx, 0, fp.cy);
+      entry.group.rotation.y = -fp.angle * Math.PI / 180;
+
+      const outline: unknown = entry.group.userData.outline;
+      if (outline instanceof THREE.LineSegments && outline.material instanceof THREE.LineBasicMaterial) {
+        outline.visible = conflicts[o.id] !== undefined;
+        outline.material.color.set(this.tokens.text);
+      }
+    }
+    this.obstacles.forEach((entry, id) => {
+      if (seen.has(id)) return;
+      this.removeGroup(entry.group);
+      this.obstacles.delete(id);
     });
   }
 

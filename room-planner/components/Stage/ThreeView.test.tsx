@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { findConflicts } from '../../domain/conflicts';
 import { roomBounds, roomHeight, roomOutline } from '../../domain/shape';
+import type { Obstacle, Opening } from '../../domain/types';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { readTokens } from '../../styles/tokens';
@@ -128,6 +129,27 @@ describe('ThreeView', () => {
     expect(input.pose).toEqual(computeCameraPose(roomBounds(plan.room), roomHeight(plan.room), ui.camera, PANE));
     expect(input.viewWidth).toBe(1000);
     expect(input.viewHeight).toBe(600);
+  });
+
+  it('passes the room corners, openings and obstacles from the store, and updates when they change', () => {
+    render(<ThreeView pane={PANE} />);
+    flushFrames();
+    flushFrames();
+    const plan = usePlanStore.getState();
+    expect(lastInput().outline).toBe(plan.room.outline);
+    expect(lastInput().openings).toBe(plan.openings);
+    expect(lastInput().obstacles).toBe(plan.obstacles);
+    const openings: Opening[] = [
+      { id: 'd1', kind: 'door', wallId: plan.room.outline[0]?.id ?? '', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' },
+    ];
+    const obstacles: Obstacle[] = [
+      { id: 'o1', shape: 'box', label: '', x: 30, y: 130, rotation: 90, width: 20, depth: 10, height: 30, elevation: 40 },
+    ];
+    act(() => usePlanStore.setState({ openings, obstacles }));
+    flushFrames();
+    expect(sr.update).toHaveBeenCalledTimes(2);
+    expect(lastInput().openings).toBe(openings);
+    expect(lastInput().obstacles).toBe(obstacles);
   });
 
   it('caps the pixel ratio at the configured maximum', () => {
