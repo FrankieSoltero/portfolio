@@ -24,14 +24,6 @@ function stopPress(e: React.PointerEvent): void {
   e.stopPropagation();
 }
 
-/**
- * Keeps keyboard focus where it is when a which-end radio is pressed with the pointer, so the press
- * never counts as leaving the length input (Safari does not focus a pressed button at all).
- */
-function keepFocus(e: React.MouseEvent): void {
-  e.preventDefault();
-}
-
 interface WallLengthEditorProps {
   wall: Wall;
   /** The number of corners in the outline, so the last wall's end corner wraps round to Corner 1. */
@@ -48,8 +40,11 @@ interface WallLengthEditorProps {
  * The editor that takes a wall label's place: a group named `Wall <n> length` holding a number input
  * in the room units (focused, its text selected, on opening) and three which-end radios. Nothing is
  * applied while typing. Enter, or focus leaving the group, applies the typed length with
- * setWallLengthTo: an accepted, unchanged or unreadable length closes the editor (Enter then returns
- * focus to the label); a refused one keeps it open with the typed text. Escape closes it without
+ * setWallLengthTo: an accepted or unchanged length closes the editor (Enter then returns focus to the
+ * label); a refused one keeps it open with the typed text. Text that does not parse keeps the editor
+ * open on Enter and closes it on leaving, applying nothing either way. A mouse press anywhere in the
+ * group but the input keeps focus where it is, so pressing a radio or the editor's background never
+ * counts as leaving (Safari does not focus a pressed button at all). Escape closes it without
  * applying and goes no further. Arrow keys on the radios move the choice and go no further, so they
  * never slide the wall. User text is only ever parsed to a number.
  */
@@ -81,18 +76,28 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
   const { u } = wallFrame(wall);
   const angle = (Math.atan2(u.y, u.x) * 180) / Math.PI;
 
-  /** Applies the draft; closes unless the length was refused. */
-  function apply(focusLabel: boolean): void {
+  /**
+   * Applies the draft and closes unless the length was refused. Unreadable text applies nothing: on
+   * Enter (`leaving` false) the editor stays open, on leaving it closes.
+   */
+  function apply(leaving: boolean): void {
     const inches = parseLengthInput(draft, units);
-    if (inches === null || Math.abs(inches - wall.length) <= UNCHANGED_TOLERANCE_IN) onClose(focusLabel);
-    else if (setWallLengthTo(wall.id, inches)) onClose(focusLabel);
+    if (inches === null) {
+      if (leaving) onClose(false);
+    } else if (Math.abs(inches - wall.length) <= UNCHANGED_TOLERANCE_IN || setWallLengthTo(wall.id, inches)) {
+      onClose(!leaving);
+    }
+  }
+
+  function onGroupMouseDown(e: React.MouseEvent): void {
+    if (e.target !== inputRef.current) e.preventDefault();
   }
 
   function onGroupBlur(e: React.FocusEvent<HTMLDivElement>): void {
     if (!mounted.current) return;
     const to = e.relatedTarget;
     if (to instanceof Node && e.currentTarget.contains(to)) return;
-    apply(false);
+    apply(true);
   }
 
   function onGroupKeyDown(e: React.KeyboardEvent): void {
@@ -105,7 +110,7 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
     if (e.key !== 'Enter') return;
     // Without this the key's keypress reaches the label that takes focus, which would reopen the editor.
     e.preventDefault();
-    apply(true);
+    apply(false);
   }
 
   function onRadiosKeyDown(e: React.KeyboardEvent): void {
@@ -125,6 +130,7 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
       aria-label={name}
       style={{ left, top }}
       onPointerDown={stopPress}
+      onMouseDown={onGroupMouseDown}
       onBlur={onGroupBlur}
       onKeyDown={onGroupKeyDown}
     >
@@ -156,7 +162,6 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
             aria-label={radioName[anchor]}
             aria-checked={anchor === lengthAnchor}
             tabIndex={anchor === lengthAnchor ? 0 : -1}
-            onMouseDown={keepFocus}
             onClick={() => setLengthAnchor(anchor)}
           >
             <span className="room-wall-editor-arrow" aria-hidden="true" style={{ transform: `rotate(${angle}deg)` }}>
@@ -176,8 +181,10 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
  * The selected wall's label is pressed. A label that receives focus (by Tab, a click, or a press
  * on its wall's band) selects its wall; a pointer down on it does not reach the plan background.
  * Each carries `data-wall-label-id` so a wall press can focus it. A click (or Enter) on a label
- * replaces it with the wall's length editor (WallLengthEditor); one editor is open at a time, and
- * opening another closes the first without applying it.
+ * selects its wall (a clicked button is not focused in every browser) and replaces the label with the
+ * wall's length editor (WallLengthEditor). One editor is open at a time: a real click on another label
+ * first moves focus out of the open editor, which applies its draft as leaving does, and opening the
+ * new editor then closes the first without applying anything more.
  */
 export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Element {
   const outline = usePlanStore((s) => s.room.outline);
@@ -238,7 +245,10 @@ export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Elemen
             style={{ left, top }}
             onPointerDown={stopPress}
             onFocus={() => selectWall(wall.id)}
-            onClick={() => setEditingId(wall.id)}
+            onClick={() => {
+              selectWall(wall.id);
+              setEditingId(wall.id);
+            }}
           >
             {text}
           </button>

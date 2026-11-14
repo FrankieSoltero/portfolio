@@ -156,23 +156,36 @@ async function openOn(id: string) {
 describe('WallLengthLabels: on-plan length editor', () => {
   it('a click on a label replaces it with the editor group, its input focused and its text selected', async () => {
     const select = vi.spyOn(HTMLInputElement.prototype, 'select');
-    await openOn('c1');
-    expect(document.querySelector('button.room-wall-label[data-wall-label-id="c1"]')).toBeNull();
-    const group = screen.getByRole('group', { name: 'Wall 1 length' });
-    expect(group).toBe(editorEl());
-    const input = within(group).getByRole('spinbutton', { name: 'Wall 1 length' });
-    expect(input).toBe(lengthInput());
-    expect(input).toHaveValue(12);
-    expect(input).toHaveAttribute('step', '0.25');
-    expect(input).toHaveFocus();
-    expect(select).toHaveBeenCalled();
-    expect(select.mock.contexts.at(-1)).toBe(input);
-    expect(group.querySelector('.input-suffix')).toHaveTextContent('ft');
-    expect(within(group).getByRole('radiogroup', { name: 'Which end moves' })).toBeInTheDocument();
-    // The editor sits where the label was.
-    expect(group.style.left).not.toBe('');
-    expect(group.style.top).not.toBe('');
-    select.mockRestore();
+    try {
+      await openOn('c1');
+      expect(document.querySelector('button.room-wall-label[data-wall-label-id="c1"]')).toBeNull();
+      const group = screen.getByRole('group', { name: 'Wall 1 length' });
+      expect(group).toBe(editorEl());
+      const input = within(group).getByRole('spinbutton', { name: 'Wall 1 length' });
+      expect(input).toBe(lengthInput());
+      expect(input).toHaveValue(12);
+      expect(input).toHaveAttribute('step', '0.25');
+      expect(input).toHaveFocus();
+      expect(select).toHaveBeenCalled();
+      expect(select.mock.contexts.at(-1)).toBe(input);
+      expect(group.querySelector('.input-suffix')).toHaveTextContent('ft');
+      expect(within(group).getByRole('radiogroup', { name: 'Which end moves' })).toBeInTheDocument();
+      // The editor sits where the label was.
+      expect(group.style.left).not.toBe('');
+      expect(group.style.top).not.toBe('');
+    } finally {
+      select.mockRestore();
+    }
+  });
+
+  it('a click on an unfocused label selects its wall and opens the editor (browsers that do not focus a clicked button)', () => {
+    useUiStore.getState().selectCorner('c1');
+    render(<WallLengthLabels layout={LAYOUT} />);
+    expect(label('c3')).not.toHaveFocus();
+    fireEvent.click(label('c3'));
+    expect(useUiStore.getState().selectedWallId).toBe('c3');
+    expect(useUiStore.getState().selectedCornerId).toBeNull();
+    expect(screen.getByRole('group', { name: 'Wall 3 length' })).toBe(editorEl());
   });
 
   it('Enter on a focused label opens the editor', async () => {
@@ -351,7 +364,7 @@ describe('WallLengthLabels: on-plan length editor', () => {
   it('Enter with a refused length keeps the editor open with the typed text and shows the reason', async () => {
     const user = await openOn('c1');
     await user.keyboard('0.1{Enter}');
-    expect(setWallLengthTo).toHaveBeenCalledWith('c1', 1.2000000000000002);
+    expect(setWallLengthTo).toHaveBeenCalledWith('c1', expect.closeTo(1.2, 9));
     expect(corners()).toEqual(R.outline);
     expect(editorEl()).not.toBeNull();
     expect(lengthInput()).toHaveValue(0.1);
@@ -366,6 +379,50 @@ describe('WallLengthLabels: on-plan length editor', () => {
     expect(setWallLengthTo).not.toHaveBeenCalled();
     expect(editorEl()).toBeNull();
     expect(label('c1')).toHaveFocus();
+  });
+
+  it('Enter with an empty input keeps the editor open and applies nothing', async () => {
+    const user = await openOn('c1');
+    await user.keyboard('{Backspace}');
+    expect(lengthInput()).toHaveValue(null);
+    await user.keyboard('{Enter}');
+    expect(setWallLengthTo).not.toHaveBeenCalled();
+    expect(editorEl()).not.toBeNull();
+    expect(lengthInput()).toHaveFocus();
+    expect(corners()).toEqual(R.outline);
+  });
+
+  it('Enter with text that does not parse ("abc") keeps the editor open and applies nothing', async () => {
+    const user = await openOn('c1');
+    // user-event refuses letters in a number input; a browser that accepts them reads the value as ''.
+    fireEvent.change(lengthInput(), { target: { value: 'abc' } });
+    expect(lengthInput()).toHaveValue(null);
+    await user.keyboard('{Enter}');
+    expect(setWallLengthTo).not.toHaveBeenCalled();
+    expect(editorEl()).not.toBeNull();
+    expect(lengthInput()).toHaveFocus();
+    expect(corners()).toEqual(R.outline);
+  });
+
+  it('a mouse press on the editor\'s own background keeps focus in the input and applies nothing', async () => {
+    const user = await openOn('c1');
+    await user.keyboard('13');
+    const group = editorEl();
+    if (!group) throw new Error('no editor');
+    expect(fireEvent.mouseDown(group)).toBe(false);
+    await user.pointer({ keys: '[MouseLeft]', target: group });
+    const ends = screen.getByRole('radiogroup', { name: 'Which end moves' });
+    expect(fireEvent.mouseDown(ends)).toBe(false);
+    await user.pointer({ keys: '[MouseLeft]', target: ends });
+    expect(lengthInput()).toHaveFocus();
+    expect(setWallLengthTo).not.toHaveBeenCalled();
+    expect(editorEl()).not.toBeNull();
+    expect(lengthInput()).toHaveValue(13);
+  });
+
+  it('a mouse press on the input itself keeps its default', async () => {
+    await openOn('c1');
+    expect(fireEvent.mouseDown(lengthInput())).toBe(true);
   });
 
   it('focus leaving with text that does not parse closes without applying', async () => {
