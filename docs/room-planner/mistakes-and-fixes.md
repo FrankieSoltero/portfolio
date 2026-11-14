@@ -551,3 +551,119 @@ limits" and "Open questions for the owner (slice C)" in `docs/room-planner/READM
 - **Root cause:** The plan's table specified sliding along the wall's direction, but the code mapped Right and Down to +1 and Left and Up to −1. No unit test or live-check row used the keyboard on a right-to-left or bottom-to-top wall.
 - **Fix:** An arrow changes the offset by sign(arrow · u) × step, where u is the wall's direction; an arrow across the wall does nothing. Tests cover all four walls of the seeded room and a 45° wall.
 - **How to avoid:** Test a direction-dependent control on a wall running each way, and include one such wall in the live check.
+
+## 2026-11-14 — Wall editing
+
+Sixteen entries. The first five are plan defects found while building (fixed by plan Amendments 1 to 6, or by a ruling in Task 7). Entries 6 to 8 were found in review, 9 to 11 by looking at the running app, and 12 to 16 in the live check (Task 14). Items left as they are are listed under "Known limits" in `docs/room-planner/README.md`.
+
+### Pinned tests were missing from file lists, three times (plan Amendments 1, 5 and 6)
+- **Date:** 2026-11-14
+- **What happened:** A test that compares the whole of `CONFIG` (`catalog.test.ts`), a second copy of the room-mode hint in the selection bar (`SelectionBar.tsx`, pinned in `bars.test.tsx`), and a test that lists every button in the editor layer were each outside the task that had to change them. Slice C recorded the same mistake (its Amendment 3).
+- **Root cause:** The file lists were written by grepping for the key list only. That rule was too narrow: a task also adds constants, strings and element roles that other tests pin.
+- **Fix:** Plan Amendments 1, 5 and 6 added each test file to the task that changes what it pins.
+- **How to avoid:** Before fixing a task's file list, grep the tests for every constant, string and element role the task adds or changes.
+
+### A wall could be slid through the far side of the room (plan Amendment 2)
+- **Date:** 2026-11-14
+- **What happened:** The plan said the existing outline rules cover every bad slide. They did not. A slide past the opposite wall gives an outline with negative area, which the normaliser reverses and accepts, so wall ids then named different walls. Task 1's reviewer found it with a probe (`slideWall(R, 'c1', 174)`).
+- **Root cause:** The plan checked the new edit against the validation rules but not against the normaliser, which silently repairs a reversed outline.
+- **Fix:** Plan Amendment 2: a candidate whose area is not positive, or whose slid wall has reversed, is refused.
+- **How to avoid:** When a new edit can change a shape's orientation, say what happens to it. "Validation covers it" must be checked against the normaliser too.
+
+### A rule in the plan contradicted a test the same task had to keep (plan Amendment 3)
+- **Date:** 2026-11-14
+- **What happened:** The chain rule for openings, read literally, refused with a different reason than an existing test expects. The implementer kept the test and reported it.
+- **Root cause:** The new rule was written without being run against the existing tests of the function.
+- **Fix:** Plan Amendment 3 made the rule agree with the existing test.
+- **How to avoid:** Run a new rule against the existing tests of the function before putting it in a plan.
+
+### The openings rule had no direction guard and could throw (plan Amendment 4)
+- **Date:** 2026-11-14
+- **What happened:** When added corners turned a wall, an opening was kept on the wall id even if that wall now ran another way. An opening on a wall missing from the earlier outline threw a `TypeError` where the old code returned a result. Neither is reachable from today's edits. Task 2's reviewer found both.
+- **Root cause:** The rule covered the cases the slice produces and left the others undefined.
+- **Fix:** Plan Amendment 4 added the direction guard and made a missing wall return a refusal.
+- **How to avoid:** A rule that takes two outlines should say what it does for every pair, including ones no current edit produces.
+
+### The controller suggested a fix that could not work in a browser (Task 7)
+- **Date:** 2026-11-14
+- **What happened:** For "a press that slid is not a double-click" the controller proposed one flag, reset on every press. In a real browser the second press of a double-click comes before `dblclick`, so the flag would always have been reset. The implementer kept flags for the last two presses.
+- **Root cause:** The fix was written from how events are assumed to arrive, not from the browser's order.
+- **Fix:** The layer remembers whether each of the last two primary presses on a wall did anything else. The re-review walked six real event sequences.
+- **How to avoid:** Write a fix that depends on event order from the browser's order, and have the reviewer walk the real sequences.
+
+### A click followed by a quick drag added a corner (Task 7)
+- **Date:** 2026-11-14
+- **What happened:** The browser counts the second press as a double-click, so `dblclick` fired on release, right after the slide, and a corner was added.
+- **Root cause:** The first version treated every `dblclick` as a request to add a corner.
+- **Fix:** A corner is added only when neither of the two presses it is made of slid the wall or placed an opening (see the previous entry).
+- **How to avoid:** Test a click followed by a drag, not only a drag and a double-click on their own.
+
+### Clicking a length label did not select its wall in Safari and in Firefox on macOS (Task 9)
+- **Date:** 2026-11-14
+- **What happened:** Selection happened on focus only. Those browsers do not focus a clicked button. jsdom does, so the tests passed.
+- **Root cause:** Selection relied on focus as a side effect of a click.
+- **Fix:** The label also selects its wall when it is clicked, not only when it takes focus.
+- **How to avoid:** Do not rely on focus as a side effect of a click. Select on the press, and treat jsdom focus behaviour as unproven for real browsers.
+
+### Enter on text that is not a number closed the on-plan editor (Task 9)
+- **Date:** 2026-11-14
+- **What happened:** Pressing Enter on text that is not a number closed the on-plan editor. A press on the editor's own padding moved focus to the page, which applied the value and closed it.
+- **Root cause:** The editor did not handle text that is not a number on Enter, and a press on its own padding was not kept inside it.
+- **Fix:** Enter on text that is not a number no longer closes the editor, and a press inside the editor no longer moves focus away.
+- **How to avoid:** List every way focus can leave an editor, and say for each whether it applies, cancels or does nothing.
+
+### The length labels did not look clickable (after Task 8, plan Amendment 7)
+- **Date:** 2026-11-14
+- **What happened:** The labels were plain 12 px text, like the dimension text beside them. It was found by looking at the running app.
+- **Root cause:** Unit tests check that a label exists and works, not that it looks like something to click.
+- **Fix:** Plan Amendment 7: a bordered chip with a hover colour.
+- **How to avoid:** Look at the running app after every task that adds a control.
+
+### The which-end control in the sidebar had no visible label (after Task 11)
+- **Date:** 2026-11-14
+- **What happened:** The control's name existed only for screen readers, so a sighted user saw three buttons with no hint what they did.
+- **Root cause:** The accessible name was checked and the visible text was not.
+- **Fix:** The control was given a visible label.
+- **How to avoid:** For every control, check the visible text as well as the accessible name.
+
+### In the inset pane the overall width dimension was clipped (after Task 10)
+- **Date:** 2026-11-14
+- **What happened:** The plan moved the dimension lines 22 px out to make room for the labels. The inset pane's margin is only 48 px, so the overall width dimension was clipped.
+- **Root cause:** The new offset was chosen for the large pane and not checked against the inset one.
+- **Fix:** A smaller extra offset in the inset pane.
+- **How to avoid:** Check a layout change in every pane size the plan can be shown in.
+
+### A label covered the middle of its own vertical wall (live-check rows W3 and W12, plan Amendment 8)
+- **Date:** 2026-11-14
+- **What happened:** The label was centred 18 px outside the wall. On a vertical wall its width (about 40 px) put it over the wall's hit band, so pressing the middle of the wall opened the label instead of dragging the wall, and blocked placing a door or window there.
+- **Root cause:** Unit tests check positions, not overlap.
+- **Fix:** Plan Amendment 8: the label is placed by its near edge, and labels ignore the pointer while a tool is armed.
+- **How to avoid:** Check what is under the pointer at the middle of every hit target (`document.elementFromPoint`) in the live check.
+
+### A door moved when a different wall was dragged (live-check row W13, plan Amendment 8)
+- **Date:** 2026-11-14
+- **What happened:** Openings keep an offset from their wall's start corner, so sliding the neighbouring wall at that corner carried the door along its wall.
+- **Root cause:** The spec did not say what should happen and the plan did not ask.
+- **Fix:** An opening keeps its place in the room when its wall's start slides along the wall. An edit that would push it past the wall's end is refused. This also changes corner drags along a wall, typed lengths and the rectangle width and length fields (see "Changed behaviour" in `docs/room-planner/README.md`).
+- **How to avoid:** For every edit that moves a point other things are measured from, the plan must state what those things do.
+
+### The first label fix still overlapped the overall length dimension in the inset pane, and reached the hit band on diagonal walls (plan Amendment 9)
+- **Date:** 2026-11-14
+- **What happened:** Screenshots of the second live-check run showed a label on a vertical wall over the overall length dimension in the inset pane, and a label touching the hit band on diagonal walls.
+- **Root cause:** The first fix moved the label by its near edge for horizontal and vertical walls only. A label's width still varied with the wall's direction.
+- **Fix:** Plan Amendment 9: every label is turned to run along its wall, so each takes the same 18 px strip.
+- **How to avoid:** Fix the cause for every wall direction, and read the screenshots of a fix round.
+
+### The live-check script used a stale scale
+- **Date:** 2026-11-14
+- **What happened:** After a row changed the room's size the plan re-fitted, and later drags used the old pixels-per-inch value, so "24 in" drags moved 20 in. The rows were right and the script was wrong.
+- **Root cause:** The script measured the scale once.
+- **Fix:** The script measures the scale after every size change.
+- **How to avoid:** In a script that drives the mouse, measure the scale again after anything that can re-fit the plan.
+
+### The first live-check run was not on final code
+- **Date:** 2026-11-14
+- **What happened:** Rows W19 to W22 were run only after two fix rounds, and the whole table was re-run on the last commit.
+- **Root cause:** The first run happened before the fixes it prompted, as in slice B and slice C.
+- **Fix:** The recorded run is run 3, on commit `c6d5f3b`, with nothing under `room-planner/` changed after it.
+- **How to avoid:** The recorded run is always the one on the final commit.

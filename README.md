@@ -11,7 +11,8 @@ Three sections, three deliberately different design languages:
 - **`/room-planner`** — a room layout tool: 2D plan and 3D check, React and three.js,
   client-side only. Source in `room-planner/`, mounted by `app/room-planner/`. Has its
   own design language (Industry), not the 8-bit theme. The room is an outline edited in
-  "Edit room" mode, and furniture rotates to any angle. The plan is saved in the browser
+  "Edit room" mode, and furniture rotates to any angle. Walls can be dragged on the plan
+  and each shows its length, which can be typed there. The plan is saved in the browser
   under `room-planner:plan:v1`, validated on load and never sent to a server.
 
 ## Run locally

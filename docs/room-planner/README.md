@@ -10,11 +10,33 @@ lived in `src/`. That folder is `room-planner/` in this repository.
 ## What the planner does
 
 - **The room is an outline.** It is a closed outline of straight walls, edited in "Edit room"
-  mode. Drag a corner to move it. Click a wall, or use the add button in the wall list, to add
-  a corner at that wall. Press Delete to remove the selected corner. Wall lengths can be typed
-  in the sidebar. Three starting shapes (rectangle, L-shape, notched) are one click away. A
-  shape that would be invalid, such as one with crossing walls, is refused and the reason is
-  shown in the sidebar.
+  mode. Drag a corner to move it. Press Delete to remove the selected corner. Three starting
+  shapes (rectangle, L-shape, notched) are one click away. A shape that would be invalid, such as
+  one with crossing walls, is refused and the reason is shown in the sidebar.
+  - **Walls are edited directly on the plan.** A click on a wall selects it. Pressing a wall and
+    moving more than 4 px slides it at right angles to itself, and every angle in the room is
+    kept: each end travels along its neighbouring wall. The distance snaps like a corner drag. If
+    a neighbour runs the same way as the dragged wall (after a corner was added mid-wall), a short
+    connecting wall is made at that end; dragging back in line removes it. A double-click on a wall
+    adds a corner there, as does the add button (`+`) in the wall list. The arrow keys slide the
+    selected wall by 1 in (Shift: 12 in) in the direction of the arrow on screen; an arrow along
+    the wall does nothing. Escape clears the selection. A slide that would break a rule (a wall
+    too short, crossing walls, a room or corner count over the limit, a door or window that no
+    longer fits) stops at the last accepted position and the reason is shown. Furniture and
+    obstacles do not move with a wall; anything left outside the room is flagged as usual.
+  - **Each wall shows its length** on the plan, outside the room, in the current units. A click
+    on it (or Enter on it, as each is a button in the tab order) opens a field with the length:
+    Enter applies it and Escape cancels. A refused length leaves the field open with the reason.
+    Leaving the field also applies it.
+  - **Which end moves.** A typed length keeps every angle. A choice of three arrows along the wall
+    (start, both ends, end; the default is the end) says which end moves. It is beside the
+    on-plan field and above the sidebar wall list, is kept for the session only and is not saved
+    with the plan. The end or ends that will move are marked on the plan, and focusing a wall's
+    length field in the sidebar selects that wall so the mark shows.
+  - Wall lengths can also be typed in the sidebar, where each keystroke applies. The two overall
+    dimension lines stay and sit further from the room in room mode, clear of the wall labels.
+    Door or window tools armed: a click on a wall places the opening and a wall is not dragged,
+    and the length labels ignore the pointer.
 - **Furniture rotates to any angle.** R turns the selected piece by 90°, Shift+R by 15°, and
   the Angle field takes any value.
 - **Doors, windows and obstacles are added in "Edit room" mode.** The Room section of the sidebar
@@ -45,9 +67,14 @@ lived in `src/`. That folder is `room-planner/` in this repository.
     handles and in the sidebar rows (`Door on wall 1 (1 of 2)`). Obstacles that share a name are
     numbered by list order in the sidebar rows and the plan buttons' names (`Box (1 of 2)`); the
     label drawn on the plan is not numbered.
-  - Openings must fit inside their wall and must not overlap. A corner drag or typed wall length that
-    would break this stops at the last valid position and the sidebar says why. Deleting a corner
-    whose walls carry an opening is refused. A corner added to a wall keeps each opening on the
+  - Openings must fit inside their wall and must not overlap. A corner drag, wall drag or typed
+    wall length that would break this stops at the last valid position and the sidebar says why.
+    An opening keeps its place in the room when the start of its wall slides along the wall (a
+    wall drag, a corner drag along a wall, a typed length, the rectangle width and length fields),
+    so a door does not travel when a neighbouring wall is dragged. An edit that would leave one
+    past its wall's end is refused: "That would leave a door or window without room on its wall."
+    Deleting a corner whose walls carry an opening is refused, unless the corner lies in a
+    straight run (the wall keeps its direction). A corner added to a wall keeps each opening on the
     part it lies on, and cannot be added inside an opening. If an edit reverses the outline, each
     opening stays on its physical wall. A starting shape replaces every wall, so it is refused
     while the room has a door or window.
@@ -81,6 +108,42 @@ the desktop-only layout comes from the original design handoff
 - The import-boundary test (nothing under `room-planner/view/` or `room-planner/domain/` imports
   three.js) does not catch a bare `'../three'` directory import or `require()`.
 
+Known limits of wall editing (slice D):
+
+- Double-tap to add a corner is not verified on a touch device (it relies on the browser's
+  `dblclick`).
+- There are no alignment guides, no locked lengths and no undo.
+- On very short walls neighbouring length labels touch or overlap.
+- A wall dragged towards a door or window stops at the last pointer position before it, not
+  exactly at its edge.
+- In Safari a click on another wall's label discards an open length field's text; in other
+  browsers it applies it first.
+- While an on-plan length field is kept open by a refused length and focus is elsewhere, Escape
+  clears the selection and leaves the field open.
+- A neighbouring wall that is almost, but not quite, in line with the dragged wall (more than
+  about 0.3 degrees off) makes its corner travel far for a small drag; the size limits refuse
+  the result.
+- A typed length still applies on each keystroke in the sidebar (the on-plan field applies on
+  Enter).
+
+Changed behaviour (slice D, wall editing). These are on purpose:
+
+- A typed wall length keeps every angle. It used to move only the end corner and tilt the next
+  wall.
+- Removing a corner that lies in a straight run is allowed with a door on the wall before it,
+  because the wall keeps its direction. It used to be refused.
+- Doors and windows keep their place in the room when the start of their wall moves along the
+  wall: wall drags, corner drags along a wall, typed lengths and the rectangle width and length
+  fields. Before, they kept their offset from the wall's start and travelled with it. An edit
+  that would leave one past its wall's end is refused with "That would leave a door or window
+  without room on its wall."
+- A plain click on a wall selects it. It used to add a corner; that is now a double-click (or the
+  `+` button in the sidebar).
+- In room mode the overall dimension lines sit further from the room.
+
+The checks on the final code: `npm run check` passes with 54 test files and 2045 tests, and the
+build shows `/room-planner` at 105 kB First Load JS.
+
 Open questions for the owner (slice C):
 
 - Starting shapes are refused while doors or windows exist. Should they instead keep the openings
@@ -96,23 +159,30 @@ when editing and when loading, so an edit can never produce a saved plan that fa
 
 ## Folders and files
 
-- `specs/` — design specs for the planner and for its move into the portfolio.
+- `specs/` — design specs for the planner and for its move into the portfolio. The wall editing
+  spec is [`specs/2026-11-14-wall-editing-design.md`](specs/2026-11-14-wall-editing-design.md).
 - `plans/` — implementation plans, one per spec. The room shape and saving work is in
   [`plans/2026-11-13-room-shape-and-saving.md`](plans/2026-11-13-room-shape-and-saving.md). The
   doors, windows and obstacles work is in
   [`plans/2026-11-14-openings-and-obstacles.md`](plans/2026-11-14-openings-and-obstacles.md)
-  (Amendments 1 to 6, plus the inserted fix tasks 12b and 13b).
+  (Amendments 1 to 6, plus the inserted fix tasks 12b and 13b). The wall editing work is in
+  [`plans/2026-11-14-wall-editing.md`](plans/2026-11-14-wall-editing.md) (Amendments 1 to 9).
 - `plan-reviews/` — plan-review verdicts for those plans. The review of the room shape and
   saving plan is
   [`plan-reviews/2026-11-13-room-shape-and-saving-review.md`](plan-reviews/2026-11-13-room-shape-and-saving-review.md).
   The review of the openings plan is
   [`plan-reviews/2026-11-14-openings-and-obstacles-review.md`](plan-reviews/2026-11-14-openings-and-obstacles-review.md).
+  The review of the wall editing plan is
+  [`plan-reviews/2026-11-14-wall-editing-review.md`](plan-reviews/2026-11-14-wall-editing-review.md).
 - `verification/` — live-check notes and the captures they cite. The room shape and saving
   check is
   [`verification/2026-11-13-room-shape-live-check.md`](verification/2026-11-13-room-shape-live-check.md).
   The openings check has 24 rows: 22 passed and 2 failed on the first run (C5, X1); both were fixed
   and passed on the re-run
   ([`verification/2026-11-14-openings-live-check.md`](verification/2026-11-14-openings-live-check.md)).
+  The wall editing check has 22 rows over three runs: run 1 failed W3, W12 and W13, and run 3, on
+  the final commit, passed all 22
+  ([`verification/2026-11-14-wall-editing-live-check.md`](verification/2026-11-14-wall-editing-live-check.md)).
 - `design_handoff/` — the original design reference (prototype, design system, README).
   It is read-only: it is not built or served.
 - `mistakes-and-fixes.md` — running log of mistakes and how they were fixed.
