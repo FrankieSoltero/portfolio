@@ -207,6 +207,154 @@ export function setWallLength(outline: readonly Corner[], wallId: string, length
   return settle(outline.map((c) => (c.id === b.id ? end : c)));
 }
 
+/** A slide shorter than this (in) leaves the outline unchanged. */
+const MIN_SLIDE = 0.005;
+
+/** A slid corner that lands within this distance (in) of its neighbour merges with it. */
+const SLIDE_MERGE = 0.01;
+
+/** The unit vector along v, or (0, 0) when v has no length. */
+function unit(v: Point): Point {
+  const len = Math.hypot(v.x, v.y);
+  return len === 0 ? { x: 0, y: 0 } : { x: v.x / len, y: v.y / len };
+}
+
+/**
+ * The wall's unit direction `u` (start to end) and inward normal `n = (−u.y, u.x)`. A zero-length
+ * wall has no direction, so it gives u = (1, 0) and n = (0, 1).
+ */
+export function wallFrame(wall: Wall): { u: Point; n: Point } {
+  if (wall.length === 0) return { u: { x: 1, y: 0 }, n: { x: 0, y: 1 } };
+  const u = { x: (wall.b.x - wall.a.x) / wall.length, y: (wall.b.y - wall.a.y) / wall.length };
+  return { u, n: { x: -u.y, y: u.x } };
+}
+
+/**
+ * True when unit vectors u and v point the same way: their cross product is at most
+ * CONFIG.sameDirectionSlack and their dot product is positive.
+ */
+export function sameDirection(u: Point, v: Point): boolean {
+  return Math.abs(u.x * v.y - u.y * v.x) <= CONFIG.sameDirectionSlack && u.x * v.x + u.y * v.y > 0;
+}
+
+/** The wall `wallId` with the corners before its start (P) and after its end (N); null when unknown. */
+function slideContext(outline: readonly Corner[], wallId: string) {
+  const wall = wallsOf(outline).find((w) => w.id === wallId);
+  if (wall === undefined) return null;
+  const count = outline.length;
+  const P = outline[(wall.index - 1 + count) % count];
+  const N = outline[(wall.index + 2) % count];
+  const { u, n } = wallFrame(wall);
+  const p = unit({ x: wall.a.x - P.x, y: wall.a.y - P.y });
+  const q = unit({ x: N.x - wall.b.x, y: N.y - wall.b.y });
+  return { wall, P, N, u, n, p, q };
+}
+
+/**
+ * Slides wall `wallId` by `distance` along its inward normal (negative slides outward), keeping
+ * every wall's direction. At each end, a neighbour running in the same direction as the wall gets a
+ * new corner (`ids.start` before the start, `ids.end` after it) so a step forms; any other
+ * neighbour has the end corner moved along it, and a neighbour used up (within 0.01) is removed.
+ * Every other corner keeps its id, position and order. A distance that is not a finite number is
+ * refused as too-large; an unknown wall or a distance below 0.005 leaves the outline unchanged.
+ */
+export function slideWall(
+  outline: readonly Corner[],
+  wallId: string,
+  distance: number,
+  ids: { start: string; end: string },
+): OutlineResult {
+  if (!Number.isFinite(distance)) return notFinite();
+  const ctx = slideContext(outline, wallId);
+  if (ctx === null || Math.abs(distance) < MIN_SLIDE) return unchanged(outline);
+  const { wall, P, N, u, n, p, q } = ctx;
+  const A = wall.a;
+  const B = wall.b;
+  const d = distance;
+  const removed = new Set<string>();
+
+  let inserted: Corner | null = null;
+  let movedA: Corner;
+  const pn = p.x * n.x + p.y * n.y;
+  if (sameDirection(p, u)) {
+    inserted = { id: ids.start, x: A.x, y: A.y };
+    movedA = { id: A.id, x: A.x + n.x * d, y: A.y + n.y * d };
+  } else {
+    const t = d / pn;
+    movedA = { id: A.id, x: A.x + p.x * t, y: A.y + p.y * t };
+    if (Math.hypot(movedA.x - P.x, movedA.y - P.y) <= SLIDE_MERGE) {
+      movedA = { id: A.id, x: P.x, y: P.y };
+      removed.add(P.id);
+    }
+  }
+
+  let insertedEnd: Corner | null = null;
+  let movedB: Corner = B;
+  const qn = q.x * n.x + q.y * n.y;
+  if (sameDirection(q, u)) {
+    insertedEnd = { id: ids.end, x: B.x + n.x * d, y: B.y + n.y * d };
+  } else {
+    const t = d / qn;
+    movedB = { id: B.id, x: B.x + q.x * t, y: B.y + q.y * t };
+    if (Math.hypot(movedB.x - N.x, movedB.y - N.y) <= SLIDE_MERGE) removed.add(B.id);
+  }
+
+  const candidate: Corner[] = [];
+  outline.forEach((c, k) => {
+    if (k === wall.index) {
+      if (inserted !== null) candidate.push(inserted);
+      candidate.push(movedA);
+      if (insertedEnd !== null) candidate.push(insertedEnd);
+    } else if (removed.has(c.id)) {
+      // Used up by the slide: the wall's end corner has merged with this neighbour.
+    } else if (c.id === B.id) {
+      candidate.push(movedB);
+    } else {
+      candidate.push(c);
+    }
+  });
+  return settle(candidate);
+}
+
+/** v rounded to 0.0001, with −0 given as 0. */
+function round4(v: number): number {
+  return Math.round(v * 10000) / 10000 + 0;
+}
+
+/**
+ * The slide distances at which a neighbour of wall `wallId` reaches zero length: for a start
+ * neighbour not in the wall's direction −|A − P|·(p·n), for an end neighbour not in the wall's
+ * direction |N − B|·(q·n). Rounded to 0.0001, without duplicates, ascending; [] for an unknown wall.
+ */
+export function wallSlideStops(outline: readonly Corner[], wallId: string): number[] {
+  const ctx = slideContext(outline, wallId);
+  if (ctx === null) return [];
+  const { wall, P, N, u, n, p, q } = ctx;
+  const stops: number[] = [];
+  if (!sameDirection(p, u)) {
+    stops.push(-Math.hypot(wall.a.x - P.x, wall.a.y - P.y) * (p.x * n.x + p.y * n.y));
+  }
+  if (!sameDirection(q, u)) {
+    stops.push(Math.hypot(N.x - wall.b.x, N.y - wall.b.y) * (q.x * n.x + q.y * n.y));
+  }
+  return [...new Set(stops.map(round4))].sort((m, k) => m - k);
+}
+
+/**
+ * Snaps a raw slide distance: to the stop nearest `raw` when one lies within CONFIG.cornerSnap / 2
+ * of it (inclusive), otherwise to the nearest multiple of CONFIG.cornerSnap. A distance that is not
+ * a finite number is returned as it is.
+ */
+export function snapSlideDistance(raw: number, stops: readonly number[]): number {
+  if (!Number.isFinite(raw)) return raw;
+  let nearest: number | null = null;
+  for (const s of stops) {
+    if (nearest === null || Math.abs(s - raw) < Math.abs(nearest - raw)) nearest = s;
+  }
+  if (nearest !== null && Math.abs(nearest - raw) <= CONFIG.cornerSnap / 2) return nearest;
+  return snapToGrid(raw);
+}
+
 /** Width and length of a 4-corner outline whose walls alternate horizontal and vertical; else null. */
 export function rectangleSize(outline: readonly Point[]): { w: number; l: number } | null {
   if (outline.length !== 4) return null;

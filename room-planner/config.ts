@@ -27,6 +27,11 @@ export const CONFIG = {
   angleSnapTolerancePx: 8,
   wallMin: 6,
   maxCorners: 64,
+  // Sliding a wall: two unit directions whose cross product is at most sameDirectionSlack (and
+  // whose dot product is positive) count as the same direction; a press on a wall becomes a drag
+  // once the pointer has moved wallDragThresholdPx screen pixels.
+  sameDirectionSlack: 0.005,
+  wallDragThresholdPx: 4,
   // Limits a saved plan must keep (planSchema reads them, so edits and loading agree): every
   // outline corner within ±coordMax in, and at most maxItems items.
   coordMax: 1440,

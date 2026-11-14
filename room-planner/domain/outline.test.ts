@@ -8,11 +8,16 @@ import {
   normaliseOutline,
   rectangleSize,
   removeCorner,
+  sameDirection,
   setRectangleSize,
   setWallLength,
+  slideWall,
   snapCornerTarget,
+  snapSlideDistance,
   startingShape,
   validateOutline,
+  wallFrame,
+  wallSlideStops,
   wallsOf,
   type OutlineResult,
   type StartingShape,
@@ -64,6 +69,56 @@ const NOTCHED = corners([0, 0], [54, 0], [54, 21], [90, 21], [90, 0], [144, 0], 
 /** Triangle whose first wall runs from (0,0) to (30,40), length 50. */
 const ANGLED = corners([0, 0], [30, 40], [-30, 60]);
 const NON_FINITE = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+
+/** Corners with the ids and coordinates given, in order. */
+function named(...list: [string, number, number][]): Corner[] {
+  return list.map(([id, x, y]) => ({ id, x, y }));
+}
+
+// Wall-editing plan fixtures (docs/room-planner/plans/2026-11-14-wall-editing.md, Global Constraints).
+const R = named(['c1', 0, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168]);
+const T = named(['c1', 0, 0], ['m1', 48, 0], ['m2', 96, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168]);
+const U = named(
+  ['c1', 0, 0], ['x1', 48, 0], ['m1', 48, 24], ['x2', 96, 24], ['m2', 96, 0], ['c2', 144, 0],
+  ['c3', 144, 168], ['c4', 0, 168],
+);
+const Q = named(['q1', 0, 0], ['q2', 100, 0], ['q3', 150, 50], ['q4', 150, 150], ['q5', 0, 150]);
+const D = named(['d1', 0, 0], ['d2', 33.33, 14.29], ['d3', 70, 30], ['d4', 70, 100], ['d5', 0, 100]);
+const M64: Corner[] = [
+  ...Array.from({ length: 62 }, (_, k) => ({ id: `k${k}`, x: 10 * k, y: 0 })),
+  { id: 'a', x: 610, y: 100 },
+  { id: 'b', x: 0, y: 100 },
+];
+const IDS = { start: 'x1', end: 'x2' };
+
+/** `base` with the corners in `changes` replaced by id. */
+function withCorners(base: readonly Corner[], ...changes: Corner[]): Corner[] {
+  return base.map((c) => changes.find((d) => d.id === c.id) ?? c);
+}
+
+/**
+ * The id rules for an accepted slide: no id other than IDS.start / IDS.end is new, and every wall
+ * id present before and after still lies along the same line (its direction is parallel).
+ */
+function expectIdsKept(before: readonly Corner[], after: readonly Corner[]): void {
+  const old = new Set(before.map((c) => c.id));
+  for (const c of after) if (!old.has(c.id)) expect([IDS.start, IDS.end]).toContain(c.id);
+  const beforeWalls = wallsOf(before);
+  for (const w of wallsOf(after)) {
+    const was = beforeWalls.find((b) => b.id === w.id);
+    if (was === undefined) continue;
+    const u = wallFrame(w).u;
+    const v = wallFrame(was).u;
+    expect(Math.abs(u.x * v.y - u.y * v.x)).toBeLessThanOrEqual(CONFIG.sameDirectionSlack);
+  }
+}
+
+/** Runs slideWall, checks the result is ok and keeps the id rules, and returns its outline. */
+function slid(outline: readonly Corner[], wallId: string, distance: number): Corner[] {
+  const out = okOutline(slideWall(outline, wallId, distance, IDS));
+  expectIdsKept(outline, out);
+  return out;
+}
 
 describe('OUTLINE_PROBLEM_TEXT', () => {
   it('gives the exact text for every problem', () => {
@@ -368,6 +423,175 @@ describe('setWallLength', () => {
 
   it('leaves the outline unchanged for an unknown wall', () => {
     expect(setWallLength(RECT, 'nope', 100)).toEqual({ ok: true, outline: RECT });
+  });
+});
+
+describe('wall sliding config', () => {
+  it('sets the same-direction slack to 0.005 and the wall drag threshold to 4 px', () => {
+    expect(CONFIG.sameDirectionSlack).toBe(0.005);
+    expect(CONFIG.wallDragThresholdPx).toBe(4);
+  });
+});
+
+describe('wallFrame', () => {
+  it("gives the inward normal of each of R's walls", () => {
+    const normals = wallsOf(R).map((w) => wallFrame(w).n);
+    const expected = [{ x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }, { x: 1, y: 0 }];
+    normals.forEach((n, i) => {
+      expect(n.x).toBeCloseTo(expected[i].x, 12);
+      expect(n.y).toBeCloseTo(expected[i].y, 12);
+    });
+  });
+
+  it('gives the unit direction of the wall', () => {
+    const { u } = wallFrame(wallsOf(ANGLED)[0]);
+    expect(u.x).toBeCloseTo(0.6, 12);
+    expect(u.y).toBeCloseTo(0.8, 12);
+  });
+
+  it('gives u = (1, 0) and n = (0, 1) for a zero-length wall', () => {
+    const a = { id: 'z', x: 5, y: 5 };
+    expect(wallFrame({ id: 'z', index: 0, a, b: a, length: 0 })).toEqual({ u: { x: 1, y: 0 }, n: { x: 0, y: 1 } });
+  });
+});
+
+describe('sameDirection', () => {
+  it('is true for unit vectors whose cross product is within the slack and whose dot product is positive', () => {
+    expect(sameDirection({ x: 1, y: 0 }, { x: 1, y: 0 })).toBe(true);
+    const near = { x: Math.cos(0.004), y: Math.sin(0.004) };
+    expect(sameDirection({ x: 1, y: 0 }, near)).toBe(true);
+  });
+
+  it('is false for opposite, perpendicular or clearly turned directions', () => {
+    expect(sameDirection({ x: 1, y: 0 }, { x: -1, y: 0 })).toBe(false);
+    expect(sameDirection({ x: 1, y: 0 }, { x: 0, y: 1 })).toBe(false);
+    const turned = { x: Math.cos(0.006), y: Math.sin(0.006) };
+    expect(sameDirection({ x: 1, y: 0 }, turned)).toBe(false);
+  });
+});
+
+describe('slideWall', () => {
+  it('slides the top wall of R inward, moving both its corners', () => {
+    expect(slid(R, 'c1', 12)).toEqual(withCorners(R, { id: 'c1', x: 0, y: 12 }, { id: 'c2', x: 144, y: 12 }));
+  });
+
+  it('slides a wall outward for a negative distance', () => {
+    expect(slid(R, 'c2', -24)).toEqual(named(['c1', 0, 0], ['c2', 168, 0], ['c3', 168, 168], ['c4', 0, 168]));
+  });
+
+  it('makes a step when both neighbours run in the same direction as the wall', () => {
+    expect(slid(T, 'm1', 24)).toEqual(U);
+  });
+
+  it('removes the step when sliding back onto the neighbours', () => {
+    expect(slid(U, 'm1', -24)).toEqual(T);
+  });
+
+  it('makes a bump when sliding through the neighbours', () => {
+    expect(slid(U, 'm1', -36)).toEqual(withCorners(U, { id: 'm1', x: 48, y: -12 }, { id: 'x2', x: 96, y: -12 }));
+  });
+
+  it('moves a corner along a diagonal neighbour, keeping its angle', () => {
+    expect(slid(Q, 'q1', 10)).toEqual(withCorners(Q, { id: 'q1', x: 0, y: 10 }, { id: 'q2', x: 110, y: 10 }));
+  });
+
+  it('removes the end corner when the end neighbour is used up', () => {
+    expect(slid(Q, 'q1', 50)).toEqual([{ id: 'q1', x: 0, y: 50 }, { id: 'q3', x: 150, y: 50 }, Q[3], Q[4]]);
+  });
+
+  it('treats a nearly same-direction neighbour as the same direction', () => {
+    expect(slid(D, 'd2', 10)).toEqual([
+      D[0],
+      { id: 'x1', x: 33.33, y: 14.29 },
+      { id: 'd2', x: 29.39, y: 23.48 },
+      { id: 'd3', x: 70, y: 40.88 },
+      D[3],
+      D[4],
+    ]);
+  });
+
+  it('refuses a slide that leaves a short wall', () => {
+    expect(slideWall(R, 'c1', 163, IDS)).toEqual({ ok: false, problem: 'short-wall' });
+  });
+
+  it('refuses a slide that removes too many corners', () => {
+    expect(slideWall(R, 'c1', 168, IDS)).toEqual({ ok: false, problem: 'too-few' });
+  });
+
+  it('refuses a slide that adds two corners to 64', () => {
+    expect(M64).toHaveLength(64);
+    expect(validateOutline(M64)).toBeNull();
+    expect(slideWall(M64, 'k1', 10, IDS)).toEqual({ ok: false, problem: 'too-many' });
+  });
+
+  it('refuses a slide that makes the room too large', () => {
+    expect(slideWall(R, 'c1', -600, IDS)).toEqual({ ok: false, problem: 'too-large' });
+  });
+
+  it('refuses a slide that makes walls cross', () => {
+    expect(slideWall(Q, 'q1', 120, IDS)).toEqual({ ok: false, problem: 'crossing' });
+  });
+
+  it('refuses a distance that is not a finite number as too-large', () => {
+    for (const v of NON_FINITE) {
+      expect(slideWall(R, 'c1', v, IDS)).toEqual({ ok: false, problem: 'too-large' });
+      expect(slideWall(R, 'zz', v, IDS)).toEqual({ ok: false, problem: 'too-large' });
+    }
+  });
+
+  it('leaves the outline unchanged for an unknown wall or a distance below 0.005', () => {
+    expect(slid(R, 'zz', 12)).toEqual(R);
+    expect(slid(R, 'c1', 0)).toEqual(R);
+    expect(slid(R, 'c1', 0.004)).toEqual(R);
+    expect(slid(R, 'c1', -0.004)).toEqual(R);
+  });
+
+  it('does not drift when sliding out and back 20 times', () => {
+    let outline: Corner[] = Q.slice();
+    for (let k = 0; k < 20; k++) outline = slid(slid(outline, 'q1', 10), 'q1', -10);
+    expect(outline.map((c) => c.id)).toEqual(Q.map((c) => c.id));
+    outline.forEach((c, i) => expect(Math.hypot(c.x - Q[i].x, c.y - Q[i].y)).toBeLessThanOrEqual(0.02));
+  });
+
+  it('does not mutate a frozen input outline', () => {
+    const frozen = Object.freeze(U.map((c) => Object.freeze({ ...c })));
+    expect(() => slideWall(frozen, 'm1', -36, IDS)).not.toThrow();
+    expect(() => slideWall(frozen, 'm1', -24, IDS)).not.toThrow();
+    expect(frozen).toEqual(U);
+  });
+});
+
+describe('wallSlideStops', () => {
+  it('gives the distances at which a neighbour that is not in the same direction reaches zero length', () => {
+    expect(wallSlideStops(R, 'c1')).toEqual([168]);
+    expect(wallSlideStops(Q, 'q1')).toEqual([50, 150]);
+    expect(wallSlideStops(U, 'm1')).toEqual([-24]);
+  });
+
+  it('gives no stops when both neighbours run in the same direction, or for an unknown wall', () => {
+    expect(wallSlideStops(T, 'm1')).toEqual([]);
+    expect(wallSlideStops(R, 'zz')).toEqual([]);
+  });
+});
+
+describe('snapSlideDistance', () => {
+  it('snaps to a stop within half the corner snap, inclusive', () => {
+    expect(snapSlideDistance(10.6, [10.3])).toBe(10.3);
+    expect(snapSlideDistance(9.8, [10.3])).toBe(10.3);
+  });
+
+  it('snaps to the nearest stop when several are in reach', () => {
+    expect(snapSlideDistance(10.4, [10, 10.7])).toBe(10.7);
+  });
+
+  it('otherwise snaps to the corner snap grid', () => {
+    expect(snapSlideDistance(9.7, [10.3])).toBe(10);
+    expect(snapSlideDistance(3.4, [])).toBe(3);
+  });
+
+  it('returns a distance that is not a finite number as it is', () => {
+    expect(snapSlideDistance(Number.NaN, [10])).toBeNaN();
+    expect(snapSlideDistance(Number.POSITIVE_INFINITY, [10])).toBe(Number.POSITIVE_INFINITY);
   });
 });
 

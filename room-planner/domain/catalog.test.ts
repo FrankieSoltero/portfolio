@@ -81,7 +81,7 @@ describe('CONFIG', () => {
       orbitYawPerPx: 0.008, orbitPitchPerPx: 0.006, zoomPerDelta: 0.001,
       planMargin: 64, planMarginInset: 48, dimOffset: 30, dimOffsetInset: 22,
       insetGap: 16, minPlanScale: 0.2, minSafeWidth: 200, conflictEpsilon: 0.01,
-      cornerSnap: 1, angleSnapDeg: 15, angleSnapTolerancePx: 8, wallMin: 6, maxCorners: 64, coordMax: 1440, maxItems: 200,
+      cornerSnap: 1, angleSnapDeg: 15, angleSnapTolerancePx: 8, wallMin: 6, maxCorners: 64, sameDirectionSlack: 0.005, wallDragThresholdPx: 4, coordMax: 1440, maxItems: 200,
       maxPixelRatio: 2, nudgeStep: 1, nudgeStepLarge: 12,
       hemiIntensity: 3.0, sunIntensity: 1.7,
       planStorageKey: 'room-planner:plan:v1', maxStoredChars: 524288, saveDebounceMs: 300,
