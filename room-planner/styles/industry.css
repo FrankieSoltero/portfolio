@@ -1,6 +1,6 @@
 /* Industry — design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
 
-:root {
+.room-planner {
   --color-bg: #f2f2f3;
   --color-surface: #e9e9ea;
   --color-text: #1d1f20;
@@ -62,12 +62,12 @@
   --shadow-lg: 0 12px 32px color-mix(in srgb, #2b2b2d 22%, transparent);
 }
 
-body {
+:where(.room-planner) {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
 }
-h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); }
+:where(.room-planner) h1, :where(.room-planner) h2, :where(.room-planner) h3, :where(.room-planner) h4 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); }
 
 .blueprint {
   position: relative;
@@ -103,31 +103,31 @@ h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: var(--font-headi
    readme.md and demonstrated in foundations/ and components/.
    ══════════════════════════════════════════════════════════════════════ */
 
-*, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; font-size: 15px; line-height: 1.55; font-weight: 400; }
-h1, h2, h3, h4, h5, h6 {
+:where(.room-planner), :where(.room-planner) *, :where(.room-planner) *::before, :where(.room-planner) *::after { box-sizing: border-box; }
+:where(.room-planner) { margin: 0; font-size: 15px; line-height: 1.55; font-weight: 400; }
+:where(.room-planner) h1, :where(.room-planner) h2, :where(.room-planner) h3, :where(.room-planner) h4, :where(.room-planner) h5, :where(.room-planner) h6 {
   font-family: var(--font-heading); font-weight: var(--font-heading-weight);
   line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 var(--space-2);
 }
-h1 { font-size: 42px; }
-h2 { font-size: 32px; }
-h3 { font-size: 25px; }
-h4 { font-size: 20px; }
-h5 { font-size: 16px; }
-h6 { font-size: 13px; }
-h6 { letter-spacing: 0.08em; text-transform: uppercase; }
-p { margin: 0 0 var(--space-3); }
-a { color: var(--color-accent); text-underline-offset: 3px; }
-img { display: block; max-width: 100%; }
-figure { margin: 0; }
-figcaption {
+:where(.room-planner) h1 { font-size: 42px; }
+:where(.room-planner) h2 { font-size: 32px; }
+:where(.room-planner) h3 { font-size: 25px; }
+:where(.room-planner) h4 { font-size: 20px; }
+:where(.room-planner) h5 { font-size: 16px; }
+:where(.room-planner) h6 { font-size: 13px; }
+:where(.room-planner) h6 { letter-spacing: 0.08em; text-transform: uppercase; }
+:where(.room-planner) p { margin: 0 0 var(--space-3); }
+:where(.room-planner) a { color: var(--color-accent); text-underline-offset: 3px; }
+:where(.room-planner) img { display: block; max-width: 100%; }
+:where(.room-planner) figure { margin: 0; }
+:where(.room-planner) figcaption {
   font-size: 11px; margin-top: var(--space-1);
   color: color-mix(in srgb, var(--color-text) 55%, transparent);
 }
 .text-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
-:focus { outline: none; }
-:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+:where(.room-planner) :focus { outline: none; }
+:where(.room-planner) :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+:where(.room-planner) ::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
 
 /* — rules — */
 .hr {

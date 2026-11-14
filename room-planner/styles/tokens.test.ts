@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { readTokens } from './tokens';
+import { PLANNER_ROOT_CLASS, readTokens } from './tokens';
 
 const VARS: Record<string, string> = {
   '--color-bg': ' rgb(244, 241, 234) ',
@@ -15,13 +15,29 @@ const VARS: Record<string, string> = {
 
 const root = document.documentElement;
 
+/** Mounts a planner wrapper element, as PlannerRoot renders it, and returns it. */
+function mountWrapper(): HTMLElement {
+  const wrapper = document.createElement('div');
+  wrapper.className = PLANNER_ROOT_CLASS;
+  document.body.appendChild(wrapper);
+  return wrapper;
+}
+
 afterEach(() => {
   for (const name of Object.keys(VARS)) root.style.removeProperty(name);
+  document.body.replaceChildren();
+});
+
+describe('PLANNER_ROOT_CLASS', () => {
+  it('is the wrapper class the scoped stylesheets target', () => {
+    expect(PLANNER_ROOT_CLASS).toBe('room-planner');
+  });
 });
 
 describe('readTokens', () => {
-  it('returns the CSS variables on documentElement, trimmed', () => {
-    for (const [name, value] of Object.entries(VARS)) root.style.setProperty(name, value);
+  it('returns the CSS variables on the .room-planner wrapper, trimmed', () => {
+    const wrapper = mountWrapper();
+    for (const [name, value] of Object.entries(VARS)) wrapper.style.setProperty(name, value);
     expect(readTokens()).toEqual({
       bg: 'rgb(244, 241, 234)',
       text: 'rgb(29, 29, 27)',
@@ -35,10 +51,17 @@ describe('readTokens', () => {
     });
   });
 
-  it('returns null while --color-text is unset', () => {
+  it('returns null while --color-text is unset on the wrapper', () => {
+    const wrapper = mountWrapper();
     for (const [name, value] of Object.entries(VARS)) {
-      if (name !== '--color-text') root.style.setProperty(name, value);
+      if (name !== '--color-text') wrapper.style.setProperty(name, value);
     }
+    expect(readTokens()).toBeNull();
+  });
+
+  it('returns null without throwing when no .room-planner element exists, even if the root has the variables', () => {
+    for (const [name, value] of Object.entries(VARS)) root.style.setProperty(name, value);
+    expect(() => readTokens()).not.toThrow();
     expect(readTokens()).toBeNull();
   });
 });

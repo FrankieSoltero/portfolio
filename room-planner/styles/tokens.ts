@@ -1,4 +1,7 @@
-/** Resolved colour tokens for canvas drawing, read from the CSS variables on the document root. */
+/** Class of the wrapper element the planner renders into; every planner style rule is scoped to it. */
+export const PLANNER_ROOT_CLASS = 'room-planner';
+
+/** Resolved colour tokens for canvas drawing, read from the CSS variables on the planner wrapper. */
 export interface Tokens {
   bg: string;
   text: string;
@@ -23,9 +26,14 @@ const VARIABLES: Readonly<Record<keyof Tokens, string>> = {
   a700: '--color-accent-700',
 };
 
-/** Reads the colour tokens from `document.documentElement`; null until the stylesheet has applied. */
+/**
+ * Reads the colour tokens from the first `.room-planner` element; null when no wrapper is
+ * mounted or until the stylesheet has applied.
+ */
 export function readTokens(): Tokens | null {
-  const style = getComputedStyle(document.documentElement);
+  const wrapper = document.querySelector(`.${PLANNER_ROOT_CLASS}`);
+  if (!wrapper) return null;
+  const style = getComputedStyle(wrapper);
   const read = (name: string) => style.getPropertyValue(name).trim();
   if (!read(VARIABLES.text)) return null;
   return {

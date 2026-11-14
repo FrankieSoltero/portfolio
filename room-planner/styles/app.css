@@ -1,5 +1,5 @@
 /* App-level layout. Use Industry classes and var(--*) tokens only; no hex colours here. */
-#root {
+.room-planner {
   min-height: 100vh;
 }
 
