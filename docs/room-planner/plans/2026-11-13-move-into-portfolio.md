@@ -72,6 +72,19 @@ listed as moderate. If the build or the papers HTML comparison differs with the
 override in place, Task 1 stops and reports. A Next.js 16 upgrade is a follow-up for
 the pull request description; when it lands, the override is removed.
 
+## Amendment 2 (2026-11-13, controller ruling during Task 3)
+
+The Vitest config is `vitest.config.mts`, not `vitest.config.ts`. This repo's
+`package.json` has no `"type": "module"`, so Vite loads a `.ts` config as CommonJS and
+prints a warning on every run. Wherever a task below names `vitest.config.ts`, read
+`vitest.config.mts`. The file is outside `tsconfig.json`'s include, so it is not part
+of `npm run typecheck`.
+
+Also recorded from Task 3: plain `npm audit` (dev packages included) reports 7
+moderate findings from one advisory, GHSA-g3hv-75wg-m249, in `minimatch` under
+`typescript-eslint`. It is dev-only, has no fix inside the named range, and is listed
+in the pull request. `npm audit --omit=dev` is unaffected (`0 0 4`).
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
