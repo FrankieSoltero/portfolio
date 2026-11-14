@@ -1,24 +1,39 @@
 import { useState, type JSX } from 'react';
 import { Header } from './components/Header';
+import { Notice } from './components/Notice';
 import { SelectionBar } from './components/SelectionBar';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { Stage } from './components/Stage/Stage';
 import { TopBar } from './components/TopBar';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { usePlanPersistence } from './hooks/usePlanPersistence';
 import { createMockProductLookup } from './services/mockProductLookup';
+import type { PlanStore } from './services/planStorage';
 import './styles/app.css';
 
 /**
- * The workspace shell: header over a sidebar and the main column (top bar, stage, selection
- * bar). The product lookup provider is created once per mount; keyboard shortcuts are global.
+ * The workspace shell: header, notice bar, then a sidebar and the main column (top bar, stage,
+ * selection bar). The product lookup provider is created once per mount; keyboard shortcuts are
+ * global. The plan is loaded from `planStore` and autosaved to it; until the load has been
+ * applied only a loading message is shown, so the seeded plan never flashes before a saved one.
  */
-export default function App(): JSX.Element {
+export default function App({ planStore }: { planStore: PlanStore }): JSX.Element {
   const [lookup] = useState(() => createMockProductLookup());
+  const { ready } = usePlanPersistence(planStore);
   useKeyboardShortcuts();
+
+  if (!ready) {
+    return (
+      <div className="plan-loading" role="status">
+        Loading your plan…
+      </div>
+    );
+  }
 
   return (
     <div className="app">
       <Header />
+      <Notice />
       <div className="app-body">
         <Sidebar lookup={lookup} />
         <main className="app-main">
