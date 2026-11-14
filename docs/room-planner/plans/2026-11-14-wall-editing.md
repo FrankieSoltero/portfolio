@@ -864,3 +864,10 @@ output.
    window on `c1`: was accepted on the now-vertical wall; must refuse). (b) An opening whose
    `wallId` is not a corner of `before` is left unchanged for `settle` to judge, as the old
    code did; it used to work and threw a `TypeError` after Task 2.
+5. **Task 11 also updates the room-mode hint in the selection bar.** The plan changed the
+   sidebar hint and missed a second one: `ROOM_HINT` in `room-planner/components/SelectionBar.tsx`
+   (pinned in `room-planner/components/bars.test.tsx`) still said "Click a wall to add a
+   corner". Seen by the controller in a screenshot after Task 7. Task 11 may edit those two
+   files for this only. New text:
+   `Drag a wall to move it, or a corner to change an angle. Double-click a wall to add a corner, or pick a door or window to place. Select something and press Delete to remove it.`
+   The constant in `bars.test.tsx` takes the same text.
