@@ -209,6 +209,23 @@ describe('sortPrisms', () => {
     expect(new Set(sorted)).toEqual(new Set([a, b, c, d]));
   });
 
+  it('ignores a pair that are each in front of the other, so a real occluder still draws later', () => {
+    const cam: Vec3 = [10, 100, 60];
+    // P: a 5 × 5 part at x 10–15, y 40–45, turned 90°. Q: unturned at x 30–35, y 60–65.
+    // R: a long shelf at x −200–20, y 50–55, between P and the camera, hiding P's lower front.
+    const p = prismFrom('P', footprintCorners({ cx: 12.5, cy: 42.5, w: 5, d: 5, angle: 90 }), 0, 30);
+    const q = prism('Q', 30, 35, 60, 65, 0, 30);
+    const r = prism('R', -200, 20, 50, 55, 0, 30);
+    // Mixed parity puts the axes in a different order for (P, Q) and (Q, P): both answer 1.
+    expect([frontOf(p, q, cam), frontOf(q, p, cam)]).toEqual([1, 1]);
+    expect([frontOf(r, p, cam), frontOf(p, r, cam)]).toEqual([1, -1]);
+    for (const input of [[p, q, r], [r, q, p], [q, r, p]]) {
+      const ids = sortPrisms(input, cam).map(b => b.itemId);
+      expect(ids).toHaveLength(3);
+      expect(ids.indexOf('P')).toBeLessThan(ids.indexOf('R'));
+    }
+  });
+
   it('returns each rotated prism exactly once', () => {
     const items = createInitialDocument().items.map((i, n) => ({ ...i, rot: (n % 4) as Rot }));
     const { prisms } = buildPrisms(items);

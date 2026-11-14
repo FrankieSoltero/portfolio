@@ -101,7 +101,8 @@ function centreDistSq(p: Prism, cam: Vec3): number {
 
 /**
  * Painter's order, far to near. Each step draws the farthest prism that is not in front of
- * any remaining prism; if every remaining prism is blocked (a cycle), the farthest one is drawn.
+ * any remaining prism (a pair each in front of the other is ignored); if every remaining
+ * prism is blocked (a cycle), the farthest one is drawn.
  * Always terminates and returns each input prism exactly once.
  */
 export function sortPrisms(prisms: readonly Prism[], cam: Vec3): Prism[] {
@@ -115,7 +116,9 @@ export function sortPrisms(prisms: readonly Prism[], cam: Vec3): Prism[] {
     rem.forEach((pi, i) => {
       const d = centreDistSq(pi, cam);
       if (d > farD) { farD = d; far = i; }
-      const blocked = rem.some((pj, j) => j !== i && frontOf(pi, pj, cam) === 1);
+      // A pair that are each "in front" of the other (the axis order differs by argument
+      // order) cannot occlude each other, so that pair blocks neither.
+      const blocked = rem.some((pj, j) => j !== i && frontOf(pi, pj, cam) === 1 && frontOf(pj, pi, cam) !== 1);
       if (!blocked && d > best) { best = d; pick = i; }
     });
     order.push(...rem.splice(pick < 0 ? far : pick, 1));
