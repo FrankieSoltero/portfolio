@@ -207,6 +207,15 @@ sideways. Ruling:
    corners equal the stored ones (same ids and coordinates in the same order) it
    returns `true` and leaves the state object unchanged.
 
+## Amendment 8 (2026-11-14, controller ruling after Task 13)
+
+Adding a corner was possible only by clicking a wall with a pointer, which breaks the
+plan's own rule that every new control is reachable by keyboard. Task 14 adds, in
+each wall row of the wall list, a button with the accessible name
+`Add a corner to wall <n>` that calls `addCornerOnWall(wall.id, <the wall's midpoint>)`
+(the Task 13 action). The button is shown only in room mode. A refusal shows the
+reason in the section like any other.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
