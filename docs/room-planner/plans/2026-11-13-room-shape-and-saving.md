@@ -141,6 +141,18 @@ outward normal `(nx, ny)` has `|nx| > |ny|` uses the existing `sideX` colours, a
 every other side uses the existing `sideY` colours. At 0°, 90°, 180° and 270° this
 gives exactly the slice A colours.
 
+## Amendment 4 (2026-11-14, controller ruling during Task 6)
+
+1. `room-planner/domain/catalog.test.ts` pins the whole `CONFIG` object. Any task that
+   adds constants to `room-planner/config.ts` (Tasks 6 and 17) also adds exactly those
+   constants to that test's expected object, and may touch that file for nothing else.
+2. Task 6, added behaviour: an outline with any coordinate that is not a finite number
+   is invalid. `validateOutline` reports `too-large` for it, checked before every other
+   rule, so `moveCorner`, `insertCorner`, `setWallLength` and `setRectangleSize` refuse
+   a non-finite target or length with `too-large`.
+3. Task 6, clarification: the wall-length and room-size limits are exact (6 in and
+   720 in), not widened by `CONFIG.conflictEpsilon`.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
