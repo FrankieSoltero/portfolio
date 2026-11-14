@@ -2,11 +2,21 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import { findConflicts } from '../domain/conflicts';
-import { setRectangleSize, startingShape } from '../domain/outline';
+import { findConflicts, findPlanIssues } from '../domain/conflicts';
+import { addObstacle, newObstacle, OBSTACLE_PROBLEM_TEXT } from '../domain/obstacles';
+import { addOpening, OPENING_PROBLEM_TEXT } from '../domain/openings';
+import {
+  insertCorner,
+  moveCorner,
+  OUTLINE_PROBLEM_TEXT,
+  removeCorner,
+  setRectangleSize,
+  setWallLength,
+  startingShape,
+} from '../domain/outline';
 import { boundsOf, pointInPolygon } from '../domain/polygon';
 import { footprintCorners, itemFootprint } from '../domain/shape';
-import type { Corner, Door, Item, Obstacle, PlanDocument, ProductPreview } from '../domain/types';
+import type { Corner, Door, Item, Obstacle, PlanDocument, ProductPreview, WindowOpening } from '../domain/types';
 import {
   addCornerOnWall,
   dragCornerTo,
@@ -17,9 +27,15 @@ import {
   removeSelectedCorner,
   rotateSelected,
 } from './actions';
-import { usePlanStore } from './planStore';
-import { totalPrice, useConflicts, useSelectedItem } from './selectors';
+import { ROOM_PROBLEM_TEXT, usePlanStore } from './planStore';
+import { totalPrice, useConflicts, useSelectedItem, useWarnings } from './selectors';
 import { type UiState, useUiStore } from './uiStore';
+
+// Wraps findPlanIssues in a spy (calling the real one), so the selectors' shared memo can be counted.
+vi.mock('../domain/conflicts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../domain/conflicts')>();
+  return { ...actual, findPlanIssues: vi.fn(actual.findPlanIssues) };
+});
 
 // Captured before any test (or reset) runs, so the "fresh store" rows check real initial state.
 const freshPlan = usePlanStore.getState();
@@ -135,10 +151,10 @@ describe('planStore', () => {
     expect(usePlanStore.getState().room).not.toBe(before);
   });
 
-  it('applyOutline stores an accepted outline without moving items and returns true', () => {
+  it('applyOutline stores an accepted outline without moving items and returns null', () => {
     const before = usePlanStore.getState();
     const outline = lShape();
-    expect(usePlanStore.getState().applyOutline({ ok: true, outline })).toBe(true);
+    expect(usePlanStore.getState().applyOutline({ ok: true, outline })).toBeNull();
     const after = usePlanStore.getState();
     expect(after.room).toEqual({ outline, height: 96 });
     expect(after.items).toBe(before.items);
@@ -146,19 +162,19 @@ describe('planStore', () => {
 
   it('applyOutline writes through setRectangleSize', () => {
     const { room } = usePlanStore.getState();
-    expect(usePlanStore.getState().applyOutline(setRectangleSize(room.outline, { w: 120 }))).toBe(true);
+    expect(usePlanStore.getState().applyOutline(setRectangleSize(room.outline, { w: 120 }))).toBeNull();
     expect(usePlanStore.getState().room.outline).toEqual([
       { id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 120, y: 0 }, { id: 'c3', x: 120, y: 168 }, { id: 'c4', x: 0, y: 168 },
     ]);
   });
 
-  it('applyOutline with the stored corners returns true, keeps the same state and notifies no one', () => {
+  it('applyOutline with the stored corners returns null, keeps the same state and notifies no one', () => {
     const before = usePlanStore.getState();
     const listener = vi.fn();
     const unsubscribe = usePlanStore.subscribe(listener);
     const applied = usePlanStore.getState().applyOutline({ ok: true, outline: structuredClone(before.room.outline) });
     unsubscribe();
-    expect(applied).toBe(true);
+    expect(applied).toBeNull();
     expect(usePlanStore.getState()).toBe(before);
     expect(listener).not.toHaveBeenCalled();
   });
@@ -173,13 +189,13 @@ describe('planStore', () => {
     expect(usePlanStore.getState().room.outline).toBe(rotated);
   });
 
-  it('applyOutline refused changes nothing, notifies no one and returns false', () => {
+  it('applyOutline refused changes nothing, notifies no one and returns the problem', () => {
     const before = usePlanStore.getState();
     const listener = vi.fn();
     const unsubscribe = usePlanStore.subscribe(listener);
     const applied = usePlanStore.getState().applyOutline({ ok: false, problem: 'crossing' });
     unsubscribe();
-    expect(applied).toBe(false);
+    expect(applied).toBe('crossing');
     expect(usePlanStore.getState()).toBe(before);
     expect(listener).not.toHaveBeenCalled();
   });
@@ -900,5 +916,326 @@ describe('selection in room mode', () => {
     useUiStore.getState().setLookup({ status: 'preview', product: SOFA });
     const id = placePreview();
     expect(useUiStore.getState().selectedId).toBe(id);
+  });
+});
+
+describe('plan store: doors, windows and obstacles', () => {
+  /** A 32 in door 20 in along the top wall (c1, from (0, 0) to (144, 0)): it spans x 20–52. */
+  const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+  const BOX: Obstacle = { id: 'b1', shape: 'box', label: 'Box', x: 40, y: 120, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 };
+
+  function outline(): Corner[] {
+    return usePlanStore.getState().room.outline;
+  }
+
+  function withPlan(fields: Partial<PlanDocument>): void {
+    usePlanStore.getState().reset({ ...createInitialDocument(), ...fields });
+  }
+
+  function obstacleById(id: string): Obstacle {
+    return req(usePlanStore.getState().obstacles.find((o) => o.id === id), `obstacle ${id}`);
+  }
+
+  /** Runs `edit` and asserts it left the very same state object and notified no one. */
+  function expectNoChange(edit: () => void): void {
+    const before = usePlanStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = usePlanStore.subscribe(listener);
+    edit();
+    unsubscribe();
+    expect(usePlanStore.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  }
+
+  it('ROOM_PROBLEM_TEXT is the outline, opening and obstacle texts merged', () => {
+    expect(ROOM_PROBLEM_TEXT).toEqual({ ...OUTLINE_PROBLEM_TEXT, ...OPENING_PROBLEM_TEXT, ...OBSTACLE_PROBLEM_TEXT });
+    expect(Object.keys(ROOM_PROBLEM_TEXT)).toHaveLength(
+      Object.keys(OUTLINE_PROBLEM_TEXT).length + Object.keys(OPENING_PROBLEM_TEXT).length + Object.keys(OBSTACLE_PROBLEM_TEXT).length,
+    );
+    expect(ROOM_PROBLEM_TEXT['opening-off-wall']).toBe('That would leave a door or window without room on its wall.');
+  });
+
+  it('applyOutline accepts a corner move in a room with no openings and stores it', () => {
+    const result = moveCorner(outline(), 'c3', { x: 160, y: 180 });
+    if (!result.ok) throw new Error('expected the move to be valid');
+    expect(usePlanStore.getState().applyOutline(result)).toBeNull();
+    expect(outline()).toEqual(result.outline);
+    expect(usePlanStore.getState().openings).toEqual([]);
+  });
+
+  it('applyOutline refused by the outline rules returns the problem and changes nothing', () => {
+    withPlan({ openings: [D1] });
+    const result = moveCorner(outline(), 'c2', { x: -50, y: 84 });
+    expect(result).toEqual({ ok: false, problem: 'crossing' });
+    let problem: unknown;
+    expectNoChange(() => {
+      problem = usePlanStore.getState().applyOutline(result);
+    });
+    expect(problem).toBe('crossing');
+  });
+
+  it('a corner move that keeps the door returns null and keeps the openings array', () => {
+    withPlan({ openings: [D1] });
+    const before = usePlanStore.getState().openings;
+    expect(usePlanStore.getState().applyOutline(moveCorner(outline(), 'c2', { x: 100, y: 0 }))).toBeNull();
+    expect(outline()[1]).toEqual({ id: 'c2', x: 100, y: 0 });
+    expect(usePlanStore.getState().openings).toBe(before);
+    expect(usePlanStore.getState().openings).toEqual([D1]);
+  });
+
+  it.each([
+    ['a corner move', () => moveCorner(outline(), 'c2', { x: 50, y: 0 }), 'opening-off-wall'],
+    ['a wall length', () => setWallLength(outline(), 'c1', 40), 'opening-off-wall'],
+    ['a rectangle width', () => setRectangleSize(outline(), { w: 48 }), 'opening-off-wall'],
+    ['a corner inside the door', () => insertCorner(outline(), 'c1', { x: 40, y: 0 }, 'n1'), 'corner-in-opening'],
+    ['removing a corner beside the door', () => removeCorner(outline(), 'c2'), 'corner-has-openings'],
+    [
+      'a starting shape (all-new ids)',
+      () => ({ ok: true as const, outline: startingShape('rectangle', 144, 168, () => crypto.randomUUID()) }),
+      'shape-has-openings',
+    ],
+  ] as const)('%s that the door cannot follow is refused with its problem; the state is the same object', (_case, edit, expected) => {
+    withPlan({ openings: [D1] });
+    const result = edit();
+    expect(result.ok).toBe(true);
+    let problem: unknown;
+    expectNoChange(() => {
+      problem = usePlanStore.getState().applyOutline(result);
+    });
+    expect(problem).toBe(expected);
+  });
+
+  it('a starting shape with no doors or windows is accepted', () => {
+    const shape = startingShape('l-shape', 144, 168, () => crypto.randomUUID());
+    expect(usePlanStore.getState().applyOutline({ ok: true, outline: shape })).toBeNull();
+    expect(outline()).toBe(shape);
+  });
+
+  it('a corner added on the door wall before it moves the door onto the new wall, in one update', () => {
+    withPlan({ openings: [D1] });
+    const listener = vi.fn();
+    const unsubscribe = usePlanStore.subscribe(listener);
+    const problem = usePlanStore.getState().applyOutline(insertCorner(outline(), 'c1', { x: 10, y: 0 }, 'n1'));
+    unsubscribe();
+    expect(problem).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+    const after = usePlanStore.getState();
+    expect(after.room.outline.map((c) => c.id)).toEqual(['c1', 'n1', 'c2', 'c3', 'c4']);
+    expect(after.openings).toEqual([{ ...D1, wallId: 'n1', offset: 10 }]);
+  });
+
+  it('applyOpenings stores an accepted list and returns null', () => {
+    const problem = usePlanStore.getState().applyOpenings(addOpening(outline(), [], 'door', 'c1', { x: 72, y: 5 }, 'door-1'));
+    expect(problem).toBeNull();
+    expect(usePlanStore.getState().openings).toEqual([
+      { id: 'door-1', kind: 'door', wallId: 'c1', offset: 56, width: 32, height: 80, hinge: 'start', swing: 'in' },
+    ]);
+  });
+
+  it('applyOpenings refused returns the problem and changes nothing', () => {
+    withPlan({ openings: [D1] });
+    let problem: unknown;
+    expectNoChange(() => {
+      problem = usePlanStore.getState().applyOpenings({ ok: false, problem: 'opening-overlap' });
+    });
+    expect(problem).toBe('opening-overlap');
+  });
+
+  it('applyOpenings refuses a list that does not fit the stored outline, changing nothing', () => {
+    // Accepted on a wider room, but the stored top wall is 144 in long.
+    const wide = setRectangleSize(outline(), { w: 600 });
+    if (!wide.ok) throw new Error('expected a valid wide room');
+    const result = addOpening(wide.outline, [], 'door', 'c1', { x: 500, y: 0 }, 'door-1');
+    expect(result.ok).toBe(true);
+    let problem: unknown;
+    expectNoChange(() => {
+      problem = usePlanStore.getState().applyOpenings(result);
+    });
+    expect(problem).toBe('opening-off-wall');
+  });
+
+  it('applyOpenings with a list equal to the stored one keeps the same state', () => {
+    withPlan({ openings: [D1] });
+    let problem: unknown = 'unset';
+    expectNoChange(() => {
+      problem = usePlanStore.getState().applyOpenings({ ok: true, openings: [structuredClone(D1)] });
+    });
+    expect(problem).toBeNull();
+  });
+
+  it('applyObstacles stores an accepted list and returns null', () => {
+    const problem = usePlanStore.getState().applyObstacles(addObstacle([], newObstacle('box', { x: 40, y: 120 }, 96, 'b1')));
+    expect(problem).toBeNull();
+    expect(usePlanStore.getState().obstacles).toEqual([BOX]);
+  });
+
+  it('applyObstacles refused returns the problem and changes nothing', () => {
+    withPlan({ obstacles: [BOX] });
+    let problem: unknown;
+    expectNoChange(() => {
+      problem = usePlanStore.getState().applyObstacles({ ok: false, problem: 'too-many-obstacles' });
+    });
+    expect(problem).toBe('too-many-obstacles');
+  });
+
+  it('applyObstacles stores numbers to 0.01: a column as tall as a 2.45 m ceiling', () => {
+    usePlanStore.getState().setRoomHeight(2.45 / 0.0254); // 96.4566… in
+    const { room } = usePlanStore.getState();
+    expect(room.height).not.toBe(96.46);
+    expect(usePlanStore.getState().applyObstacles(addObstacle([], newObstacle('cylinder', { x: 72, y: 84 }, room.height, 'col')))).toBeNull();
+    expect(obstacleById('col').height).toBe(96.46);
+  });
+
+  it('moveObstacleTo snaps the box to the grid; moveObstacleBy moves it by exactly the step', () => {
+    withPlan({ obstacles: [BOX] });
+    usePlanStore.getState().moveObstacleTo('b1', 30.4, 50.6);
+    expect(obstacleById('b1')).toMatchObject({ x: 30, y: 51 });
+    usePlanStore.getState().moveObstacleBy('b1', 1, 0);
+    expect(obstacleById('b1').x).toBe(31);
+    expect(obstacleById('b1').y).toBe(51);
+  });
+
+  it('moveObstacleTo and moveObstacleBy keep the centre inside the room bounds', () => {
+    withPlan({ obstacles: [BOX] });
+    usePlanStore.getState().moveObstacleTo('b1', -50, 900);
+    expect(obstacleById('b1')).toMatchObject({ x: 0, y: 168 });
+    usePlanStore.getState().moveObstacleBy('b1', 500, -500);
+    expect(obstacleById('b1')).toMatchObject({ x: 144, y: 0 });
+  });
+
+  it('obstacle moves that change nothing, unknown ids and numbers that are not finite keep the same state', () => {
+    withPlan({ obstacles: [BOX] });
+    expectNoChange(() => {
+      const s = usePlanStore.getState();
+      s.moveObstacleTo('b1', 40, 120);
+      s.moveObstacleTo('b1', 40.2, 119.8);
+      s.moveObstacleBy('b1', 0, 0);
+      s.moveObstacleTo('nope', 10, 10);
+      s.moveObstacleBy('nope', 1, 1);
+      for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        s.moveObstacleTo('b1', bad, 10);
+        s.moveObstacleTo('b1', 10, bad);
+        s.moveObstacleBy('b1', bad, 1);
+        s.moveObstacleBy('b1', 1, bad);
+      }
+    });
+  });
+
+  it('removeOpening and removeObstacle remove the entry; an unknown id keeps the same state', () => {
+    withPlan({ openings: [D1], obstacles: [BOX] });
+    expectNoChange(() => {
+      usePlanStore.getState().removeOpening('nope');
+      usePlanStore.getState().removeObstacle('nope');
+    });
+    usePlanStore.getState().removeOpening('d1');
+    expect(usePlanStore.getState().openings).toEqual([]);
+    expect(usePlanStore.getState().obstacles).toEqual([BOX]);
+    usePlanStore.getState().removeObstacle('b1');
+    expect(usePlanStore.getState().obstacles).toEqual([]);
+  });
+});
+
+describe('room edit actions with a door', () => {
+  const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+  const NO_SNAP = { angleSnap: false, toleranceIn: 2 };
+
+  beforeEach(() => {
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1] });
+    useUiStore.getState().setMode('room');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('dragCornerTo that squeezes the door keeps the room and shows the opening text', () => {
+    const before = usePlanStore.getState().room;
+    dragCornerTo('c2', { x: 50, y: 0 }, NO_SNAP);
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().roomProblem).toBe(OPENING_PROBLEM_TEXT['opening-off-wall']);
+  });
+
+  it('nudgeSelectedCorner that squeezes the door shows the opening text', () => {
+    useUiStore.getState().selectCorner('c2');
+    nudgeSelectedCorner(-94, 0);
+    expect(usePlanStore.getState().room.outline[1]).toEqual({ id: 'c2', x: 144, y: 0 });
+    expect(useUiStore.getState().roomProblem).toBe(OPENING_PROBLEM_TEXT['opening-off-wall']);
+  });
+
+  it('addCornerOnWall inside the door is refused with its text and keeps the selection', () => {
+    useUiStore.getState().selectCorner('c3');
+    addCornerOnWall('c1', { x: 40, y: 0 });
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+    expect(useUiStore.getState().selectedCornerId).toBe('c3');
+    expect(useUiStore.getState().roomProblem).toBe(OPENING_PROBLEM_TEXT['corner-in-opening']);
+  });
+
+  it('addCornerOnWall before the door moves it onto the new wall, selects the corner and clears the problem', () => {
+    const id = '00000000-0000-4000-8000-000000000002';
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(id);
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    addCornerOnWall('c1', { x: 10, y: 0 });
+    expect(usePlanStore.getState().openings).toEqual([{ ...D1, wallId: id, offset: 10 }]);
+    expect(useUiStore.getState().selectedCornerId).toBe(id);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('removeSelectedCorner beside the door is refused with its text and keeps the selection', () => {
+    useUiStore.getState().selectCorner('c2');
+    removeSelectedCorner();
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+    expect(useUiStore.getState().selectedCornerId).toBe('c2');
+    expect(useUiStore.getState().roomProblem).toBe(OPENING_PROBLEM_TEXT['corner-has-openings']);
+  });
+});
+
+describe('issue selectors', () => {
+  const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+  const W1: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 100, width: 36, sill: 24, height: 48 };
+
+  beforeEach(() => {
+    vi.mocked(findPlanIssues).mockClear();
+  });
+
+  it('with the seed plus a door: the bed blocks it and there are no warnings', () => {
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1] });
+    const { result } = renderHook(() => ({ conflicts: useConflicts(), warnings: useWarnings() }));
+    expect(result.current.conflicts).toEqual({ 'seed-bed': 'Blocks a door' });
+    expect(result.current.warnings).toEqual({});
+  });
+
+  it('with the seed plus a window on c2: the desk covers it', () => {
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [W1] });
+    const { result } = renderHook(() => useWarnings());
+    expect(result.current).toEqual({ 'seed-desk': 'Covers a window' });
+  });
+
+  it('both return the same objects while the plan is unchanged, from one computation per change', () => {
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [W1] });
+    const a = renderHook(() => ({ conflicts: useConflicts(), warnings: useWarnings() }));
+    const b = renderHook(() => useWarnings());
+    const first = a.result.current;
+    a.rerender();
+    b.rerender();
+    expect(a.result.current.conflicts).toBe(first.conflicts);
+    expect(a.result.current.warnings).toBe(first.warnings);
+    expect(b.result.current).toBe(first.warnings);
+    expect(findPlanIssues).toHaveBeenCalledTimes(1);
+
+    act(() => usePlanStore.getState().removeOpening('w1'));
+    a.rerender();
+    b.rerender();
+    expect(a.result.current.warnings).toEqual({});
+    expect(b.result.current).toBe(a.result.current.warnings);
+    expect(findPlanIssues).toHaveBeenCalledTimes(2);
+  });
+
+  it('recompute when openings or obstacles change', () => {
+    const { result } = renderHook(() => useConflicts());
+    expect(result.current).toEqual({});
+    act(() => usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1] }));
+    expect(result.current).toEqual({ 'seed-bed': 'Blocks a door' });
+    act(() => usePlanStore.getState().removeOpening('d1'));
+    expect(result.current).toEqual({});
   });
 });

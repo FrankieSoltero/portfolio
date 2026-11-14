@@ -1,13 +1,6 @@
-import {
-  insertCorner,
-  moveCorner,
-  OUTLINE_PROBLEM_TEXT,
-  type OutlineResult,
-  removeCorner,
-  snapCornerTarget,
-} from '../domain/outline';
+import { insertCorner, moveCorner, type OutlineResult, removeCorner, snapCornerTarget } from '../domain/outline';
 import type { Point } from '../domain/types';
-import { usePlanStore } from './planStore';
+import { ROOM_PROBLEM_TEXT, usePlanStore } from './planStore';
 import { useUiStore } from './uiStore';
 
 /** Cross-store actions: operations on the plan driven by the UI selection or lookup state. */
@@ -54,12 +47,13 @@ export function nudgeSelected(dx: number, dy: number): void {
 
 /**
  * Stores an outline edit through applyOutline and records the outcome for the room editor: a
- * refusal sets the room problem to its text, an accepted edit clears it. Returns true when accepted.
+ * refusal (by the outline rules, or because a door or window cannot follow) sets the room problem
+ * to its text, an accepted edit clears it. Returns true when accepted.
  */
 function applyRoomEdit(result: OutlineResult): boolean {
-  const accepted = usePlanStore.getState().applyOutline(result);
-  useUiStore.getState().setRoomProblem(result.ok ? null : OUTLINE_PROBLEM_TEXT[result.problem]);
-  return accepted;
+  const problem = usePlanStore.getState().applyOutline(result);
+  useUiStore.getState().setRoomProblem(problem === null ? null : ROOM_PROBLEM_TEXT[problem]);
+  return problem === null;
 }
 
 function hasCorner(id: string): boolean {

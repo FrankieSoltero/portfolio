@@ -1,16 +1,9 @@
 import { type ChangeEvent, type JSX, useId, useState } from 'react';
 import { CONFIG } from '../../config';
-import {
-  LIMIT_SLACK,
-  OUTLINE_PROBLEM_TEXT,
-  type OutlineResult,
-  setWallLength,
-  type Wall,
-  wallsOf,
-} from '../../domain/outline';
+import { LIMIT_SLACK, type OutlineResult, setWallLength, type Wall, wallsOf } from '../../domain/outline';
 import { parseLengthInput, roomInputStep, roomInputStr, roomUnitLabel } from '../../domain/units';
 import { addCornerOnWall } from '../../state/actions';
-import { usePlanStore } from '../../state/planStore';
+import { ROOM_PROBLEM_TEXT, usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import './sidebar.css';
 
@@ -19,8 +12,8 @@ const DRAFT_TOLERANCE_IN = 0.01;
 
 /**
  * Sets wall `wallId` of the current outline to `inches` and records the outcome: an accepted
- * length clears the room problem, a refused one (including one outside the wall limits) leaves the
- * outline unchanged and sets the problem to its reason.
+ * length clears the room problem, a refused one (including one outside the wall limits, or one a
+ * door or window cannot follow) leaves the outline unchanged and sets the problem to its reason.
  */
 function applyWallLength(wallId: string, inches: number): void {
   const result: OutlineResult =
@@ -28,8 +21,8 @@ function applyWallLength(wallId: string, inches: number): void {
     inches > CONFIG.roomMax + LIMIT_SLACK
       ? { ok: false, problem: 'too-large' }
       : setWallLength(usePlanStore.getState().room.outline, wallId, inches);
-  usePlanStore.getState().applyOutline(result);
-  useUiStore.getState().setRoomProblem(result.ok ? null : OUTLINE_PROBLEM_TEXT[result.problem]);
+  const problem = usePlanStore.getState().applyOutline(result);
+  useUiStore.getState().setRoomProblem(problem === null ? null : ROOM_PROBLEM_TEXT[problem]);
 }
 
 /**

@@ -2,11 +2,16 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { rectangleSize, setRectangleSize, startingShape } from '../../domain/outline';
+import { createInitialDocument } from '../../domain/catalog';
 import { boundsOf } from '../../domain/polygon';
+import type { Door } from '../../domain/types';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { Header } from '../Header';
 import { RoomSection } from './RoomSection';
+
+/** A 32 in door 20 in along the top wall c1: it spans x 20–52. */
+const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
 
 // Vitest globals are off, so Testing Library cannot register its own cleanup.
 afterEach(cleanup);
@@ -378,5 +383,29 @@ describe('RoomSection', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Rectangle' }));
     expect(usePlanStore.getState().room.outline).toEqual(before);
     expect(screen.getByRole('status')).toHaveTextContent('That wall would be too short.');
+  });
+
+  it('refuses a width that leaves a door without room on its wall and shows why; an accepted width clears it', () => {
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1] });
+    const before = usePlanStore.getState().room;
+    render(<RoomSection />);
+    typeRaw(input('Width'), '4');
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(screen.getByRole('status')).toHaveTextContent(/^That would leave a door or window without room on its wall\.$/);
+    typeRaw(input('Width'), '10');
+    expect(storedSize()?.w).toBe(120);
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  });
+
+  it('refuses a starting shape while the room has a door, shows why and keeps the corner selection', async () => {
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1] });
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectCorner('c2');
+    const before = usePlanStore.getState();
+    render(<RoomSection />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'L-shape' }));
+    expect(usePlanStore.getState()).toBe(before);
+    expect(screen.getByRole('status')).toHaveTextContent(/^Remove the doors and windows before starting from a shape\.$/);
+    expect(useUiStore.getState().selectedCornerId).toBe('c2');
   });
 });

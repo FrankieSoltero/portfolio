@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RoomSection } from '../components/Sidebar/RoomSection';
@@ -12,13 +12,15 @@ import {
   removeSelectedCorner,
   rotateSelected,
 } from '../state/actions';
-import { usePlanStore } from '../state/planStore';
+import { ROOM_PROBLEM_TEXT, type RoomProblem, usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
-import { addObstacle, newObstacle } from './obstacles';
-import { addOpening } from './openings';
-import { setWallLength, wallsOf } from './outline';
+import { addObstacle, newObstacle, updateObstacle } from './obstacles';
+import { addOpening, slideOpening, updateOpening } from './openings';
+import { setRectangleSize, setWallLength, wallsOf } from './outline';
 import { parsePlan } from './planSchema';
-import type { PlanDocument, ProductPreview } from './types';
+import { interiorPoint } from './polygon';
+import { roomBounds } from './shape';
+import type { PlanDocument, Point, ProductPreview } from './types';
 
 /**
  * Every kind of edit the planner offers, made through the real stores and actions from the seeded
@@ -59,6 +61,57 @@ function currentDocument(): PlanDocument {
 function expectReadable(step: string): void {
   const result = parsePlan(JSON.parse(JSON.stringify(currentDocument())));
   expect(result.ok, `${step}: ${result.ok ? '' : result.reason}`).toBe(true);
+}
+
+/**
+ * expectReadable, and also: the doors, windows and obstacles read back exactly as stored (so every
+ * stored number was already rounded to 0.01), and every obstacle centre is inside the room's
+ * bounding box.
+ */
+function expectExact(step: string): void {
+  expectReadable(step);
+  const doc = currentDocument();
+  const result = parsePlan(JSON.parse(JSON.stringify(doc)));
+  if (!result.ok) return;
+  expect(result.doc.openings, step).toEqual(doc.openings);
+  expect(result.doc.obstacles, step).toEqual(doc.obstacles);
+  const b = roomBounds(doc.room);
+  for (const o of doc.obstacles) {
+    const inside = o.x >= b.minX && o.x <= b.maxX && o.y >= b.minY && o.y <= b.maxY;
+    expect(inside, `${step}: centre of ${o.id} inside the room bounds`).toBe(true);
+  }
+}
+
+/** Adds a door or window through the store, as the planner will. */
+function placeOpening(kind: 'door' | 'window', wallId: string, at: Point, id: string): RoomProblem | null {
+  const { room, openings, applyOpenings } = usePlanStore.getState();
+  return applyOpenings(addOpening(room.outline, openings, kind, wallId, at, id));
+}
+
+/** Adds a box or column through the store, as the planner will. */
+function placeObstacle(shape: 'box' | 'cylinder', at: Point, id: string): RoomProblem | null {
+  const { room, obstacles, applyObstacles } = usePlanStore.getState();
+  return applyObstacles(addObstacle(obstacles, newObstacle(shape, at, room.height, id)));
+}
+
+function slide(id: string, offset: number): RoomProblem | null {
+  const { room, openings, applyOpenings } = usePlanStore.getState();
+  return applyOpenings(slideOpening(room.outline, openings, id, offset));
+}
+
+function changeOpening(id: string, patch: Parameters<typeof updateOpening>[3]): RoomProblem | null {
+  const { room, openings, applyOpenings } = usePlanStore.getState();
+  return applyOpenings(updateOpening(room.outline, openings, id, patch));
+}
+
+function changeObstacle(id: string, patch: Parameters<typeof updateObstacle>[2]): RoomProblem | null {
+  const { obstacles, applyObstacles } = usePlanStore.getState();
+  return applyObstacles(updateObstacle(obstacles, id, patch));
+}
+
+/** The middle of each wall of the current outline, by wall id. */
+function wallMiddles(): [string, Point][] {
+  return wallsOf(usePlanStore.getState().room.outline).map((w) => [w.id, { x: (w.a.x + w.b.x) / 2, y: (w.a.y + w.b.y) / 2 }]);
 }
 
 function corner(id: string): { x: number; y: number } {
@@ -202,5 +255,181 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
     expectReadable('lowest ceiling');
     usePlanStore.getState().setRoomHeight(CONFIG.roomMax);
     expectReadable('highest ceiling');
+  });
+
+  it('doors and windows: add, slide, update and remove', () => {
+    expect(placeOpening('door', 'c1', { x: 36, y: 0 }, 'door-1')).toBeNull();
+    expectExact('add a door');
+    expect(placeOpening('window', 'c2', { x: 144, y: 118 }, 'window-1')).toBeNull();
+    expectExact('add a window');
+    expect(slide('door-1', 1e6)).toBeNull();
+    expectExact('slide a door to the wall end');
+    expect(slide('door-1', -1e6)).toBeNull();
+    expectExact('slide a door to the wall start');
+    expect(slide('window-1', 0.4)).toBeNull();
+    expectExact('slide a window by a fraction');
+    expect(slide('door-1', Number.NaN)).toBe('opening-size');
+    expectExact('slide to a number that is not finite');
+    expect(changeOpening('door-1', { width: 40.005, height: 239.999, hinge: 'end', swing: 'out' })).toBeNull();
+    expectExact('update a door');
+    expect(changeOpening('window-1', { width: 12.004, sill: 100.123, height: 50.555 })).toBeNull();
+    expectExact('update a window');
+    expect(changeOpening('door-1', { width: 1e6 })).toBe('opening-size');
+    expectExact('a door too wide');
+    usePlanStore.getState().removeOpening('door-1');
+    expectExact('remove a door');
+    usePlanStore.getState().removeOpening('window-1');
+    expectExact('remove a window');
+    expect(usePlanStore.getState().openings).toEqual([]);
+  });
+
+  it('obstacles: add, move, nudge, update and remove a box and a column', () => {
+    const centre = interiorPoint(usePlanStore.getState().room.outline);
+    expect(placeObstacle('box', centre, 'box-1')).toBeNull();
+    expectExact('add a box');
+    expect(placeObstacle('cylinder', centre, 'column-1')).toBeNull();
+    expectExact('add a column');
+    const s = usePlanStore.getState();
+    s.moveObstacleTo('box-1', 1e6, -1e6);
+    expectExact('move a box far');
+    s.moveObstacleBy('box-1', -1e6, 1e6);
+    expectExact('nudge a box far');
+    s.moveObstacleTo('column-1', 30.4, 50.6);
+    expectExact('move a column');
+    s.moveObstacleBy('column-1', 0.004, -0.006);
+    expectExact('nudge a column by less than a hundredth');
+    expect(changeObstacle('box-1', { label: 'L'.repeat(40), rotation: 123.456, width: 240, depth: 33.333, height: 720, elevation: 719.999 })).toBeNull();
+    expectExact('update a box');
+    s.moveObstacleTo('box-1', 1e6, 1e6);
+    expectExact('move a turned box far');
+    s.moveObstacleBy('box-1', -0.333, -0.333);
+    expectExact('nudge a turned box');
+    expect(changeObstacle('box-1', { rotation: 1e307 })).toBeNull();
+    expectExact('turn a box by a huge angle');
+    expect(changeObstacle('box-1', { label: 'L'.repeat(41) })).toBe('obstacle-size');
+    expectExact('a label too long');
+    expect(changeObstacle('column-1', { width: 33.335, depth: 2 })).toBeNull();
+    expectExact('update a column');
+    s.setRoomHeight(2.45 / 0.0254);
+    expect(placeObstacle('cylinder', centre, 'column-2')).toBeNull();
+    expectExact('add a column under a 2.45 m ceiling');
+    for (const id of ['box-1', 'column-1', 'column-2']) {
+      usePlanStore.getState().removeObstacle(id);
+      expectExact(`remove ${id}`);
+    }
+    expect(usePlanStore.getState().obstacles).toEqual([]);
+  });
+
+  it.each([
+    ['right', 1, 0], ['left', -1, 0], ['down', 0, 1], ['up', 0, -1],
+  ] as const)('with a door on every wall, dragging corners %s repeatedly until refused', (_dir, sx, sy) => {
+    for (const [wallId, at] of wallMiddles()) expect(placeOpening('door', wallId, at, `door-${wallId}`)).toBeNull();
+    expectExact('a door on every wall');
+    useUiStore.getState().setMode('room');
+    const leading = sx > 0 ? ['c2', 'c3'] : sx < 0 ? ['c1', 'c4'] : sy > 0 ? ['c3', 'c4'] : ['c1', 'c2'];
+    const order = [...leading, ...['c1', 'c2', 'c3', 'c4'].filter((id) => !leading.includes(id))];
+    let refused = false;
+    for (let round = 0; round < 20 && !refused; round++) {
+      for (const id of order) {
+        const c = corner(id);
+        dragCornerTo(id, { x: c.x + sx * 400, y: c.y + sy * 400 }, NO_SNAP);
+        expectExact(`drag ${id} round ${round}`);
+        if (useUiStore.getState().roomProblem !== null) {
+          refused = true;
+          break;
+        }
+      }
+    }
+    expect(refused).toBe(true);
+    expect(usePlanStore.getState().openings).toHaveLength(4);
+  });
+
+  it('with doors on the wall, inserting and removing a corner', () => {
+    useUiStore.getState().setMode('room');
+    expect(placeOpening('door', 'c1', { x: 26, y: 0 }, 'door-left')).toBeNull();
+    expect(placeOpening('door', 'c1', { x: 110, y: 0 }, 'door-right')).toBeNull();
+    expectExact('two doors on the top wall');
+    addCornerOnWall('c1', { x: 72, y: 0 });
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    expectExact('insert a corner between the doors');
+    const added = usePlanStore.getState().room.outline[1].id;
+    expect(usePlanStore.getState().openings.map((o) => [o.id, o.wallId, o.offset])).toEqual([
+      ['door-left', 'c1', 10], ['door-right', added, 22],
+    ]);
+    addCornerOnWall('c1', { x: 26, y: 0 });
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['corner-in-opening']);
+    expectExact('insert a corner inside a door');
+    useUiStore.getState().selectCorner(added);
+    removeSelectedCorner();
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['corner-has-openings']);
+    expectExact('remove a corner beside a door');
+    usePlanStore.getState().removeOpening('door-left');
+    usePlanStore.getState().removeOpening('door-right');
+    removeSelectedCorner();
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    expectExact('remove the corner once the doors are gone');
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+  });
+
+  it('with a door on the wall, setting its length, including past the room limit and below the door', () => {
+    expect(placeOpening('door', 'c1', { x: 72, y: 0 }, 'door-1')).toBeNull();
+    const length = (inches: number) =>
+      usePlanStore.getState().applyOutline(setWallLength(usePlanStore.getState().room.outline, 'c1', inches));
+    expect(length(300)).toBeNull();
+    expectExact('set a wall length');
+    expect(length(5000)).toBe('too-large');
+    expectExact('set a wall length past the room limit');
+    expect(length(80)).toBe('opening-off-wall');
+    expectExact('set a wall length shorter than the door needs');
+    expect(usePlanStore.getState().openings).toHaveLength(1);
+  });
+
+  it('with a door, each starting shape after the room was moved is refused; without one, accepted', () => {
+    expect(placeOpening('door', 'c1', { x: 72, y: 0 }, 'door-1')).toBeNull();
+    useUiStore.getState().setMode('room');
+    for (const id of ['c2', 'c3', 'c1', 'c4']) {
+      const c = corner(id);
+      dragCornerTo(id, { x: c.x + 500, y: c.y }, NO_SNAP);
+    }
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    expectExact('move the room with a door');
+    render(createElement(RoomSection));
+    for (const name of ['L-shape', 'Notched', 'Rectangle']) {
+      fireEvent.click(screen.getByRole('button', { name }));
+      expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['shape-has-openings']);
+      expectExact(`starting shape ${name} with a door`);
+    }
+    act(() => usePlanStore.getState().removeOpening('door-1'));
+    for (const name of ['L-shape', 'Notched', 'Rectangle']) {
+      fireEvent.click(screen.getByRole('button', { name }));
+      expect(useUiStore.getState().roomProblem).toBeNull();
+      expectExact(`starting shape ${name} without a door`);
+    }
+  });
+
+  it('adding doors, windows and obstacles up to and past their caps', () => {
+    const { applyOutline } = usePlanStore.getState();
+    expect(applyOutline(setRectangleSize(usePlanStore.getState().room.outline, { w: 720, l: 720 }))).toBeNull();
+    let n = 0;
+    for (const wall of wallsOf(usePlanStore.getState().room.outline)) {
+      const u = { x: (wall.b.x - wall.a.x) / wall.length, y: (wall.b.y - wall.a.y) / wall.length };
+      for (let t = 20; t + 18 <= wall.length && n < CONFIG.maxOpenings; t += 40) {
+        const kind = n % 2 === 0 ? 'window' : 'door';
+        expect(placeOpening(kind, wall.id, { x: wall.a.x + u.x * t, y: wall.a.y + u.y * t }, `opening-${n}`)).toBeNull();
+        n++;
+        expectExact(`add opening ${n}`);
+      }
+    }
+    expect(usePlanStore.getState().openings).toHaveLength(CONFIG.maxOpenings);
+    expect(placeOpening('window', 'c4', { x: 0, y: 20 }, 'one-too-many')).toBe('too-many-openings');
+    expectExact('add an opening past the cap');
+    const centre = interiorPoint(usePlanStore.getState().room.outline);
+    for (let i = 0; i < CONFIG.maxObstacles; i++) {
+      expect(placeObstacle(i % 2 === 0 ? 'box' : 'cylinder', centre, `obstacle-${i}`)).toBeNull();
+      expectExact(`add obstacle ${i + 1}`);
+    }
+    expect(placeObstacle('box', centre, 'one-too-many')).toBe('too-many-obstacles');
+    expectExact('add an obstacle past the cap');
+    expect(usePlanStore.getState().obstacles).toHaveLength(CONFIG.maxObstacles);
   });
 });

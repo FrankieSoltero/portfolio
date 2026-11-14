@@ -1,8 +1,9 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createInitialDocument } from '../../domain/catalog';
 import { setWallLength, startingShape } from '../../domain/outline';
-import type { Corner } from '../../domain/types';
+import type { Corner, Door } from '../../domain/types';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { WallList } from './WallList';
@@ -227,5 +228,41 @@ describe('WallList', () => {
     expect(outline()).toEqual(before);
     expect(useUiStore.getState().roomProblem).toBe('That wall would be too short.');
     expect(useUiStore.getState().selectedCornerId).toBeNull();
+  });
+
+  describe('with a door on wall 1', () => {
+    /** A 32 in door centred on the top wall c1: it spans x 56–88. */
+    const DOOR: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 56, width: 32, height: 80, hinge: 'start', swing: 'in' };
+
+    beforeEach(() => {
+      usePlanStore.getState().reset({ ...createInitialDocument(), openings: [DOOR] });
+    });
+
+    it('refuses a length that leaves the door without room: outline unchanged, reason set', () => {
+      const before = usePlanStore.getState();
+      useUiStore.getState().setRoomProblem(null);
+      render(<WallList />);
+      typeRaw(input('Wall 1'), String(80 / 12));
+      expect(usePlanStore.getState()).toBe(before);
+      expect(useUiStore.getState().roomProblem).toBe('That would leave a door or window without room on its wall.');
+    });
+
+    it('accepts a length the door still fits and clears the reason', () => {
+      useUiStore.getState().setRoomProblem('Walls cannot cross.');
+      render(<WallList />);
+      typeRaw(input('Wall 1'), '8');
+      expect(outline()[1]).toEqual({ id: 'c2', x: 96, y: 0 });
+      expect(usePlanStore.getState().openings).toEqual([DOOR]);
+      expect(useUiStore.getState().roomProblem).toBeNull();
+    });
+
+    it('refuses a corner added at the middle of the wall, inside the door, and sets the reason', async () => {
+      useUiStore.getState().setMode('room');
+      const before = usePlanStore.getState();
+      render(<WallList />);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Add a corner to wall 1' }));
+      expect(usePlanStore.getState()).toBe(before);
+      expect(useUiStore.getState().roomProblem).toBe('A corner cannot go inside a door or window.');
+    });
   });
 });

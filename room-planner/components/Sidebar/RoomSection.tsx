@@ -1,6 +1,5 @@
 import { type ChangeEvent, useId, useState } from 'react';
 import {
-  OUTLINE_PROBLEM_TEXT,
   rectangleSize,
   setRectangleSize,
   type StartingShape,
@@ -10,7 +9,7 @@ import {
 import { fmtArea, parseRoomInput, roomInputStep, roomInputStr, roomUnitLabel } from '../../domain/units';
 import { boundsOf, polygonArea } from '../../domain/polygon';
 import { roomOutline } from '../../domain/shape';
-import { usePlanStore } from '../../state/planStore';
+import { ROOM_PROBLEM_TEXT, usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { WallList } from './WallList';
 import './sidebar.css';
@@ -76,8 +75,8 @@ const ROOM_MODE_HELP =
 /**
  * Replaces the outline with a starting shape sized and placed from the current outline's bounding
  * box (so the room stays under the furniture), with fresh corner ids, and clears the corner
- * selection. A shape that would not be a valid room (a bounding box too small for its walls) is
- * refused with its reason instead of being stored.
+ * selection. A shape that would not be a valid room (a bounding box too small for its walls), or
+ * any shape while the room has a door or window, is refused with its reason instead of being stored.
  */
 function applyStartingShape(shape: StartingShape): void {
   const { minX, minY, w, l } = boundsOf(usePlanStore.getState().room.outline);
@@ -86,10 +85,10 @@ function applyStartingShape(shape: StartingShape): void {
     x: c.x + minX,
     y: c.y + minY,
   }));
-  const problem = validateOutline(outline);
-  usePlanStore.getState().applyOutline(problem === null ? { ok: true, outline } : { ok: false, problem });
+  const invalid = validateOutline(outline);
+  const problem = usePlanStore.getState().applyOutline(invalid === null ? { ok: true, outline } : { ok: false, problem: invalid });
   const ui = useUiStore.getState();
-  ui.setRoomProblem(problem === null ? null : OUTLINE_PROBLEM_TEXT[problem]);
+  ui.setRoomProblem(problem === null ? null : ROOM_PROBLEM_TEXT[problem]);
   if (problem === null) ui.selectCorner(null);
 }
 
@@ -105,13 +104,16 @@ export function RoomSection() {
   const setRoomHeight = usePlanStore((s) => s.setRoomHeight);
   const roomMode = useUiStore((s) => s.mode === 'room');
   const setMode = useUiStore((s) => s.setMode);
+  const setRoomProblem = useUiStore((s) => s.setRoomProblem);
   const roomProblem = useUiStore((s) => s.roomProblem);
   const shapesLabelId = useId();
   const size = rectangleSize(room.outline);
 
   // Read the outline at write time, so two edits in one render both apply to the latest room.
+  // A size a door or window cannot follow is refused with its reason; an accepted one clears it.
   function setSize(change: { w: number } | { l: number }) {
-    applyOutline(setRectangleSize(usePlanStore.getState().room.outline, change));
+    const problem = applyOutline(setRectangleSize(usePlanStore.getState().room.outline, change));
+    setRoomProblem(problem === null ? null : ROOM_PROBLEM_TEXT[problem]);
   }
 
   return (
