@@ -1,10 +1,8 @@
-import { useState } from 'react';
 import type React from 'react';
 import type { JSX } from 'react';
 import { CONFIG } from '../../config';
 import { PARTS } from '../../domain/catalog';
 import { OUTSIDE_THE_ROOM } from '../../domain/conflicts';
-import { snapRoomDim } from '../../domain/geometry';
 import { itemFootprint, roomBounds, roomOutline } from '../../domain/shape';
 import type { Item, Point } from '../../domain/types';
 import { fmtFurnDims, fmtLen, gridStepInches } from '../../domain/units';
@@ -19,7 +17,6 @@ import {
   labelBox,
   planItemBox,
   toPane,
-  type PlanLayout,
 } from '../../view/planLayout';
 import { BlueprintCorners } from '../ui/BlueprintCorners';
 import './stage.css';
@@ -27,9 +24,6 @@ import './stage.css';
 /** Item labels show the name and dimensions only when their box is larger than this, in px. */
 const LABEL_MIN_W = 84;
 const LABEL_MIN_H = 38;
-/** Half the long side and half the short side of a room handle (32×12 px). */
-const HANDLE_HALF_LONG = 16;
-const HANDLE_HALF_SHORT = 6;
 const Z_SELECTED = 4;
 const Z_RUG = 1;
 const Z_ITEM = 2;
@@ -53,7 +47,7 @@ function isAxisAlignedRectangle(pts: readonly Point[]): boolean {
 
 /**
  * The interactive 2D plan: dimension lines, the room outline, furniture boxes, clearance lines
- * for the selected item and the two room-resize handles. Fills its parent; every position is
+ * for the selected item. Fills its parent; every position is
  * computed from `pane` and the shape accessors (outline, bounds, footprints), so it does not
  * measure the DOM. Ported from prototype lines 136–173 and 679–699.
  */
@@ -62,17 +56,13 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
   const items = usePlanStore((s) => s.items);
   const units = usePlanStore((s) => s.units);
   const moveItemTo = usePlanStore((s) => s.moveItemTo);
-  const setRoomDim = usePlanStore((s) => s.setRoomDim);
   const selectedId = useUiStore((s) => s.selectedId);
   const select = useUiStore((s) => s.select);
   const conflicts = useConflicts();
-  // While a room handle is dragged the layout stays as it was at pointer-down, so the
-  // room grows under the pointer instead of being re-fitted on every move.
-  const [frozen, setFrozen] = useState<PlanLayout | null>(null);
 
   const outline = roomOutline(room);
   const bounds = roomBounds(room);
-  const layout = frozen ?? computePlanLayout(bounds, pane);
+  const layout = computePlanLayout(bounds, pane);
   const { scale, ox, oy } = layout;
   const boundsTopLeft = toPane({ x: bounds.minX, y: bounds.minY }, layout);
   const boundsW = bounds.w * scale;
@@ -101,19 +91,6 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
     select(item.id);
-  };
-
-  // The edge handles still resize the rectangle through its width and length; a later task
-  // replaces them with corner handles.
-  const onHandleDown = (axis: 'w' | 'l', e: React.PointerEvent): void => {
-    const start = layout;
-    const v0 = axis === 'w' ? bounds.w : bounds.l;
-    setFrozen(start);
-    startDrag(
-      e,
-      (dx, dy) => setRoomDim(axis, snapRoomDim(v0 + (axis === 'w' ? dx : dy) / start.scale)),
-      () => setFrozen(null),
-    );
   };
 
   return (
@@ -238,18 +215,6 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
           </div>
         );
       })}
-      <div
-        className="plan-handle is-w"
-        title="Drag to change width"
-        style={{ left: ox + boundsW - HANDLE_HALF_SHORT, top: oy + boundsH / 2 - HANDLE_HALF_LONG }}
-        onPointerDown={(e) => onHandleDown('w', e)}
-      />
-      <div
-        className="plan-handle is-l"
-        title="Drag to change length"
-        style={{ left: ox + boundsW / 2 - HANDLE_HALF_LONG, top: oy + boundsH - HANDLE_HALF_SHORT }}
-        onPointerDown={(e) => onHandleDown('l', e)}
-      />
     </div>
   );
 }

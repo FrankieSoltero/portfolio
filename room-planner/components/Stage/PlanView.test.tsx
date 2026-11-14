@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialDocument } from '../../domain/catalog';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-import { snapRoomDim } from '../../domain/geometry';
 import { boundsOf } from '../../domain/polygon';
 import { itemFootprint, roomBounds, roomOutline } from '../../domain/shape';
 import type { Item, PlanDocument, Point } from '../../domain/types';
@@ -523,77 +522,11 @@ describe('PlanView', () => {
     expect(document.querySelectorAll('.plan-clearance')).toHaveLength(0);
   });
 
-  it('drags the width handle +84.285 px to room.w 174', () => {
+  it('draws no room edge handles', () => {
     render(<PlanView pane={MAIN} />);
-    const handle = screen.getByTitle('Drag to change width');
-    fireEvent.pointerDown(handle, { clientX: 500, clientY: 300 });
-    fireEvent.pointerMove(window, { clientX: 584.285, clientY: 300 });
-    fireEvent.pointerUp(window);
-    expect(usePlanStore.getState().room.w).toBe(174);
-  });
-
-  it('places the handles centred on the right and bottom walls', () => {
-    render(<PlanView pane={MAIN} />);
-    const L = seedLayout();
-    const w = 144 * SCALE;
-    const h = 168 * SCALE;
-    const hw = screen.getByTitle('Drag to change width');
-    const hl = screen.getByTitle('Drag to change length');
-    expect(px(hw, 'left')).toBeCloseTo(L.ox + w - 6, 3);
-    expect(px(hw, 'top')).toBeCloseTo(L.oy + h / 2 - 16, 3);
-    expect(px(hl, 'left')).toBeCloseTo(L.ox + w / 2 - 16, 3);
-    expect(px(hl, 'top')).toBeCloseTo(L.oy + h - 6, 3);
-  });
-
-  it('freezes the layout during a handle drag and recomputes it on pointerup', () => {
-    render(<PlanView pane={MAIN} />);
-    const before = wallPoints()[0];
-    fireEvent.pointerDown(screen.getByTitle('Drag to change width'), { clientX: 500, clientY: 300 });
-    fireEvent.pointerMove(window, { clientX: 584.285, clientY: 300 });
-    expect(usePlanStore.getState().room.w).toBe(174);
-    // Unfrozen, 174 in would fit at (480 / 174) px/in and move the origin.
-    const [tl, tr] = wallPoints();
-    expect(tl.x).toBeCloseTo(before.x, 3);
-    expect(tl.y).toBeCloseTo(before.y, 3);
-    expect(tr.x - tl.x).toBeCloseTo(174 * SCALE, 3);
-    fireEvent.pointerUp(window);
-    const after = seedLayout();
-    expect(after.scale).not.toBeCloseTo(SCALE, 3);
-    const [tl2, tr2] = wallPoints();
-    expect(tl2.x).toBeCloseTo(after.ox, 3);
-    expect(tr2.x - tl2.x).toBeCloseTo(174 * after.scale, 3);
-  });
-
-  it('drags the length handle: room.l = snapRoomDim(l0 + dy / scale)', () => {
-    render(<PlanView pane={MAIN} />);
-    fireEvent.pointerDown(screen.getByTitle('Drag to change length'), { clientX: 300, clientY: 500 });
-    fireEvent.pointerMove(window, { clientX: 300, clientY: 500 - 56.19 }); // −20 in → 148
-    fireEvent.pointerUp(window);
-    // Handles snap to 3 in: snapRoomDim(148) = 147.
-    expect(snapRoomDim(168 - 56.19 / SCALE)).toBe(147);
-    expect(usePlanStore.getState().room.l).toBe(147);
-  });
-
-  it('snaps and clamps a handle drag through snapRoomDim', () => {
-    render(<PlanView pane={MAIN} />);
-    fireEvent.pointerDown(screen.getByTitle('Drag to change length'), { clientX: 300, clientY: 500 });
-    fireEvent.pointerMove(window, { clientX: 300, clientY: -5000 });
-    fireEvent.pointerUp(window);
-    expect(usePlanStore.getState().room.l).toBe(36);
-  });
-
-  it('a handle pointerdown does not deselect', () => {
-    useUiStore.getState().select('seed-bed');
-    render(<PlanView pane={MAIN} />);
-    fireEvent.pointerDown(screen.getByTitle('Drag to change width'), { clientX: 0, clientY: 0 });
-    fireEvent.pointerUp(window);
-    expect(useUiStore.getState().selectedId).toBe('seed-bed');
-  });
-
-  it('titles the handles', () => {
-    render(<PlanView pane={MAIN} />);
-    expect(screen.getByTitle('Drag to change width')).toHaveClass('plan-handle', 'is-w');
-    expect(screen.getByTitle('Drag to change length')).toHaveClass('plan-handle', 'is-l');
+    expect(document.querySelector('[class*="handle"]')).toBeNull();
+    expect(screen.queryByTitle('Drag to change width')).toBeNull();
+    expect(screen.queryByTitle('Drag to change length')).toBeNull();
   });
 
   it('re-renders when the store changes', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialDocument } from './catalog';
-import { centrePosition, clampSnap, footprint, mapPart, moveItem, rotateItem, snapRoomDim } from './geometry';
+import { centrePosition, clampSnap, footprint, mapPart, moveItem, rotateItem } from './geometry';
 import type { Item, PartRect, Room } from './types';
 
 const ROOM: Room = { w: 144, l: 168, h: 96 };
@@ -99,14 +99,5 @@ describe('centrePosition', () => {
 
   it('pins an oversized item to the origin on the overflowing axis', () => {
     expect(centrePosition({ w: 200, d: 36 }, ROOM, 1).x).toBe(0);
-  });
-});
-
-describe('snapRoomDim', () => {
-  it('snaps to the room handle step and clamps to the room limits', () => {
-    expect(snapRoomDim(100)).toBe(99);
-    expect(snapRoomDim(20)).toBe(36);
-    expect(snapRoomDim(1000)).toBe(720);
-    expect(snapRoomDim(145.4)).toBe(144);
   });
 });

@@ -158,16 +158,12 @@ describe('RoomSection', () => {
     render(<RoomSection />);
     const note = screen.getByText(/^Floor area/);
     expect(note).toHaveClass('note');
-    expect(note).toHaveTextContent(
-      "Floor area 168 sq ft. You can also drag the room's edge handles on the plan.",
-    );
+    expect(note.textContent).toBe('Floor area 168 sq ft.');
   });
 
   it('shows the floor area in m² when units are m', () => {
     usePlanStore.getState().setUnits('m');
     render(<RoomSection />);
-    expect(screen.getByText(/^Floor area/)).toHaveTextContent(
-      "Floor area 15.6 m². You can also drag the room's edge handles on the plan.",
-    );
+    expect(screen.getByText(/^Floor area/).textContent).toBe('Floor area 15.6 m².');
   });
 });

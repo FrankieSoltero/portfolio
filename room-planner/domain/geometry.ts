@@ -1,4 +1,3 @@
-import { CONFIG } from '../config';
 import type { Item, PartRect, Room, Rot } from './types';
 
 /** Plan-space footprint [width along x, depth along y]; odd rotations swap w and d. */
@@ -46,10 +45,4 @@ export function centrePosition(dims: { w: number; d: number }, room: Room, snap:
     x: clampSnap((room.w - dims.w) / 2, room.w - dims.w, snap),
     y: clampSnap((room.l - dims.d) / 2, room.l - dims.d, snap),
   };
-}
-
-/** Snaps a room dimension to the room-handle step and clamps it to the allowed room size. */
-export function snapRoomDim(inches: number): number {
-  const step = CONFIG.roomHandleSnap;
-  return Math.max(CONFIG.roomMin, Math.min(CONFIG.roomMax, Math.round(inches / step) * step));
 }

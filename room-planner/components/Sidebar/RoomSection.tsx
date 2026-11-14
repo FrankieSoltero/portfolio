@@ -77,7 +77,7 @@ export function RoomSection() {
         ))}
       </div>
       <div className="note">
-        Floor area {fmtArea(room, units)}. You can also drag the room&apos;s edge handles on the plan.
+        Floor area {fmtArea(room, units)}.
       </div>
     </section>
   );

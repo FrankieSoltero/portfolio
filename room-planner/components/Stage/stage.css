@@ -160,19 +160,6 @@
   white-space: nowrap;
 }
 
-/* Room resize handles, centred on the right and bottom walls. */
-.plan-handle {
-  position: absolute;
-  box-sizing: border-box;
-  z-index: 6;
-  background: var(--color-bg);
-  border: 1.5px solid var(--color-accent);
-  touch-action: none;
-}
-.plan-handle:hover { background: var(--color-accent-200); }
-.plan-handle.is-w { width: 12px; height: 32px; cursor: ew-resize; }
-.plan-handle.is-l { width: 32px; height: 12px; cursor: ns-resize; }
-
 /* ── Inset frame ──────────────────────────────────────────────────────────── */
 /* Fills the inset pane so its corner marks sit on the pane's corners. Only the button
    takes pointer input; everything else passes through to the view beneath. */
