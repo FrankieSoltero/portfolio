@@ -124,6 +124,14 @@ arguments. Task 2's file list also includes
 and `room-planner/view/blueprintScene.test.ts`, for one change only: each call's room
 argument becomes `roomBounds(room), roomHeight(room)`. No expected value changes.
 
+## Amendment 2 (2026-11-13, controller ruling after Task 4)
+
+`SceneInput` and `BlueprintInput` already had `width` and `height` fields for the
+pane size in pixels, which clashes with the new room `height` field the plan names.
+In both interfaces the pane-size fields are renamed `viewWidth` and `viewHeight`
+(Task 4 for `SceneInput`, Task 5 for `BlueprintInput`); `outline` and `height` are the
+room, as the tasks say.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
