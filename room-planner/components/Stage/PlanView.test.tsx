@@ -566,14 +566,14 @@ describe('PlanView in room mode', () => {
     expect(cornerHandles()).toHaveLength(0);
   });
 
-  // The inset pane's margin is only 48 px, so it uses the smaller extra (22 + 14 = 36 px) to keep
+  // The inset pane's margin is only 48 px, so it uses the smaller extra (22 + 16 = 38 px) to keep
   // the width line's text inside the pane; the main pane uses dimOffsetRoomExtra (30 + 22 = 52 px).
   it.each([
     ['main', 30, 22, 52, MAIN],
-    ['inset', 22, 14, 36, INSET],
+    ['inset', 22, 16, 38, INSET],
   ] as const)('moves the dimension lines further out in room mode in the %s pane (%i px base + %i px)', (_name, off, extra, total, pane) => {
     expect(CONFIG.dimOffsetRoomExtra).toBe(22);
-    expect(CONFIG.dimOffsetRoomExtraInset).toBe(14);
+    expect(CONFIG.dimOffsetRoomExtraInset).toBe(16);
     expect(pane.inset ? CONFIG.dimOffsetInset : CONFIG.dimOffset).toBe(off);
     expect(pane.inset ? CONFIG.dimOffsetRoomExtraInset : CONFIG.dimOffsetRoomExtra).toBe(extra);
     useUiStore.getState().setMode('room');

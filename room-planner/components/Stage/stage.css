@@ -329,20 +329,23 @@
   cursor: crosshair;
 }
 
-/* A wall's length label at its inline left/top (just outside the wall's midpoint). Its inline
-   transform puts its edge nearest the wall on that point; the centring translate here is the
-   fallback. It shares the wall bands' level and follows them in the document, so it is drawn over
-   them. The thin border and text cursor say it can be clicked to type a length. */
+/* A wall's length label, centred on its inline left/top (just outside the wall's midpoint); its
+   inline transform adds a turn so it runs along its wall, and the centring translate here is the
+   fallback. Its fixed 18 px height (wallLabelHalfHeightPx is half of it) gives every label the same
+   strip beside its wall. It shares the wall bands' level and follows them in the document, so it is
+   drawn over them. The thin border and text cursor say it can be clicked to type a length. */
 .room-wall-label {
   position: absolute;
   z-index: 6;
+  box-sizing: border-box;
+  height: 18px;
   padding: 1px 6px;
   transform: translate(-50%, -50%);
   border: 1px solid color-mix(in srgb, var(--color-text) 35%, transparent);
   border-radius: 3px;
   font-family: var(--font-heading);
   font-size: 12px;
-  line-height: 1;
+  line-height: 14px;
   white-space: nowrap;
   color: var(--color-text);
   background: var(--color-bg);

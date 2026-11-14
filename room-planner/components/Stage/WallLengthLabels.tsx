@@ -29,7 +29,7 @@ interface WallLengthEditorProps {
   /** The number of corners in the outline, so the last wall's end corner wraps round to Corner 1. */
   cornerCount: number;
   units: Units;
-  /** Pane px of the label this editor replaces. */
+  /** Pane px of the editor's centre: wallLabelOffsetPx outside its wall's midpoint. */
   left: number;
   top: number;
   /** Closes the editor; `focusLabel` returns focus to the wall's label. */
@@ -174,20 +174,29 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
   );
 }
 
+/** An angle within this many degrees of 90 counts as 90, so a vertical wall's label always reads −90°. */
+const UPRIGHT_SLACK_DEG = 0.0001;
+
 /**
- * The inline translate that puts a label's edge nearest its wall (inward normal `n`), not its centre,
- * on its point: `translate(X%, Y%)` with X = −50 − 50·n.x and Y = −50 − 50·n.y. Placed by its near
- * edge, a label stays clear of its wall's hit band however wide its text is.
+ * The angle (degrees) a label on a wall with unit direction `u` is turned to: the wall's angle
+ * brought into −90 ≤ θ < 90 by adding or subtracting 180, so the text is never upside down and a
+ * vertical wall's label reads bottom to top. Rounded to 0.01, never −0.
  */
-function nearEdgeTranslate(n: { x: number; y: number }): string {
-  return `translate(${-50 - 50 * n.x}%, ${-50 - 50 * n.y}%)`;
+function uprightAngle(u: { x: number; y: number }): number {
+  const raw = (Math.atan2(u.y, u.x) * 180) / Math.PI;
+  let deg = raw < -90 ? raw + 180 : raw >= 90 ? raw - 180 : raw;
+  if (Math.abs(raw - 90) <= UPRIGHT_SLACK_DEG || Math.abs(deg - 90) <= UPRIGHT_SLACK_DEG) deg = -90;
+  const rounded = Math.round(deg * 100) / 100;
+  return rounded === 0 ? 0 : rounded;
 }
 
 /**
  * A button on the plan for every wall in room mode, showing the wall's length in the current
- * units and named `Wall <n>, <length>`. Each has its edge nearest the wall (nearEdgeTranslate) on
- * its wall's midpoint (pane px from `layout`) moved `CONFIG.wallLabelOffsetPx` outside the room,
- * against the wall's inward normal; the open editor stays centred on that point.
+ * units and named `Wall <n>, <length>`. Each is turned to run along its wall (uprightAngle) and
+ * centred on its wall's midpoint (pane px from `layout`) moved `CONFIG.wallLabelOffsetPx +
+ * CONFIG.wallLabelHalfHeightPx` outside the room, against the wall's inward normal, so every label
+ * takes the same strip beside its wall whatever the wall's angle. The open editor is not turned; it
+ * is centred `CONFIG.wallLabelOffsetPx` outside the wall's midpoint.
  * The selected wall's label is pressed. A label that receives focus (by Tab, a click, or a press
  * on its wall's band) selects its wall; a pointer down on it does not reach the plan background.
  * Each carries `data-wall-label-id` so a wall press can focus it. A click (or Enter) on a label
@@ -225,10 +234,8 @@ export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Elemen
   return (
     <>
       {walls.map((wall) => {
-        const { n } = wallFrame(wall);
+        const { u, n } = wallFrame(wall);
         const mid = toPane({ x: (wall.a.x + wall.b.x) / 2, y: (wall.a.y + wall.b.y) / 2 }, layout);
-        const left = mid.x - CONFIG.wallLabelOffsetPx * n.x;
-        const top = mid.y - CONFIG.wallLabelOffsetPx * n.y;
         if (wall.id === editingId) {
           return (
             <WallLengthEditor
@@ -236,8 +243,8 @@ export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Elemen
               wall={wall}
               cornerCount={outline.length}
               units={units}
-              left={left}
-              top={top}
+              left={mid.x - CONFIG.wallLabelOffsetPx * n.x}
+              top={mid.y - CONFIG.wallLabelOffsetPx * n.y}
               onClose={(focusLabel) => {
                 focusAfterClose.current = focusLabel ? wall.id : null;
                 setEditingId(null);
@@ -245,6 +252,7 @@ export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Elemen
             />
           );
         }
+        const out = CONFIG.wallLabelOffsetPx + CONFIG.wallLabelHalfHeightPx;
         const text = fmtLen(wall.length, units);
         return (
           <button
@@ -258,7 +266,11 @@ export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Elemen
             data-wall-label-id={wall.id}
             aria-label={`Wall ${wall.index + 1}, ${text}`}
             aria-pressed={wall.id === selectedWallId}
-            style={{ left, top, transform: nearEdgeTranslate(n) }}
+            style={{
+              left: mid.x - out * n.x,
+              top: mid.y - out * n.y,
+              transform: `translate(-50%, -50%) rotate(${uprightAngle(u)}deg)`,
+            }}
             onPointerDown={stopPress}
             onFocus={() => selectWall(wall.id)}
             onClick={() => {

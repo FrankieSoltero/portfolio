@@ -1848,6 +1848,17 @@ describe('wall slide and length actions', () => {
     expect(useUiStore.getState().roomProblem).toBeNull();
   });
 
+  it('a slide that would push a door on the neighbouring wall past its start is refused', () => {
+    const door: Door = { id: 'd1', kind: 'door', wallId: 'c2', offset: 100, width: 32, height: 80, hinge: 'start', swing: 'in' };
+    withRoom(R, { openings: [door] });
+    const before = usePlanStore.getState().room;
+    slideWallTo(req(startWallSlide('c1') ?? undefined, 'a slide'), 110);
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(outline()).toEqual(R);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['opening-off-wall']);
+    expect(usePlanStore.getState().openings).toEqual([door]);
+  });
+
   it('a slide does not move furniture; an item left outside is reported', () => {
     const chair: Item = {
       id: 'chair', kind: 'chair', name: 'Chair', host: 'shop.example', sourceUrl: null, price: null,

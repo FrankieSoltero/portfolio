@@ -660,6 +660,11 @@ describe('rehomeOpenings when a wall\'s start slides along the wall', () => {
     expect(rehomeOpenings(R, leftAt(60), [door('c1', 56)])).toEqual({ ok: false, problem: 'opening-off-wall' });
   });
 
+  it('refuses the edit when the neighbouring wall slides onto a door near the wall\'s old start', () => {
+    // The door would start 14 in before the wall's new start (10 − 24).
+    expect(rehomeOpenings(R, leftAt(24), [door('c1', 10)])).toEqual({ ok: false, problem: 'opening-off-wall' });
+  });
+
   it('keeps a door on the slid wall itself unchanged', () => {
     const after = outline(['c1', 0, 12], ['c2', 144, 12], ['c3', 144, 168], ['c4', 0, 168]);
     expect(okOpenings(rehomeOpenings(R, after, [door('c1', 56)]))).toEqual([door('c1', 56)]);

@@ -36,13 +36,6 @@ afterEach(() => {
   cleanup();
 });
 
-/** The two percentages of an element's inline `translate(X%, Y%)`. */
-function translatePercents(el: HTMLElement): [number, number] {
-  const m = /^translate\((-?[\d.e-]+)%, (-?[\d.e-]+)%\)$/.exec(el.style.transform);
-  if (!m) throw new Error(`no translate in "${el.style.transform}"`);
-  return [Number(m[1]), Number(m[2])];
-}
-
 function labels(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('button.room-wall-label')];
 }
@@ -67,22 +60,27 @@ describe('WallLengthLabels', () => {
     });
   });
 
-  it('puts each label at the wall midpoint in pane px, moved wallLabelOffsetPx outside the room', () => {
-    expect(CONFIG.wallLabelOffsetPx).toBe(12);
+  it('centres each label on the wall midpoint in pane px, moved wallLabelOffsetPx + wallLabelHalfHeightPx outside the room', () => {
+    expect(CONFIG.wallLabelOffsetPx).toBe(10);
+    expect(CONFIG.wallLabelHalfHeightPx).toBe(9);
+    const out = CONFIG.wallLabelOffsetPx + CONFIG.wallLabelHalfHeightPx;
     render(<WallLengthLabels layout={LAYOUT} />);
     for (const w of wallsOf(R.outline)) {
       const { n } = wallFrame(w);
       const mid = toPane({ x: (w.a.x + w.b.x) / 2, y: (w.a.y + w.b.y) / 2 }, LAYOUT);
       const el = label(w.id);
-      expect(parseFloat(el.style.left)).toBeCloseTo(mid.x - CONFIG.wallLabelOffsetPx * n.x, 6);
-      expect(parseFloat(el.style.top)).toBeCloseTo(mid.y - CONFIG.wallLabelOffsetPx * n.y, 6);
+      expect(parseFloat(el.style.left)).toBeCloseTo(mid.x - out * n.x, 6);
+      expect(parseFloat(el.style.top)).toBeCloseTo(mid.y - out * n.y, 6);
     }
-    // The top wall's label sits above it: midpoint (72, 0) is pane (154, 20), so 12 px up.
+    // The top wall's label sits above it: midpoint (72, 0) is pane (154, 20), so 19 px up.
     expect(parseFloat(label('c1').style.left)).toBeCloseTo(154, 6);
-    expect(parseFloat(label('c1').style.top)).toBeCloseTo(8, 6);
+    expect(parseFloat(label('c1').style.top)).toBeCloseTo(1, 6);
+    // The right wall's: midpoint (144, 84) is pane (298, 188), so 19 px right.
+    expect(parseFloat(label('c2').style.left)).toBeCloseTo(317, 6);
+    expect(parseFloat(label('c2').style.top)).toBeCloseTo(188, 6);
   });
 
-  it('puts a diagonal wall\'s label wallLabelOffsetPx outside it, along (0.8, −0.6) from the midpoint', () => {
+  it('puts a diagonal wall\'s label 19 px outside it, along (0.8, −0.6) from the midpoint, turned to the wall', () => {
     // Wall a1 runs (0,0) → (30,40): u = (0.6, 0.8), inward normal n = (−0.8, 0.6).
     act(() => {
       usePlanStore.getState().applyOutline({
@@ -100,29 +98,55 @@ describe('WallLengthLabels', () => {
     const { n } = wallFrame(wall);
     expect(n.x).toBeCloseTo(-0.8, 9);
     expect(n.y).toBeCloseTo(0.6, 9);
-    // Midpoint (15, 20) is pane (40, 60); 12 px along (0.8, −0.6) is (49.6, 52.8).
-    expect(parseFloat(label('a1').style.left)).toBeCloseTo(49.6, 6);
-    expect(parseFloat(label('a1').style.top)).toBeCloseTo(52.8, 6);
-    // Its near edge, not its centre, is at that point: translate(−50 − 50·n.x %, −50 − 50·n.y %).
-    const [x, y] = translatePercents(label('a1'));
-    expect(x).toBeCloseTo(-10, 2);
-    expect(y).toBeCloseTo(-80, 2);
+    // Midpoint (15, 20) is pane (40, 60); 19 px along (0.8, −0.6) is (55.2, 48.6).
+    expect(parseFloat(label('a1').style.left)).toBeCloseTo(55.2, 6);
+    expect(parseFloat(label('a1').style.top)).toBeCloseTo(48.6, 6);
+    // atan2(0.8, 0.6) = 53.13°.
+    expect(label('a1').style.transform).toBe('translate(-50%, -50%) rotate(53.13deg)');
   });
 
-  it('places each label of R by its edge nearest the wall, with an inline translate', () => {
+  it('turns a label on the same diagonal run the other way to the same upright angle', () => {
+    // Wall a1 runs (30,40) → (0,0): u = (−0.6, −0.8), inward normal n = (0.8, −0.6).
+    act(() => {
+      usePlanStore.getState().applyOutline({
+        ok: true,
+        outline: [
+          { id: 'a1', x: 30, y: 40 },
+          { id: 'a2', x: 0, y: 0 },
+          { id: 'a3', x: 60, y: -20 },
+        ],
+      });
+    });
     render(<WallLengthLabels layout={LAYOUT} />);
-    expect(label('c1').style.transform).toBe('translate(-50%, -100%)');
-    expect(label('c2').style.transform).toBe('translate(0%, -50%)');
-    expect(label('c3').style.transform).toBe('translate(-50%, 0%)');
-    expect(label('c4').style.transform).toBe('translate(-100%, -50%)');
+    const wall = wallsOf(usePlanStore.getState().room.outline).find((w) => w.id === 'a1');
+    if (!wall) throw new Error('no wall a1');
+    const { n } = wallFrame(wall);
+    expect(n.x).toBeCloseTo(0.8, 9);
+    expect(n.y).toBeCloseTo(-0.6, 9);
+    // Midpoint (15, 20) is pane (40, 60); 19 px along (−0.8, 0.6) is (24.8, 71.4).
+    expect(parseFloat(label('a1').style.left)).toBeCloseTo(24.8, 6);
+    expect(parseFloat(label('a1').style.top)).toBeCloseTo(71.4, 6);
+    // atan2(−0.8, −0.6) = −126.87°, brought upright by adding 180.
+    expect(label('a1').style.transform).toBe('translate(-50%, -50%) rotate(53.13deg)');
   });
 
-  it('keeps the open editor centred on the label\'s point, with no inline translate', () => {
+  it('turns each label of R to run along its wall, kept upright (vertical walls read bottom to top)', () => {
+    render(<WallLengthLabels layout={LAYOUT} />);
+    expect(label('c1').style.transform).toBe('translate(-50%, -50%) rotate(0deg)');
+    expect(label('c2').style.transform).toBe('translate(-50%, -50%) rotate(-90deg)');
+    expect(label('c3').style.transform).toBe('translate(-50%, -50%) rotate(0deg)');
+    expect(label('c4').style.transform).toBe('translate(-50%, -50%) rotate(-90deg)');
+  });
+
+  it('keeps the open editor unturned, wallLabelOffsetPx outside the wall\'s midpoint', () => {
     render(<WallLengthLabels layout={LAYOUT} />);
     fireEvent.click(label('c2'));
     const editor = document.querySelector<HTMLElement>('div.room-wall-editor');
     if (!editor) throw new Error('no editor');
     expect(editor.style.transform).toBe('');
+    // The right wall's midpoint is pane (298, 188); 10 px right of it.
+    expect(parseFloat(editor.style.left)).toBeCloseTo(308, 6);
+    expect(parseFloat(editor.style.top)).toBeCloseTo(188, 6);
   });
 
   it('follows the units when they change to m', () => {
@@ -276,7 +300,7 @@ describe('WallLengthLabels: on-plan length editor', () => {
       expect(select.mock.contexts.at(-1)).toBe(input);
       expect(group.querySelector('.input-suffix')).toHaveTextContent('ft');
       expect(within(group).getByRole('radiogroup', { name: 'Which end moves' })).toBeInTheDocument();
-      // The editor sits where the label was.
+      // The editor sits beside its wall, in the label's place.
       expect(group.style.left).not.toBe('');
       expect(group.style.top).not.toBe('');
     } finally {
@@ -682,6 +706,9 @@ describe('wall label styles (stage.css)', () => {
     const body = rule('.room-wall-label');
     for (const decl of [
       'padding: 1px 6px;',
+      'box-sizing: border-box;',
+      'height: 18px;',
+      'line-height: 14px;',
       'border: 1px solid color-mix(in srgb, var(--color-text) 35%, transparent);',
       'border-radius: 3px;',
       'cursor: text;',

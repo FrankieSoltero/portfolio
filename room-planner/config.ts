@@ -21,7 +21,7 @@ export const CONFIG = {
   // In room mode the overall dimension lines sit this many px further out, clear of the wall labels.
   dimOffsetRoomExtra: 22,
   // The inset pane's margin is smaller (planMarginInset), so its lines move out less, keeping the text inside the pane.
-  dimOffsetRoomExtraInset: 14,
+  dimOffsetRoomExtraInset: 16,
   insetGap: 16,
   minPlanScale: 0.2,
   minSafeWidth: 200,
@@ -36,9 +36,12 @@ export const CONFIG = {
   // once the pointer has moved wallDragThresholdPx screen pixels.
   sameDirectionSlack: 0.005,
   wallDragThresholdPx: 4,
-  // A wall's length label has its edge nearest the wall this many screen pixels outside the room,
-  // level with the wall's midpoint.
-  wallLabelOffsetPx: 12,
+  // A wall's length label runs along its wall with its edge nearest the wall this many screen pixels
+  // outside the room, level with the wall's midpoint; the editor that replaces it is centred there.
+  wallLabelOffsetPx: 10,
+  // Half a wall label's height (stage.css gives .room-wall-label height: 18px), so its centre sits
+  // wallLabelOffsetPx + wallLabelHalfHeightPx outside the wall.
+  wallLabelHalfHeightPx: 9,
   // Limits a saved plan must keep (planSchema reads them, so edits and loading agree): every
   // outline corner within ±coordMax in, and at most maxItems items.
   coordMax: 1440,
