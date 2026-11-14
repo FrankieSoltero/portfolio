@@ -854,3 +854,13 @@ output.
    past the chain's end), and `settle` then refuses a misfit as `opening-off-wall`. Only an
    opening lying across an added corner refuses `corner-in-opening`. Found by Task 2's
    implementer; the plan author's rule contradicted a test the same task says must pass.
+4. **Task 2, rule 6 gets a direction guard, and an opening on an unknown wall never throws.**
+   Found by Task 2's reviewer. (a) When corners were added and the chain is not straight, the
+   opening is kept on `w` only if the chain's first segment keeps the wall's old direction:
+   `sameDirection(unit(before[c] − before[w]), unit(chain[1] − chain[0]))`; otherwise the
+   edit refuses `corner-has-openings`. No edit in this slice produces such a chain, but
+   without the guard a later edit could leave a door on a different physical wall
+   (before `R`, after `c1 (0,0)`, `x (0,-30)`, `y (144,-30)`, `c2 (144,0)`, `c3`, `c4`, a
+   window on `c1`: was accepted on the now-vertical wall; must refuse). (b) An opening whose
+   `wallId` is not a corner of `before` is left unchanged for `settle` to judge, as the old
+   code did; it used to work and threw a `TypeError` after Task 2.
