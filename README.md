@@ -45,7 +45,7 @@ byte-identical with zero build processing.
   Styles live in `room-planner/styles/` and must stay scoped to `.room-planner`
   (enforced by `room-planner/styles/scoping.test.ts`). No backend: the plan is saved in
   the browser under `room-planner:plan:v1`, validated on load and never sent to a server;
-  "Reset plan" erases it. Product lookup is a mock (`services/mockProductLookup.ts`).
+  "Reset plan" erases it. The room carries doors, windows and fixed obstacles (boxes, raised boxes, columns). Product lookup is a mock (`services/mockProductLookup.ts`).
 - `app/room-planner/` — the `/room-planner` route: `page.tsx`, `PlannerLoader.tsx`
   (loads the planner client-side only) and `error.tsx` (load-failure screen).
 - `docs/room-planner/` — specs, plans, plan reviews, verification notes, the read-only

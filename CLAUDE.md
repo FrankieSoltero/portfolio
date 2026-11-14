@@ -26,7 +26,7 @@ without reading it — the visual language is strict and easy to break.
   skin**. Its styles must stay scoped to `.room-planner`; this is enforced by
   `room-planner/styles/scoping.test.ts`. No backend: the plan is saved in the browser under
   `room-planner:plan:v1`, validated on load and never sent to a server. The room is an
-  outline edited in "Edit room" mode, and furniture rotates to any angle. Every value read
+  outline edited in "Edit room" mode, and furniture rotates to any angle. The room also carries doors, windows and fixed obstacles. Every outline edit goes through `applyOutline`, so openings are re-homed onto their walls; never write `room.outline` directly. Every value read
   from storage must pass through `parsePlan`. Views read room and item geometry only through
   `room-planner/domain/shape.ts`. Run `npm run check` before committing. Docs in
   `docs/room-planner/`.

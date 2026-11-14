@@ -404,3 +404,135 @@ task named in the title.
 - **Root cause:** `setState` merges instead of restoring, so the wrapped methods were never put back.
 - **Fix:** The original methods are restored in `try/finally`.
 - **How to avoid:** Restore anything a test replaces on a shared store in `try/finally`.
+
+## 2026-11-14 — Openings and obstacles
+
+The first six entries are plan defects fixed by plan amendments. The rest were found in review, in
+screenshots or in the live check, with the task named in the title. Items left as they are are
+listed under "Known limits" in `docs/room-planner/README.md`.
+
+### Rounding a re-homed opening pushed it off a diagonal wall (plan Amendment 2)
+- **Date:** 2026-11-14
+- **What happened:** The plan rounded a re-homed offset to 0.01. On a diagonal wall the length is irrational, so `round2` could put the opening's far edge past the wall's end and the edit was refused. A first fix used `floor2`, but floating-point noise defeated it (a 12 in diagonal wall was refused).
+- **Root cause:** A rounding rule was chosen without checking it against a wall whose length is not a multiple of 0.01.
+- **Fix:** Plan Amendment 2: the offset is clamped only when the raw offset is within 0.01 of the allowed interval; otherwise it is a genuine misfit and the edit is refused.
+- **How to avoid:** Test a rounding rule on a diagonal wall and on a wall exactly as long as the opening.
+
+### The controller's first ruling on that fix was wrong (plan Amendment 2)
+- **Date:** 2026-11-14
+- **What happened:** The first ruling clamped the offset unconditionally. That turned genuine misfits (an opening that no longer fits its wall) into silent slides. The implementer caught it in the next round.
+- **Root cause:** The clamp was meant to absorb rounding noise but had no stated tolerance, so it absorbed real errors too.
+- **Fix:** The clamp applies only within 0.01 in of the allowed interval. Farther out, the opening is refused as `opening-off-wall`.
+- **How to avoid:** A clamp that absorbs rounding noise needs a stated tolerance.
+
+### A pinned test file was missing from a task's file list (plan Amendment 3)
+- **Date:** 2026-11-14
+- **What happened:** `PlanSection.test.tsx` spells out the stored document's keys. Adding `openings` and `obstacles` to the document broke it, and Task 5 could not edit it.
+- **Root cause:** The tests were not searched for the key list when the file list was written.
+- **Fix:** Plan Amendment 3 added the file to Task 5, changed only to gain the two keys.
+- **How to avoid:** When a task changes a stored shape, grep the tests for the key list before fixing the task's file list.
+
+### An earlier task's test contradicted a later task (plan Amendment 4)
+- **Date:** 2026-11-14
+- **What happened:** Task 8 asserted that obstacles are never focusable. Task 9 makes them focusable in room mode, so the assertion became wrong.
+- **Root cause:** A test of behaviour that was only true until a later task was written without saying which task lifts it.
+- **Fix:** Plan Amendment 4 added `PlanView.test.tsx` to Task 9: obstacles have `tabindex="0"` in room mode and none in furnish mode.
+- **How to avoid:** Write a "not yet" test per mode from the start, or name the task that lifts it.
+
+### A pure helper was placed in a three.js module (plan Amendment 5)
+- **Date:** 2026-11-14
+- **What happened:** The plan put `wallHoles` in `three/roomMesh.ts`. The Blueprint view is the non-WebGL fallback and is in the main bundle, so importing it would have pulled three.js into the first load.
+- **Root cause:** The plan did not check which bundle each consumer belongs to.
+- **Fix:** The controller caught it before the Blueprint task. `wallHoles` moved to the pure module `room-planner/view/wallHoles.ts`, which `roomMesh.ts` re-exports. A test asserts that nothing under `room-planner/view/` or `room-planner/domain/` imports three.js. First Load JS stayed at 105 kB.
+- **How to avoid:** Before placing a helper, check every consumer's bundle, and keep a test on the import boundary.
+
+### Findings were deferred to the end again (plan Amendment 6)
+- **Date:** 2026-11-14
+- **What happened:** Slice B fixed its deferred findings after the live check, so the check ran on code that was not final. This slice inserted Task 12b (pre-verification fixes) before Task 13.
+- **Root cause:** Fixes were planned after the check instead of before it.
+- **Fix:** Plan Amendment 6 added Task 12b. Task 13b later fixed the live-check defects, and the failed rows were re-run.
+- **How to avoid:** Fix review findings before the live check, so it runs on final code.
+
+### An obstacle could be stored where the loader refuses it (Task 6)
+- **Date:** 2026-11-14
+- **What happened:** `applyObstacles` stored a centre as given. A centre outside ±1440 makes `parsePlan` refuse the document, so every later save would fail.
+- **Root cause:** The new stored field had no write-side limit. It is the same class as slice B's "editor can save what the loader refuses".
+- **Fix:** The store clamps the centre into the room's bounds, and a round-trip test step covers it.
+- **How to avoid:** Every new stored field gets its write-side limit and a round-trip case in the same task.
+
+### Windows were nearly invisible on the plan (Task 8)
+- **Date:** 2026-11-14
+- **What happened:** The spec's "double line" lay on top of the 2 px wall line and could hardly be seen. It was found in a screenshot.
+- **Root cause:** Unit tests assert coordinates, not whether a drawing reads.
+- **Fix:** A window is now a band in the plan's background colour with three thin lines (Task 12b).
+- **How to avoid:** Look at a screenshot of every visual task, including fix rounds.
+
+### A door opening was hard to see in the Styled view (Task 11)
+- **Date:** 2026-11-14
+- **What happened:** The hole showed the page background, which is almost the wall's colour. It was found in a screenshot.
+- **Root cause:** Geometry tests do not show whether an opening reads.
+- **Fix:** Each door and window hole got a thin dark frame.
+- **How to avoid:** Look at a screenshot of every visual task.
+
+### That fix introduced a floating frame (Task 12b)
+- **Date:** 2026-11-14
+- **What happened:** The frame was built from `LineSegments`, which are not back-face culled, so it stayed visible when its wall was culled. It was found in a screenshot.
+- **Root cause:** The frame was not a child of the wall's culled mesh and used a material that is not culled.
+- **Fix:** The frame is thin wall-aligned mesh strips with a front-side material, as a child of the wall.
+- **How to avoid:** Check a visual fix from the angles where its parent is hidden, not only from the front.
+
+### The Blueprint underside rule was wider than specified (Task 12)
+- **Date:** 2026-11-14
+- **What happened:** The rule applied to raised furniture parts too, which changed the drawing of tall desks at low camera angles. The implementer's report said it never triggers for furniture; the reviewer computed a case where it does.
+- **Root cause:** A claim in a report was not checked with a computed case.
+- **Fix:** The underside is drawn only for obstacle prisms (Task 12b).
+- **How to avoid:** A report's "never happens" needs a worked case, not an assertion.
+
+### A secondary mouse button started drags in room mode (Task 9)
+- **Date:** 2026-11-14
+- **What happened:** If the context menu swallowed the pointer up, the dragged thing kept following the cursor.
+- **Root cause:** Any button started a drag.
+- **Fix:** Only the primary button selects or drags in room mode, checked before any selection or listener (Task 12b).
+- **How to avoid:** Check the button before starting any drag.
+
+### Two helpers were written twice
+- **Date:** 2026-11-14
+- **What happened:** The half-extent and snap helper existed in `geometry.ts` and `obstacles.ts`, and the empty-label name (`Box` / `Column`) in two components.
+- **Root cause:** Each task wrote what it needed without searching for an existing helper.
+- **Fix:** Merged into one exported helper each (Task 12b).
+- **How to avoid:** Grep for an existing helper before writing a new one.
+
+### A test fixture put a column on the bed (Task 4)
+- **Date:** 2026-11-14
+- **What happened:** An unrelated conflict appeared in the expected output.
+- **Root cause:** The fixture's column was placed without checking what else is at that spot in the seeded room.
+- **Fix:** The fixture was moved.
+- **How to avoid:** Place a fixture away from the seeded furniture, or assert on the one conflict that matters.
+
+### An unused test helper failed lint (Task 4)
+- **Date:** 2026-11-14
+- **What happened:** Lint failed at the end of the task on a helper no test used.
+- **Root cause:** Only the tests were run before the final check.
+- **Fix:** The helper was removed.
+- **How to avoid:** Run lint before the final check, not only the tests.
+
+### Pressing a door handle on the plan did not focus it (live check C5, fixed in Task 13b)
+- **Date:** 2026-11-14
+- **What happened:** The pointer-down handler prevents the default, so focus stayed on the last sidebar field. Arrow keys then changed that field (the hinge radio) instead of sliding the door.
+- **Root cause:** Unit tests focus the handle explicitly, so they passed.
+- **Fix:** A primary press now focuses the handle, obstacle or corner.
+- **How to avoid:** A keyboard row in a live check must start from a pointer action, as a person would.
+
+### A door's leaf and arc were hidden under furniture (live check X1, fixed in Task 13b)
+- **Date:** 2026-11-14
+- **What happened:** The plan drew room features beneath furniture, so in the one case where the arc matters (furniture blocking the door) it could not be seen.
+- **Root cause:** The layer order was chosen on paper and not tried with a conflicting piece.
+- **Fix:** Door leaf and arc are drawn in a layer above furniture that ignores pointer input. Door gaps, windows and obstacles stay under the furniture.
+- **How to avoid:** Try the case a feature exists for before settling its drawing order.
+
+### Two sidebar rows could both read `Door on wall 1` (Task 13b)
+- **Date:** 2026-11-14
+- **What happened:** The plan handles were numbered `(k of m)` but the sidebar rows were not.
+- **Root cause:** The two components built the name separately.
+- **Fix:** Both use `openingName` in `room-planner/domain/openings.ts`; openings on one wall are numbered together by offset.
+- **How to avoid:** Build a user-visible name in one function.
