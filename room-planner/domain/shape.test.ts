@@ -12,11 +12,12 @@ import {
   roomOutline,
   type Footprint,
 } from './shape';
-import type { Kind, Point, Room, Rot } from './types';
+import { placedItem, rectRoom } from '../test/fixtures';
+import type { Kind, Point, Rot } from './types';
 
-const ROOM: Room = { w: 144, l: 168, h: 96 };
-const BED = { x: 40, y: 0, w: 64, d: 85, rot: 0 as Rot };
-const DESK = { x: 118, y: 104, w: 55, d: 26, rot: 1 as Rot };
+const ROOM = rectRoom(144, 168, 96);
+const BED = placedItem({ w: 64, d: 85, h: 38, cx: 72, cy: 42.5 });
+const DESK = placedItem({ w: 55, d: 26, h: 30, cx: 131, cy: 131.5, angle: 90 });
 
 function expectPoints(actual: readonly Point[], expected: readonly [number, number][], digits = 10): void {
   expect(actual).toHaveLength(expected.length);

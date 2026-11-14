@@ -8,6 +8,7 @@ import type { CameraState, Conflicts, Item, Point, Units } from '../domain/types
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from './camera';
 import type { Vec3 } from './camera';
+import { placedItem } from '../test/fixtures';
 import { makeProjector } from './blueprintScene';
 import { drawBlueprint } from './blueprintDraw';
 import type { BlueprintInput } from './blueprintDraw';
@@ -120,8 +121,8 @@ function seed(id: string): Item {
   return found;
 }
 
-const RUG: Item = { ...seed('seed-bed'), id: 'rug-1', kind: 'rug', name: 'Wool rug', w: 60, d: 40, h: 1, x: 10, y: 10, rot: 0 };
-const CRATE: Item = { ...seed('seed-bed'), id: 'crate-1', kind: 'box', name: 'Crate', w: 44, d: 30, h: 20, x: 50, y: 60, rot: 0 };
+const RUG: Item = placedItem({ id: 'rug-1', kind: 'rug', name: 'Wool rug', w: 60, d: 40, h: 1, cx: 40, cy: 30 });
+const CRATE: Item = placedItem({ id: 'crate-1', kind: 'box', name: 'Crate', w: 44, d: 30, h: 20, cx: 72, cy: 75 });
 
 function input(over: Partial<{ items: readonly Item[]; selectedId: string | null; conflicts: Conflicts;
   units: Units; camera: CameraState; outline: readonly Point[]; height: number }> = {}): BlueprintInput {

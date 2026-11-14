@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { roomBounds } from '../domain/shape';
-import type { Bounds, CameraState, Room } from '../domain/types';
+import type { Bounds, CameraState } from '../domain/types';
+import { rectRoom } from '../test/fixtures';
 import { computeCameraPose, orbitCamera, zoomCamera } from './camera';
 import type { PaneRect } from './panes';
 
-const ROOM: Room = { w: 144, l: 168, h: 96 };
+const ROOM = rectRoom(144, 168, 96);
 const BOUNDS: Bounds = roomBounds(ROOM);
 const HEIGHT = 96;
 const DEFAULT_CAMERA: CameraState = { ...CONFIG.camera };

@@ -5,6 +5,7 @@ import { footprint, mapPart } from '../domain/geometry';
 import { boundsOf } from '../domain/polygon';
 import { footprintCorners, itemFootprint, partCorners, roomBounds, roomHeight } from '../domain/shape';
 import type { Item, Kind, Point, Rot } from '../domain/types';
+import { placedItem, rectRoom } from '../test/fixtures';
 import { computeCameraPose } from './camera';
 import type { Vec3 } from './camera';
 import { buildPrisms, frontOf, makeProjector, sortPrisms } from './blueprintScene';
@@ -37,12 +38,16 @@ function prismFrom(id: string, pts: readonly [Point, Point, Point, Point], z0 = 
 
 const KINDS = Object.keys(PARTS) as Kind[];
 const ROTS: readonly Rot[] = [0, 1, 2, 3];
+/** Footprint centres of the 50×30 box whose footprint's top-left is (20, 35), per quarter turn (odd turns are 30×50). */
+const CENTRE_OF_BOX_AT_20_35: Record<Rot, { cx: number; cy: number }> = {
+  0: { cx: 45, cy: 50 }, 1: { cx: 35, cy: 60 }, 2: { cx: 45, cy: 50 }, 3: { cx: 35, cy: 60 },
+};
 
 describe('buildPrisms', () => {
   it('makes one prism per part from partCorners of the item footprint, for every kind and quarter turn', () => {
     for (const kind of KINDS) {
       for (const rot of ROTS) {
-        const it: Item = { ...seed('seed-bed'), id: `${kind}-${rot}`, kind, w: 50, d: 30, h: 40, x: 20, y: 35, rot };
+        const it = placedItem({ id: `${kind}-${rot}`, kind, w: 50, d: 30, h: 40, ...CENTRE_OF_BOX_AT_20_35[rot], angle: rot * 90 });
         const { prisms, rugs } = buildPrisms([it]);
         const mine = kind === 'rug' ? rugs : prisms;
         const other = kind === 'rug' ? prisms : rugs;
@@ -63,7 +68,7 @@ describe('buildPrisms', () => {
   it('covers the same plan rectangle as the old quarter-turn part box, for every kind and quarter turn', () => {
     for (const kind of KINDS) {
       for (const rot of ROTS) {
-        const it: Item = { ...seed('seed-bed'), kind, w: 50, d: 30, h: 40, x: 20, y: 35, rot };
+        const it = placedItem({ kind, w: 50, d: 30, h: 40, ...CENTRE_OF_BOX_AT_20_35[rot], angle: rot * 90 });
         const { prisms, rugs } = buildPrisms([it]);
         const [fw, fd] = footprint(it);
         PARTS[kind].forEach((part, i) => {
@@ -237,7 +242,8 @@ describe('sortPrisms', () => {
 
 describe('makeProjector', () => {
   const pane: PaneRect = { left: 0, top: 0, w: 1000, h: 600, z: 1, inset: false, divider: false, safeW: 608 };
-  const pose = computeCameraPose(roomBounds({ w: 144, l: 168, h: 96 }), roomHeight({ w: 144, l: 168, h: 96 }), { ...CONFIG.camera }, pane);
+  const room = rectRoom(144, 168, 96);
+  const pose = computeCameraPose(roomBounds(room), roomHeight(room), { ...CONFIG.camera }, pane);
 
   it('maps the camera target to the centre of the safe area', () => {
     const project = makeProjector(pose, pane.safeW, pane.h);

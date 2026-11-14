@@ -3,12 +3,13 @@ import { rayToPolygon } from '../domain/polygon';
 import { roomBounds, roomOutline } from '../domain/shape';
 import type { Footprint } from '../domain/shape';
 import { fmtLen } from '../domain/units';
-import type { Bounds, Point, Room } from '../domain/types';
+import type { Bounds, Point } from '../domain/types';
+import { rectRoom } from '../test/fixtures';
 import type { PaneRect } from './panes';
 import { computeClearances, computePlanLayout, labelBox, planItemBox, toPane } from './planLayout';
 import type { ClearanceLine, PlanLayout } from './planLayout';
 
-const ROOM: Room = { w: 144, l: 168, h: 96 };
+const ROOM = rectRoom(144, 168, 96);
 const OUTLINE = roomOutline(ROOM);
 
 function pane(over: Partial<PaneRect>): PaneRect {

@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createInitialDocument } from './catalog';
 import { conflictsAmong, findConflicts, type ConflictEntry } from './conflicts';
 import type { Footprint } from './shape';
-import type { Item, Point, Room } from './types';
+import { placedItem, rectRoom, type PlacedItemSpec } from '../test/fixtures';
+import type { Item, Point } from './types';
 
-const ROOM: Room = { w: 144, l: 168, h: 96 };
+const ROOM = rectRoom(144, 168, 96);
 
 /** The 144×168 rectangle as an outline. */
 const RECT: readonly Point[] = [{ x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 168 }, { x: 0, y: 168 }];
@@ -25,14 +26,9 @@ function entry(id: string, fp: Partial<Footprint> = {}, overrides: Partial<Omit<
   };
 }
 
-/** A plain 20×20×30 box at the room origin; override any field per test. */
-function item(overrides: Partial<Item> & Pick<Item, 'id'>): Item {
-  return {
-    kind: 'box', name: `Item ${overrides.id}`, host: 'shop.example', sourceUrl: null, price: null,
-    w: 20, d: 20, h: 30, x: 0, y: 0, rot: 0,
-    model: { tier: 'box', label: 'Box', assetUrl: null },
-    ...overrides,
-  };
+/** A plain 20×20×30 box in the room's top-left corner (centre (10, 10)); override any field per test. */
+function item(overrides: Partial<PlacedItemSpec> & Pick<PlacedItemSpec, 'id'>): Item {
+  return placedItem({ w: 20, d: 20, h: 30, cx: 10, cy: 10, ...overrides });
 }
 
 describe('findConflicts', () => {
@@ -42,28 +38,28 @@ describe('findConflicts', () => {
   });
 
   it('flags an item whose footprint runs past the right wall', () => {
-    const a = item({ id: 'a', x: 125 }); // 125 + 20 = 145 > 144
+    const a = item({ id: 'a', cx: 135 }); // 125 + 20 = 145 > 144
     expect(findConflicts([a], ROOM)).toEqual({ a: 'Outside the room' });
   });
 
   it('flags an item at a negative coordinate', () => {
-    const a = item({ id: 'a', x: -1 });
+    const a = item({ id: 'a', cx: 9 });
     expect(findConflicts([a], ROOM)).toEqual({ a: 'Outside the room' });
   });
 
   it('flags an item taller than the ceiling', () => {
-    const a = item({ id: 'a', x: 10, y: 10, h: 100 });
+    const a = item({ id: 'a', cx: 20, cy: 20, h: 100 });
     expect(findConflicts([a], ROOM)).toEqual({ a: 'Taller than the ceiling' });
   });
 
   it('reports outside rather than too tall when both apply', () => {
-    const a = item({ id: 'a', x: -1, h: 100 });
+    const a = item({ id: 'a', cx: 9, h: 100 });
     expect(findConflicts([a], ROOM)).toEqual({ a: 'Outside the room' });
   });
 
   it('reports too tall rather than an overlap when both apply', () => {
     const a = item({ id: 'a', name: 'Tall cabinet', h: 100 });
-    const b = item({ id: 'b', x: 10, y: 10 });
+    const b = item({ id: 'b', cx: 20, cy: 20 });
     expect(findConflicts([a, b], ROOM)).toEqual({
       a: 'Taller than the ceiling',
       b: 'Overlaps Tall cabinet',
@@ -72,7 +68,7 @@ describe('findConflicts', () => {
 
   it('flags both items when two boxes overlap by 1 in', () => {
     const a = item({ id: 'a', name: 'Left box' });
-    const b = item({ id: 'b', name: 'Right box', x: 19 });
+    const b = item({ id: 'b', name: 'Right box', cx: 29 });
     expect(findConflicts([a, b], ROOM)).toEqual({
       a: 'Overlaps Right box',
       b: 'Overlaps Left box',
@@ -81,29 +77,29 @@ describe('findConflicts', () => {
 
   it('does not flag boxes that share an edge exactly', () => {
     const a = item({ id: 'a' });
-    const b = item({ id: 'b', x: 20 });
+    const b = item({ id: 'b', cx: 30 });
     expect(findConflicts([a, b], ROOM)).toEqual({});
   });
 
   it('lets furniture sit on a rug without flagging either', () => {
-    const rug = item({ id: 'rug', kind: 'rug', name: 'Wool rug', w: 60, d: 40, h: 1 });
-    const sofa = item({ id: 'sofa', kind: 'sofa', name: 'Sofa', x: 10, y: 10, w: 40, d: 20 });
+    const rug = item({ id: 'rug', kind: 'rug', name: 'Wool rug', w: 60, d: 40, h: 1, cx: 30, cy: 20 });
+    const sofa = item({ id: 'sofa', kind: 'sofa', name: 'Sofa', w: 40, d: 20, cx: 30, cy: 20 });
     expect(findConflicts([rug, sofa], ROOM)).toEqual({});
     expect(findConflicts([sofa, rug], ROOM)).toEqual({});
   });
 
   it('still flags a rug that runs past a wall', () => {
-    const rug = item({ id: 'rug', kind: 'rug', x: 100, w: 60, d: 40, h: 1 });
+    const rug = item({ id: 'rug', kind: 'rug', w: 60, d: 40, h: 1, cx: 130, cy: 20 });
     expect(findConflicts([rug], ROOM)).toEqual({ rug: 'Outside the room' });
   });
 
   it('uses the rotated footprint when testing overlap', () => {
-    const b = item({ id: 'b', name: 'Crate', y: 20, w: 10, d: 10 });
+    const b = item({ id: 'b', name: 'Crate', w: 10, d: 10, cx: 5, cy: 25 });
     // Unrotated 40×10 spans y 0–10 and misses the crate at y 20–30.
-    const flat = item({ id: 'a', name: 'Bench', w: 40, d: 10, rot: 0 });
+    const flat = item({ id: 'a', name: 'Bench', w: 40, d: 10, cx: 20, cy: 5, angle: 0 });
     expect(findConflicts([flat, b], ROOM)).toEqual({});
     // Rotated, the footprint is 10×40 and spans y 0–40, covering the crate.
-    const turned = item({ id: 'a', name: 'Bench', w: 40, d: 10, rot: 1 });
+    const turned = item({ id: 'a', name: 'Bench', w: 40, d: 10, cx: 5, cy: 20, angle: 90 });
     expect(findConflicts([turned, b], ROOM)).toEqual({
       a: 'Overlaps Crate',
       b: 'Overlaps Bench',
@@ -111,9 +107,9 @@ describe('findConflicts', () => {
   });
 
   it('names the first overlapping item in array order', () => {
-    const a = item({ id: 'a', name: 'A', w: 30, d: 30 });
-    const b = item({ id: 'b', name: 'B', x: 20, w: 10, d: 10 });
-    const c = item({ id: 'c', name: 'C', y: 20, w: 10, d: 10 });
+    const a = item({ id: 'a', name: 'A', w: 30, d: 30, cx: 15, cy: 15 });
+    const b = item({ id: 'b', name: 'B', w: 10, d: 10, cx: 25, cy: 5 });
+    const c = item({ id: 'c', name: 'C', w: 10, d: 10, cx: 5, cy: 25 });
     expect(findConflicts([a, b, c], ROOM).a).toBe('Overlaps B');
     expect(findConflicts([a, c, b], ROOM).a).toBe('Overlaps C');
   });

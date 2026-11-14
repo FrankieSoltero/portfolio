@@ -4,7 +4,8 @@ import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
 import { boundsOf } from '../domain/polygon';
 import { itemFootprint, roomBounds, roomHeight, roomOutline } from '../domain/shape';
-import type { Conflicts, Item, Point, Room } from '../domain/types';
+import type { Conflicts, Item, Point } from '../domain/types';
+import { rectRoom } from '../test/fixtures';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from '../view/camera';
 import type { PaneRect } from '../view/panes';
@@ -17,7 +18,7 @@ vi.mock('../domain/shape', async (importOriginal) => {
   return { ...actual, itemFootprint: vi.fn(actual.itemFootprint) };
 });
 
-const ROOM: Room = { w: 144, l: 168, h: 96 };
+const ROOM = rectRoom(144, 168, 96);
 /** The 6-corner L-shape moved off the origin; its bounding box is (10, 20)–(154, 188). */
 const L_SHAPE: readonly Point[] = [
   { x: 10, y: 20 }, { x: 82, y: 20 }, { x: 82, y: 104 }, { x: 154, y: 104 }, { x: 154, y: 188 }, { x: 10, y: 188 },
@@ -267,7 +268,7 @@ describe('SceneRenderer', () => {
       }
     });
     expect(textures).toHaveLength(1);
-    sr.update(input({ outline: roomOutline({ w: 150, l: 168, h: 96 }) }));
+    sr.update(input({ outline: roomOutline(rectRoom(150, 168, 96)) }));
     const second = roomGroup();
     expect(second).toBeDefined();
     expect(second).not.toBe(first);

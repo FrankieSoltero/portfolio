@@ -9,6 +9,7 @@ import type { Item, PlanDocument, Point } from '../../domain/types';
 import { fmtLen } from '../../domain/units';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
+import { placedItem } from '../../test/fixtures';
 import type { PaneRect } from '../../view/panes';
 import { computeClearances, computePlanLayout, labelBox, planItemBox, toPane } from '../../view/planLayout';
 import { InsetFrame } from './InsetFrame';
@@ -121,10 +122,7 @@ function item(id: string): Item | undefined {
   return usePlanStore.getState().items.find((i) => i.id === id);
 }
 
-const RUG: Item = {
-  id: 'rug-1', kind: 'rug', name: 'Wool rug', host: 'shop.example', sourceUrl: null, price: 100,
-  w: 60, d: 40, h: 1, x: 10, y: 100, rot: 0, model: { tier: 'parametric', label: 'Parametric', assetUrl: null },
-};
+const RUG: Item = placedItem({ id: 'rug-1', kind: 'rug', name: 'Wool rug', price: 100, w: 60, d: 40, h: 1, cx: 40, cy: 120 });
 
 function withRug(): PlanDocument {
   const doc = createInitialDocument();
@@ -357,7 +355,7 @@ describe('PlanView', () => {
 
   it('draws one hairline per part for multi-part kinds and none for a shelf', () => {
     const doc = createInitialDocument();
-    const shelf: Item = { ...RUG, id: 'shelf-1', kind: 'shelf', name: 'Shelf', w: 30, d: 12, h: 70, x: 0, y: 150 };
+    const shelf: Item = placedItem({ id: 'shelf-1', kind: 'shelf', name: 'Shelf', price: 100, w: 30, d: 12, h: 70, cx: 15, cy: 156 });
     usePlanStore.getState().reset({ ...doc, items: [...doc.items, shelf] });
     render(<PlanView pane={MAIN} />);
     const parts = partBoxes('seed-bed');
