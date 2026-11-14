@@ -196,6 +196,15 @@ farther outside is left as it is, so the opening is refused as `opening-off-wall
 (an edit that would squeeze an opening off its wall is refused, never turned into a
 slide).
 
+## Amendment 3 (2026-11-14, controller ruling during Task 5)
+
+1. Task 5's file list also includes
+   `room-planner/components/Sidebar/PlanSection.test.tsx`, whose helper spells out the
+   document's keys: it gains `openings` and `obstacles` and changes in no other way.
+2. When `parsePlan` reverses a stored outline that was given in negative order, the
+   openings are carried onto their walls with `rehomeOpenings(given, normalised, openings)`
+   before they are validated, so they stay on the same physical walls.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
