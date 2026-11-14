@@ -263,7 +263,7 @@ describe('RoomSection', () => {
     useUiStore.getState().setMode('room');
     render(<RoomSection />);
     expect(screen.getByText(/^Floor area/).textContent).toBe(
-      'Floor area 168 sq ft. Drag a corner to reshape the room. Click a wall to add a corner. Hold Alt to turn off angle snapping.',
+      'Floor area 168 sq ft. Drag a wall to move it. Drag a corner to change an angle. Double-click a wall to add a corner. Click a length to type it. Hold Alt to turn off angle snapping.',
     );
   });
 

@@ -71,7 +71,7 @@ const SHAPES: readonly { shape: StartingShape; label: string }[] = [
 ];
 
 const ROOM_MODE_HELP =
-  'Drag a corner to reshape the room. Click a wall to add a corner. Hold Alt to turn off angle snapping.';
+  'Drag a wall to move it. Drag a corner to change an angle. Double-click a wall to add a corner. Click a length to type it. Hold Alt to turn off angle snapping.';
 
 /**
  * Replaces the outline with a starting shape sized and placed from the current outline's bounding

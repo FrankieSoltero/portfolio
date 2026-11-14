@@ -1,10 +1,12 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createInitialDocument } from '../../domain/catalog';
-import { setWallLength, startingShape } from '../../domain/outline';
+import { type LengthAnchor, setWallLength, startingShape } from '../../domain/outline';
 import type { Corner, Door } from '../../domain/types';
-import { usePlanStore } from '../../state/planStore';
+import { ROOM_PROBLEM_TEXT, usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { WallList } from './WallList';
 
@@ -323,5 +325,121 @@ describe('WallList', () => {
       expect(usePlanStore.getState()).toBe(before);
       expect(useUiStore.getState().roomProblem).toBe('A corner cannot go inside a door or window.');
     });
+  });
+});
+
+describe('WallList: which end a typed length moves', () => {
+  const NOTE = 'Wall N starts at corner N. In Edit room, the plan marks the end that moves.';
+
+  function control(): HTMLElement {
+    return screen.getByRole('radiogroup', { name: 'A typed length moves' });
+  }
+
+  /** Sets the anchor in the UI store, then types `value` (feet) into wall 1's input. */
+  function typeWall1With(anchor: LengthAnchor, value: string): void {
+    useUiStore.getState().setLengthAnchor(anchor);
+    render(<WallList />);
+    typeRaw(input('Wall 1'), value);
+  }
+
+  it('shows a Start / Both / End control named length-anchor above the wall rows, set from lengthAnchor', () => {
+    const { container } = render(<WallList />);
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect(radios.map((r) => [r.labels?.[0]?.textContent, r.value, r.name])).toEqual([
+      ['Start', 'start', 'length-anchor'],
+      ['Both', 'both', 'length-anchor'],
+      ['End', 'end', 'length-anchor'],
+    ]);
+    expect(radios.every((r) => control().contains(r))).toBe(true);
+    expect(screen.getByRole('radio', { name: 'End' })).toBeChecked();
+    const firstRow = container.querySelector('.wall-row');
+    expect(firstRow).not.toBeNull();
+    expect(control().compareDocumentPosition(firstRow as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('follows lengthAnchor when it changes elsewhere', () => {
+    render(<WallList />);
+    act(() => useUiStore.getState().setLengthAnchor('both'));
+    expect(screen.getByRole('radio', { name: 'Both' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'End' })).not.toBeChecked();
+  });
+
+  it('sets lengthAnchor when an option is chosen', async () => {
+    render(<WallList />);
+    await userEvent.setup().click(screen.getByRole('radio', { name: 'Start' }));
+    expect(useUiStore.getState().lengthAnchor).toBe('start');
+  });
+
+  it('has a note under the control, before the wall rows, in the muted helper style', () => {
+    const { container } = render(<WallList />);
+    const note = container.querySelector('p.wall-list-note');
+    expect(note).not.toBeNull();
+    expect(note).toHaveTextContent(NOTE);
+    expect(note).toHaveClass('note');
+    expect(control().compareDocumentPosition(note as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const firstRow = container.querySelector('.wall-row') as Element;
+    expect((note as Element).compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('a typed length moves the start when the anchor is start', () => {
+    typeWall1With('start', '10');
+    expect(outline()).toEqual([
+      { id: 'c1', x: 24, y: 0 },
+      { id: 'c2', x: 144, y: 0 },
+      { id: 'c3', x: 144, y: 168 },
+      { id: 'c4', x: 24, y: 168 },
+    ]);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('a typed length keeps every angle when the anchor is end', () => {
+    typeWall1With('end', '10');
+    expect(outline()[1]).toEqual({ id: 'c2', x: 120, y: 0 });
+    expect(outline()[2]).toEqual({ id: 'c3', x: 120, y: 168 });
+  });
+
+  it('refuses 0.1 ft: outline unchanged, the short-wall reason set', () => {
+    const before = outline();
+    typeWall1With('end', '0.1');
+    expect(outline()).toEqual(before);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['short-wall']);
+  });
+});
+
+describe('WallList: a row selects its wall', () => {
+  it('in room mode, focusing wall 2 selects wall 2 and keeps focus on its input', () => {
+    useUiStore.getState().setMode('room');
+    render(<WallList />);
+    const el = input('Wall 2');
+    act(() => el.focus());
+    expect(useUiStore.getState().selectedWallId).toBe('c2');
+    expect(document.activeElement).toBe(el);
+  });
+
+  it('typing still works in the focused row after it selects its wall', () => {
+    useUiStore.getState().setMode('room');
+    render(<WallList />);
+    const el = input('Wall 1');
+    act(() => el.focus());
+    typeRaw(el, '10');
+    expect(outline()[1]).toEqual({ id: 'c2', x: 120, y: 0 });
+    expect(el.value).toBe('10');
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+    expect(document.activeElement).toBe(el);
+  });
+
+  it('outside room mode, focusing a wall input selects nothing', () => {
+    render(<WallList />);
+    act(() => input('Wall 2').focus());
+    expect(useUiStore.getState().selectedWallId).toBeNull();
+  });
+});
+
+describe('wall list styles (sidebar.css)', () => {
+  // Vitest runs from the repo root; under jsdom import.meta.url is not a file URL.
+  const css = readFileSync(resolve(process.cwd(), 'room-planner/components/Sidebar/sidebar.css'), 'utf8');
+
+  it('the note under the which-end control drops its paragraph margin', () => {
+    expect(css).toContain('\n.wall-list-note { margin: 0; }');
   });
 });
