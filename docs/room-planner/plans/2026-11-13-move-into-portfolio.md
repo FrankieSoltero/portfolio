@@ -60,6 +60,18 @@ Vitest 5 with jsdom and React Testing Library, ESLint 10 flat config. One test f
 - The page title suffix ` · Francisco Soltero` comes from the existing title template
   in `app/layout.tsx`, which is not edited.
 
+## Amendment 1 (2026-11-13, owner decision during Task 1)
+
+The plan assumed `npm audit fix` would clear `postcss`. It does not: `next@15.5.29`,
+the newest 15.x, pins `postcss@8.4.31`, and the advisory covers `<=8.5.22`; npm's only
+offered fix is Next.js 16. The owner chose to pin a patched `postcss` instead. Task 1
+therefore also adds an `overrides` entry in `package.json` forcing `postcss` under
+`next` to the newest patched 8.5.x release (8.5.23 or later). The expected audit
+result after Task 1 is unchanged (`0 1 4`: zod is the one high), with `next` no longer
+listed as moderate. If the build or the papers HTML comparison differs with the
+override in place, Task 1 stops and reports. A Next.js 16 upgrade is a follow-up for
+the pull request description; when it lands, the override is removed.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
