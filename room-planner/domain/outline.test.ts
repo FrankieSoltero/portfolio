@@ -90,6 +90,8 @@ const M64: Corner[] = [
   { id: 'b', x: 0, y: 100 },
 ];
 const IDS = { start: 'x1', end: 'x2' };
+// Amendment 2 of the wall-editing plan.
+const TRI = named(['t1', 0, 0], ['t2', 120, 0], ['t3', 60, 100]);
 
 /** `base` with the corners in `changes` replaced by id. */
 function withCorners(base: readonly Corner[], ...changes: Corner[]): Corner[] {
@@ -532,6 +534,26 @@ describe('slideWall', () => {
     expect(slideWall(Q, 'q1', 120, IDS)).toEqual({ ok: false, problem: 'crossing' });
   });
 
+  it.each([
+    ['R wall c1', 174, R, 'c1'],
+    ['R wall c1', 200, R, 'c1'],
+    ['Q wall q1', 160, Q, 'q1'],
+  ] as const)('refuses sliding %s by %s past the opposite side (inside out) as crossing', (_, d, outline, wallId) => {
+    expect(slideWall(outline, wallId, d, IDS)).toEqual({ ok: false, problem: 'crossing' });
+  });
+
+  it("refuses a slide that reverses the slid wall's own direction", () => {
+    expect(slideWall(TRI, 't1', 110, IDS)).toEqual({ ok: false, problem: 'crossing' });
+  });
+
+  it('slides a triangle wall that stays the right way round', () => {
+    expect(slid(TRI, 't1', 50)).toEqual(withCorners(TRI, { id: 't1', x: 30, y: 50 }, { id: 't2', x: 90, y: 50 }));
+  });
+
+  it('slides the wall whose end corner is the first corner of the outline', () => {
+    expect(slid(R, 'c4', 12)).toEqual(withCorners(R, { id: 'c4', x: 12, y: 168 }, { id: 'c1', x: 12, y: 0 }));
+  });
+
   it('refuses a distance that is not a finite number as too-large', () => {
     for (const v of NON_FINITE) {
       expect(slideWall(R, 'c1', v, IDS)).toEqual({ ok: false, problem: 'too-large' });
@@ -558,6 +580,9 @@ describe('slideWall', () => {
     expect(() => slideWall(frozen, 'm1', -36, IDS)).not.toThrow();
     expect(() => slideWall(frozen, 'm1', -24, IDS)).not.toThrow();
     expect(frozen).toEqual(U);
+    const frozenT = Object.freeze(T.map((c) => Object.freeze({ ...c })));
+    expect(okOutline(slideWall(frozenT, 'm1', 24, IDS))).toEqual(U);
+    expect(frozenT).toEqual(T);
   });
 });
 

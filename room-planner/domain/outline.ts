@@ -253,10 +253,14 @@ function slideContext(outline: readonly Corner[], wallId: string) {
 /**
  * Slides wall `wallId` by `distance` along its inward normal (negative slides outward), keeping
  * every wall's direction. At each end, a neighbour running in the same direction as the wall gets a
- * new corner (`ids.start` before the start, `ids.end` after it) so a step forms; any other
- * neighbour has the end corner moved along it, and a neighbour used up (within 0.01) is removed.
- * Every other corner keeps its id, position and order. A distance that is not a finite number is
- * refused as too-large; an unknown wall or a distance below 0.005 leaves the outline unchanged.
+ * new corner so a step forms: `ids.start` just before the wall's start corner, `ids.end` just after
+ * the wall's start corner, between it and the end corner. Any other neighbour has the end corner
+ * moved along it, and a neighbour used up (within 0.01) is removed. Every other corner keeps its id,
+ * position and order. A slide that would turn the room inside out (the result's signed area is not
+ * positive, or the slid wall's own direction reverses) is refused as crossing. A distance that is
+ * not a finite number is refused as too-large; an unknown wall or a distance below 0.005 leaves the
+ * outline unchanged. The caller must make `ids.start` and `ids.end` fresh and different from each
+ * other (e.g. from crypto.randomUUID()).
  */
 export function slideWall(
   outline: readonly Corner[],
@@ -313,7 +317,21 @@ export function slideWall(
       candidate.push(c);
     }
   });
+  if (turnsInsideOut(candidate, A.id, u)) return { ok: false, problem: 'crossing' };
   return settle(candidate);
+}
+
+/**
+ * True when a slid candidate is inside out: it has at least MIN_CORNERS corners and a signed area
+ * that is not positive, or the slid wall (from corner `startId` to the next corner) no longer runs
+ * along its old direction `u`. With fewer corners, settle reports too-few instead.
+ */
+function turnsInsideOut(candidate: readonly Corner[], startId: string, u: Point): boolean {
+  const k = candidate.findIndex((c) => c.id === startId);
+  const a = candidate[k];
+  const b = candidate[(k + 1) % candidate.length];
+  if ((b.x - a.x) * u.x + (b.y - a.y) * u.y <= 0) return true;
+  return candidate.length >= MIN_CORNERS && signedArea(candidate) <= 0;
 }
 
 /** v rounded to 0.0001, with −0 given as 0. */
