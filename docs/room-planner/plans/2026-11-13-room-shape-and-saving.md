@@ -115,6 +115,15 @@ confined to the tasks named, so a different answer changes only those tasks.
     visitors' saved data before this release, and a revert of the merge restores
     slice A, which never reads the storage key.
 
+## Amendment 1 (2026-11-13, controller ruling during Task 2)
+
+The plan missed four existing test files that call `computeCameraPose` with the old
+arguments. Task 2's file list also includes
+`room-planner/components/Stage/ThreeView.test.tsx`,
+`room-planner/three/SceneRenderer.test.ts`, `room-planner/view/blueprintDraw.test.ts`
+and `room-planner/view/blueprintScene.test.ts`, for one change only: each call's room
+argument becomes `roomBounds(room), roomHeight(room)`. No expected value changes.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
