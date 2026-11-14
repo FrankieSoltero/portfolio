@@ -617,6 +617,80 @@ describe('uiStore: doors, windows and obstacles', () => {
   });
 });
 
+describe('uiStore: the selected wall and which end a length moves', () => {
+  it('starts with no wall selected and the end anchor', () => {
+    expect(freshUi).toMatchObject({ selectedWallId: null, lengthAnchor: 'end' });
+  });
+
+  it.each([
+    ['selectCorner', 'selectedCornerId'],
+    ['selectOpening', 'selectedOpeningId'],
+    ['selectObstacle', 'selectedObstacleId'],
+  ] as const)('selectWall after %s leaves only the wall selected', (first, firstField) => {
+    useUiStore.getState()[first]('x1');
+    expect(useUiStore.getState()[firstField]).toBe('x1');
+    useUiStore.getState().selectWall('c1');
+    expect(useUiStore.getState()).toMatchObject({
+      selectedWallId: 'c1', selectedCornerId: null, selectedOpeningId: null, selectedObstacleId: null,
+    });
+  });
+
+  it('selectWall null clears only the wall', () => {
+    useUiStore.getState().selectWall('c1');
+    const before = useUiStore.getState();
+    useUiStore.getState().selectWall(null);
+    expect(useUiStore.getState()).toEqual({ ...before, selectedWallId: null });
+  });
+
+  it.each([
+    ['selectCorner', 'c2', 'selectedCornerId'],
+    ['selectOpening', 'd', 'selectedOpeningId'],
+    ['selectObstacle', 'o', 'selectedObstacleId'],
+  ] as const)('%s clears the selected wall', (select, id, field) => {
+    useUiStore.getState().selectWall('c1');
+    useUiStore.getState()[select](id);
+    expect(useUiStore.getState()).toMatchObject({ selectedWallId: null, [field]: id });
+  });
+
+  it.each(['selectCorner', 'selectOpening', 'selectObstacle'] as const)(
+    '%s null keeps the wall selected',
+    (select) => {
+      useUiStore.getState().selectWall('c1');
+      useUiStore.getState()[select](null);
+      expect(useUiStore.getState().selectedWallId).toBe('c1');
+    },
+  );
+
+  it.each(['door', 'window'] as const)('arming the %s tool clears the selected wall', (tool) => {
+    useUiStore.getState().selectWall('c1');
+    useUiStore.getState().setRoomTool(tool);
+    expect(useUiStore.getState()).toMatchObject({ roomTool: tool, selectedWallId: null });
+  });
+
+  it('setMode furnish clears the selected wall and keeps the anchor', () => {
+    const ui = useUiStore.getState();
+    ui.setMode('room');
+    ui.selectWall('c1');
+    ui.setLengthAnchor('start');
+    useUiStore.getState().setMode('furnish');
+    expect(useUiStore.getState()).toMatchObject({ mode: 'furnish', selectedWallId: null, lengthAnchor: 'start' });
+  });
+
+  it('setLengthAnchor sets the anchor and nothing else', () => {
+    const before = useUiStore.getState();
+    useUiStore.getState().setLengthAnchor('both');
+    expect(useUiStore.getState()).toEqual({ ...before, lengthAnchor: 'both' });
+  });
+
+  it('reset clears the selected wall and restores the end anchor', () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectWall('c1');
+    useUiStore.getState().setLengthAnchor('both');
+    useUiStore.getState().reset();
+    expect(useUiStore.getState()).toMatchObject({ selectedWallId: null, lengthAnchor: 'end' });
+  });
+});
+
 describe('actions', () => {
   it('rotateSelected and removeSelected do nothing when nothing is selected', () => {
     const before = usePlanStore.getState();

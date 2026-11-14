@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { CONFIG } from '../config';
+import type { LengthAnchor } from '../domain/outline';
 import type { CameraState, EditMode, LayoutMode, ProductPreview, RenderStyle, RoomTool, StageTab } from '../domain/types';
 import type { LookupErrorCode } from '../services/productLookup';
 
@@ -10,10 +11,14 @@ import type { LookupErrorCode } from '../services/productLookup';
 export interface UiState {
   selectedId: string | null;
   mode: EditMode;
-  /** At most one of the selected corner, door or window, and obstacle is set at a time. */
+  /** At most one of the selected corner, wall, door or window, and obstacle is set at a time. */
   selectedCornerId: string | null;
+  /** The selected wall, named by its starting corner's id. */
+  selectedWallId: string | null;
   selectedOpeningId: string | null;
   selectedObstacleId: string | null;
+  /** Which end of a wall a typed length moves: its start, both ends, or its end. */
+  lengthAnchor: LengthAnchor;
   /** The room editor's tool: 'corner', or a door or window tool armed to place one on a wall. */
   roomTool: RoomTool;
   /** Why the last room edit was refused, shown while editing the room. */
@@ -48,16 +53,19 @@ export interface UiState {
   markWebglUnavailable(): void;
   /**
    * Switches edit mode. Entering 'room' clears the item selection; entering 'furnish' clears
-   * the selected corner, opening and obstacle and the room problem, and sets the tool back to
-   * 'corner'. Applies the clears even if the mode is unchanged.
+   * the selected corner, wall, opening and obstacle and the room problem, and sets the tool back
+   * to 'corner'. Applies the clears even if the mode is unchanged.
    */
   setMode(m: EditMode): void;
-  /** Selects a corner, clearing the selected opening and obstacle; null clears only the corner. */
+  /** Selects a corner, clearing the selected wall, opening and obstacle; null clears only the corner. */
   selectCorner(id: string | null): void;
-  /** Selects a door or window, clearing the selected corner and obstacle; null clears only the opening. */
+  /** Selects a wall, clearing the selected corner, opening and obstacle; null clears only the wall. */
+  selectWall(id: string | null): void;
+  /** Selects a door or window, clearing the selected corner, wall and obstacle; null clears only the opening. */
   selectOpening(id: string | null): void;
-  /** Selects an obstacle, clearing the selected corner and opening; null clears only the obstacle. */
+  /** Selects an obstacle, clearing the selected corner, wall and opening; null clears only the obstacle. */
   selectObstacle(id: string | null): void;
+  setLengthAnchor(a: LengthAnchor): void;
   /** Sets the room tool; arming a door or window tool also clears every room selection. */
   setRoomTool(t: RoomTool): void;
   setRoomProblem(text: string | null): void;
@@ -71,8 +79,10 @@ type UiData = Pick<
   | 'selectedId'
   | 'mode'
   | 'selectedCornerId'
+  | 'selectedWallId'
   | 'selectedOpeningId'
   | 'selectedObstacleId'
+  | 'lengthAnchor'
   | 'roomTool'
   | 'roomProblem'
   | 'notice'
@@ -91,8 +101,10 @@ function initialUi(): UiData {
     selectedId: null,
     mode: 'furnish',
     selectedCornerId: null,
+    selectedWallId: null,
     selectedOpeningId: null,
     selectedObstacleId: null,
+    lengthAnchor: 'end',
     roomTool: 'corner',
     roomProblem: null,
     notice: null,
@@ -107,8 +119,13 @@ function initialUi(): UiData {
   };
 }
 
-/** Clears the selected corner, opening and obstacle; a non-null selection overrides its own field. */
-const NO_ROOM_SELECTION = { selectedCornerId: null, selectedOpeningId: null, selectedObstacleId: null } as const;
+/** Clears the selected corner, wall, opening and obstacle; a non-null selection overrides its own field. */
+const NO_ROOM_SELECTION = {
+  selectedCornerId: null,
+  selectedWallId: null,
+  selectedOpeningId: null,
+  selectedObstacleId: null,
+} as const;
 
 export const useUiStore = create<UiState>()((set) => ({
   ...initialUi(),
@@ -136,10 +153,13 @@ export const useUiStore = create<UiState>()((set) => ({
     ),
   selectCorner: (selectedCornerId) =>
     set(selectedCornerId === null ? { selectedCornerId } : { ...NO_ROOM_SELECTION, selectedCornerId }),
+  selectWall: (selectedWallId) =>
+    set(selectedWallId === null ? { selectedWallId } : { ...NO_ROOM_SELECTION, selectedWallId }),
   selectOpening: (selectedOpeningId) =>
     set(selectedOpeningId === null ? { selectedOpeningId } : { ...NO_ROOM_SELECTION, selectedOpeningId }),
   selectObstacle: (selectedObstacleId) =>
     set(selectedObstacleId === null ? { selectedObstacleId } : { ...NO_ROOM_SELECTION, selectedObstacleId }),
+  setLengthAnchor: (lengthAnchor) => set({ lengthAnchor }),
   setRoomTool: (roomTool) => set(roomTool === 'corner' ? { roomTool } : { roomTool, ...NO_ROOM_SELECTION }),
   setRoomProblem: (roomProblem) => set({ roomProblem }),
   setNotice: (notice) => set({ notice }),
