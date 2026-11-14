@@ -216,6 +216,24 @@ each wall row of the wall list, a button with the accessible name
 (the Task 13 action). The button is shown only in room mode. A refusal shows the
 reason in the section like any other.
 
+## Amendment 9 (2026-11-14, controller ruling after Task 19)
+
+The task reviews left minor findings that are worth fixing. So that the live
+verification (Task 20) runs against the final code, they are fixed in an inserted
+**Task 19b: Pre-verification fixes**, executed and reviewed between Tasks 19 and 20
+(risk tier: judgment). One commit, message
+`fix(room-planner): address review findings before the live check`. Items:
+
+| # | Finding | Required behaviour |
+|---|---|---|
+| 1 | A corner drag keeps running if room mode is left mid-drag | once `mode` is not `'room'`, further pointer moves of that drag change nothing (no outline edit, no `roomProblem`), and the drag's listeners and the layout freeze are released |
+| 2 | `WallList.tsx` copies unit constants and the parse formula from `units.ts` | `units.ts` exports the conversion without the room range check; `parseRoomInput` and the wall-length input both use it; no unit constant is defined outside `units.ts` |
+| 3 | The selection bar's controls can overflow at about 320 px | `.selection-actions` wraps |
+| 4 | `planSchema.ts` copies `CONFIG.roomMax` and `CONFIG.maxCorners` | the schema reads those two limits from `CONFIG`, or a test asserts they are equal |
+| 5 | A change made within 300 ms of closing or reloading the tab is not saved | a pending save is flushed on `pagehide` and when `document.visibilityState` becomes `hidden`; never while `saveBlocked`; listeners removed on unmount |
+| 6 | The cached load result is applied again when the effect re-runs (Fast Refresh) | a load result is applied at most once per store; a re-run after it was applied subscribes and sets `ready` without applying it again |
+| 7 | Reset can be confirmed again while the first is still clearing storage | a second confirmation while a reset is in flight does nothing |
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
