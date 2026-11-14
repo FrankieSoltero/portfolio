@@ -1,20 +1,27 @@
 /**
  * On-demand WebGL renderer for the realistic 3D pane. Keeps one scene in sync with the plan:
- * the room is rebuilt when its dimensions change, each item's model is rebuilt when its
+ * the room is rebuilt when its outline or height changes by value, each item's model is rebuilt when its
  * `modelKey` changes and otherwise only moved, and every removed subtree is disposed.
  * Each `update` renders exactly once. Ported from prototype lines 473–485 and 547–577.
  */
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import { footprint } from '../domain/geometry';
-import type { Conflicts, Item, Room } from '../domain/types';
+import { boundsOf } from '../domain/polygon';
+import { itemFootprint } from '../domain/shape';
+import type { Conflicts, Item, Point } from '../domain/types';
 import type { Tokens } from '../styles/tokens';
 import type { CameraPose } from '../view/camera';
 import { modelKey, resolveModel } from './modelSource';
 import { buildRoom, createFloorTexture } from './roomMesh';
 
-export interface SceneInput { room: Room; items: readonly Item[]; selectedId: string | null;
-  conflicts: Conflicts; pose: CameraPose; width: number; height: number; pixelRatio: number }
+/**
+ * Everything one frame needs. `outline` and `height` are the room's corners (plan space, positive
+ * signed area) and ceiling height in inches; `viewWidth` and `viewHeight` are the canvas size in
+ * CSS px.
+ */
+export interface SceneInput { outline: readonly Point[]; height: number; items: readonly Item[];
+  selectedId: string | null; conflicts: Conflicts; pose: CameraPose; viewWidth: number;
+  viewHeight: number; pixelRatio: number }
 
 /** The slice of `THREE.WebGLRenderer` the scene renderer uses; tests inject a fake. */
 export type RendererLike = Pick<THREE.WebGLRenderer,
@@ -27,12 +34,12 @@ const SHADOW_MAP_SIZE = 2048;
 const SHADOW_BIAS = -0.0006;
 const SHADOW_NORMAL_BIAS = 0.4;
 const SHADOW_RADIUS = 3;
-/** Sun height and distance behind the room, in room heights and room lengths. */
+/** Sun height and distance behind the room, in room heights and bounding-box lengths. */
 const SUN_HEIGHT_PER_H = 2.4;
 const SUN_DEPTH_PER_L = 1.4;
-/** Margin around the room's half-diagonal for the shadow camera, in inches. */
+/** Margin around the bounding box's half-diagonal for the shadow camera, in inches. */
 const SHADOW_MARGIN = 24;
-/** Far planes, in multiples of the room diagonal (shadow) and of the camera distance (view). */
+/** Far planes, in multiples of the room's bounding diagonal (shadow) and of the camera distance (view). */
 const FAR_FACTOR = 5;
 const NEAR = 1;
 const INITIAL_FOV = 40;
@@ -101,7 +108,7 @@ export class SceneRenderer {
   update(input: SceneInput): void {
     if (this.disposed) return;
     this.syncSize(input);
-    this.syncRoom(input.room);
+    this.syncRoom(input.outline, input.height);
     this.syncFurniture(input);
     this.syncCamera(input);
     this.renderer.render(this.scene, this.camera);
@@ -128,7 +135,7 @@ export class SceneRenderer {
     this.renderer.forceContextLoss();
   }
 
-  private syncSize({ width, height, pixelRatio }: SceneInput): void {
+  private syncSize({ viewWidth: width, viewHeight: height, pixelRatio }: SceneInput): void {
     const s = this.size;
     if (s.width === width && s.height === height && s.pixelRatio === pixelRatio) return;
     this.renderer.setPixelRatio(pixelRatio);
@@ -136,22 +143,24 @@ export class SceneRenderer {
     this.size = { width, height, pixelRatio };
   }
 
-  private syncRoom(room: Room): void {
-    const { w: W, l: L, h: H } = room;
-    const key = `${W}|${L}|${H}`;
+  /** Rebuilds the room and refits the sun when the outline's coordinates or the height change. */
+  private syncRoom(outline: readonly Point[], height: number): void {
+    const key = `${outline.map((p) => `${p.x},${p.y}`).join(';')}|${height}`;
     if (key === this.roomKey) return;
     if (this.room) {
       this.scene.remove(this.room);
       disposeTree(this.room);
     }
-    this.room = buildRoom(room, this.tokens, createFloorTexture(room));
+    this.room = buildRoom(outline, height, this.tokens, createFloorTexture());
     this.room.name = ROOM_NAME;
     this.scene.add(this.room);
     this.roomKey = key;
 
+    const { minX, minY, w: W, l: L } = boundsOf(outline);
+    const H = height;
     const r = Math.hypot(W, L) / 2 + SHADOW_MARGIN;
-    this.sun.position.set(0, H * SUN_HEIGHT_PER_H, L * SUN_DEPTH_PER_L);
-    this.sun.target.position.set(W / 2, 0, L / 2);
+    this.sun.position.set(minX, H * SUN_HEIGHT_PER_H, minY + L * SUN_DEPTH_PER_L);
+    this.sun.target.position.set(minX + W / 2, 0, minY + L / 2);
     this.sun.target.updateMatrixWorld();
     const sc = this.sun.shadow.camera;
     sc.left = -r;
@@ -177,9 +186,10 @@ export class SceneRenderer {
         this.scene.add(group);
         this.furniture.set(item.id, entry);
       }
-      const [fw, fd] = footprint(item);
-      entry.group.position.set(item.x + fw / 2, 0, item.y + fd / 2);
-      entry.group.rotation.y = -item.rot * Math.PI / 2;
+      // Plan (cx, cy) maps to three (X, Z); a clockwise plan angle is a negative turn about +Y.
+      const fp = itemFootprint(item);
+      entry.group.position.set(fp.cx, 0, fp.cy);
+      entry.group.rotation.y = -fp.angle * Math.PI / 180;
 
       const outline: unknown = entry.group.userData.outline;
       if (outline instanceof THREE.LineSegments && outline.material instanceof THREE.LineBasicMaterial) {
@@ -200,7 +210,7 @@ export class SceneRenderer {
     disposeTree(group);
   }
 
-  private syncCamera({ pose, width, height }: SceneInput): void {
+  private syncCamera({ pose, viewWidth: width, viewHeight: height }: SceneInput): void {
     const cam = this.camera;
     cam.fov = pose.fovDeg;
     cam.aspect = pose.aspect;

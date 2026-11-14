@@ -2,12 +2,26 @@ import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import { roomBounds, roomHeight } from '../domain/shape';
-import type { Conflicts, Item, Room } from '../domain/types';
+import { boundsOf } from '../domain/polygon';
+import { itemFootprint, roomBounds, roomHeight, roomOutline } from '../domain/shape';
+import type { Conflicts, Item, Point, Room } from '../domain/types';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from '../view/camera';
 import type { PaneRect } from '../view/panes';
 import { SceneRenderer, type RendererLike, type SceneInput } from './SceneRenderer';
+
+// The footprint accessor passes through to the real one; a single test replaces it to show the
+// furniture is posed from the footprint alone (angles today's stored data cannot express yet).
+vi.mock('../domain/shape', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../domain/shape')>();
+  return { ...actual, itemFootprint: vi.fn(actual.itemFootprint) };
+});
+
+const ROOM: Room = { w: 144, l: 168, h: 96 };
+/** The 6-corner L-shape moved off the origin; its bounding box is (10, 20)–(154, 188). */
+const L_SHAPE: readonly Point[] = [
+  { x: 10, y: 20 }, { x: 82, y: 20 }, { x: 82, y: 104 }, { x: 154, y: 104 }, { x: 154, y: 188 }, { x: 10, y: 188 },
+];
 
 const TOKENS: Tokens = {
   bg: '#ffffff',
@@ -53,15 +67,17 @@ function seedItems(): Item[] {
 }
 
 function input(over: Partial<SceneInput> = {}): SceneInput {
-  const room: Room = over.room ?? { w: 144, l: 168, h: 96 };
+  const outline = over.outline ?? roomOutline(ROOM);
+  const height = over.height ?? roomHeight(ROOM);
   return {
-    room,
+    outline,
+    height,
     items: seedItems(),
     selectedId: null,
     conflicts: {},
-    pose: computeCameraPose(roomBounds(room), roomHeight(room), { ...CONFIG.camera }, PANE),
-    width: PANE.w,
-    height: PANE.h,
+    pose: computeCameraPose(boundsOf(outline), height, { ...CONFIG.camera }, PANE),
+    viewWidth: PANE.w,
+    viewHeight: PANE.h,
     pixelRatio: 2,
     ...over,
   };
@@ -135,6 +151,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // Back to the pass-through implementation after a test replaced it.
+  vi.mocked(itemFootprint).mockReset();
 });
 
 describe('SceneRenderer', () => {
@@ -182,6 +200,17 @@ describe('SceneRenderer', () => {
     expect(g?.rotation.y).toBeCloseTo(-Math.PI / 2, 10);
   });
 
+  it('poses an item group from its footprint alone: centre on the floor, turned by its angle', () => {
+    vi.mocked(itemFootprint).mockImplementation((i) =>
+      i.w === 64 ? { cx: 50, cy: 60, w: 64, d: 85, angle: 30 } : { cx: 20, cy: 150, w: 55, d: 26, angle: 0 });
+    sr.update(input());
+    const bed = groupOf('seed-bed');
+    expect(bed?.position.x).toBeCloseTo(50, 10);
+    expect(bed?.position.y).toBe(0);
+    expect(bed?.position.z).toBeCloseTo(60, 10);
+    expect(bed?.rotation.y).toBeCloseTo(-30 * Math.PI / 180, 10);
+  });
+
   it('reuses an item group when the item only moves', () => {
     const items = seedItems();
     sr.update(input({ items }));
@@ -221,12 +250,13 @@ describe('SceneRenderer', () => {
     expect(watch.disposed()).toBe(watch.total);
   });
 
-  it('rebuilds the room only when its dimensions change, disposing the old one with its floor texture', () => {
+  it('rebuilds the room only when its outline changes by value, disposing the old one with its floor texture', () => {
     sr.update(input());
     const first = roomGroup();
     expect(first).toBeDefined();
     if (!first) return;
-    sr.update(input());
+    // A fresh array with equal coordinates is the same room.
+    sr.update(input({ outline: roomOutline(ROOM).map((p) => ({ ...p })) }));
     expect(roomGroup()).toBe(first);
     const watch = watchDisposal(first);
     expect(watch.total).toBeGreaterThan(0);
@@ -237,12 +267,32 @@ describe('SceneRenderer', () => {
       }
     });
     expect(textures).toHaveLength(1);
-    sr.update(input({ room: { w: 150, l: 168, h: 96 } }));
+    sr.update(input({ outline: roomOutline({ w: 150, l: 168, h: 96 }) }));
     const second = roomGroup();
     expect(second).toBeDefined();
     expect(second).not.toBe(first);
     expect(lastScene().children).not.toContain(first);
     expect(watch.disposed()).toBe(watch.total);
+  });
+
+  it('rebuilds the room when only its height changes, disposing the old one', () => {
+    sr.update(input());
+    const first = roomGroup();
+    if (!first) throw new Error('no room group');
+    const watch = watchDisposal(first);
+    sr.update(input({ height: 110 }));
+    const second = roomGroup();
+    expect(second).toBeDefined();
+    expect(second).not.toBe(first);
+    expect(lastScene().children).not.toContain(first);
+    expect(watch.disposed()).toBe(watch.total);
+  });
+
+  it('builds the room walls from the outline: one per corner', () => {
+    sr.update(input({ outline: L_SHAPE }));
+    const meshes = roomGroup()?.children.filter((c) => c instanceof THREE.Mesh) ?? [];
+    // One floor and six walls.
+    expect(meshes).toHaveLength(7);
   });
 
   it('points the sun at the room centre and fits the shadow camera to the room', () => {
@@ -261,6 +311,24 @@ describe('SceneRenderer', () => {
     expect(sc.right).toBeCloseTo(r, 10);
     expect(sc.top).toBeCloseTo(r, 10);
     expect(sc.bottom).toBeCloseTo(-r, 10);
+  });
+
+  it('positions the sun and shadow camera from the outline bounding box', () => {
+    sr.update(input({ outline: L_SHAPE, height: 100 }));
+    const s = sun();
+    expect(s.position.x).toBeCloseTo(10, 10);
+    expect(s.position.y).toBeCloseTo(240, 10);
+    expect(s.position.z).toBeCloseTo(20 + 168 * 1.4, 10);
+    expect(s.target.position.x).toBeCloseTo(82, 10);
+    expect(s.target.position.y).toBeCloseTo(0, 10);
+    expect(s.target.position.z).toBeCloseTo(104, 10);
+    const r = Math.hypot(144, 168) / 2 + 24;
+    const sc = s.shadow.camera;
+    expect(sc.left).toBeCloseTo(-r, 10);
+    expect(sc.right).toBeCloseTo(r, 10);
+    expect(sc.top).toBeCloseTo(r, 10);
+    expect(sc.bottom).toBeCloseTo(-r, 10);
+    expect(sc.far).toBeCloseTo(Math.hypot(144, 168, 100) * 5, 10);
   });
 
   it('shows the selected item outline in the accent colour', () => {
@@ -285,7 +353,7 @@ describe('SceneRenderer', () => {
   });
 
   it('places the camera from the pose, mapping plan y to three z', () => {
-    const pose = computeCameraPose(roomBounds({ w: 144, l: 168, h: 96 }), roomHeight({ w: 144, l: 168, h: 96 }), { yaw: 0.3, pitch: 0.7, zoom: 1.3 }, PANE);
+    const pose = computeCameraPose(roomBounds(ROOM), roomHeight(ROOM), { yaw: 0.3, pitch: 0.7, zoom: 1.3 }, PANE);
     sr.update(input({ pose }));
     const cam = lastCamera();
     expect(cam.fov).toBeCloseTo(pose.fovDeg, 10);
@@ -325,10 +393,10 @@ describe('SceneRenderer', () => {
     sr.update(input());
     expect(fake.setPixelRatio).toHaveBeenCalledTimes(1);
     expect(fake.setSize).toHaveBeenCalledTimes(1);
-    sr.update(input({ width: 800 }));
+    sr.update(input({ viewWidth: 800 }));
     expect(fake.setSize).toHaveBeenCalledTimes(2);
     expect(fake.setSize).toHaveBeenLastCalledWith(800, 600, false);
-    sr.update(input({ width: 800, pixelRatio: 1 }));
+    sr.update(input({ viewWidth: 800, pixelRatio: 1 }));
     expect(fake.setPixelRatio).toHaveBeenCalledTimes(3);
     expect(fake.setPixelRatio).toHaveBeenLastCalledWith(1);
   });
