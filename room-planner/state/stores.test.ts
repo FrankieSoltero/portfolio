@@ -33,8 +33,12 @@ import {
   removeSelectedRoomThing,
   rotateSelected,
   rotateSelectedObstacle,
+  setWallLengthTo,
   slideOpeningTo,
   slideSelectedOpening,
+  slideSelectedWallToward,
+  slideWallTo,
+  startWallSlide,
   updateSelectedObstacle,
   updateSelectedOpening,
 } from './actions';
@@ -1730,5 +1734,201 @@ describe('door, window and obstacle actions', () => {
     expect(usePlanStore.getState().room.outline).toHaveLength(4);
     expect(useUiStore.getState().selectedCornerId).toBe('c2');
     expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['corner-has-openings']);
+  });
+});
+
+describe('wall slide and length actions', () => {
+  const c = (id: string, x: number, y: number): Corner => ({ id, x, y });
+  const R: Corner[] = [c('c1', 0, 0), c('c2', 144, 0), c('c3', 144, 168), c('c4', 0, 168)];
+  const T: Corner[] = [c('c1', 0, 0), c('m1', 48, 0), c('m2', 96, 0), c('c2', 144, 0), c('c3', 144, 168), c('c4', 0, 168)];
+  /** U with the step 6.4 in deep instead of 24 in. */
+  const U_SHALLOW: Corner[] = [
+    c('c1', 0, 0), c('x1', 48, 0), c('m1', 48, 6.4), c('x2', 96, 6.4), c('m2', 96, 0), c('c2', 144, 0), c('c3', 144, 168), c('c4', 0, 168),
+  ];
+  const Q: Corner[] = [c('q1', 0, 0), c('q2', 100, 0), c('q3', 150, 50), c('q4', 150, 150), c('q5', 0, 150)];
+
+  function withRoom(outline: Corner[], fields: Partial<PlanDocument> = {}): void {
+    const doc = createInitialDocument();
+    usePlanStore.getState().reset({ ...doc, room: { ...doc.room, outline }, ...fields });
+  }
+
+  function outline(): Corner[] {
+    return usePlanStore.getState().room.outline;
+  }
+
+  function corner(id: string): Corner | undefined {
+    return outline().find((k) => k.id === id);
+  }
+
+  /** Runs `edit` and asserts both stores are the very same state objects afterwards. */
+  function expectNothingChanges(edit: () => void): void {
+    const plan = usePlanStore.getState();
+    const ui = useUiStore.getState();
+    edit();
+    expect(usePlanStore.getState()).toBe(plan);
+    expect(useUiStore.getState()).toBe(ui);
+  }
+
+  beforeEach(() => {
+    useUiStore.getState().setMode('room');
+  });
+
+  it('a slide follows the snapshot, snapped to the grid, and returns to the start', () => {
+    withRoom(R);
+    const s = req(startWallSlide('c1') ?? undefined, 'a slide');
+    expect(s.wallId).toBe('c1');
+    expect(s.outline).toEqual(R);
+    expect(s.stops).toEqual([168]);
+    expect({ x: s.normal.x + 0, y: s.normal.y }).toEqual({ x: 0, y: 1 });
+    expect(s.ids.start).not.toBe(s.ids.end);
+    slideWallTo(s, 11.6);
+    expect(corner('c1')).toEqual(c('c1', 0, 12));
+    expect(corner('c2')).toEqual(c('c2', 144, 12));
+    slideWallTo(s, 3.2);
+    expect(corner('c1')).toEqual(c('c1', 0, 3));
+    expect(corner('c2')).toEqual(c('c2', 144, 3));
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    slideWallTo(s, 0.2);
+    expect(outline()).toEqual(R);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('a step made and removed within one slide keeps the slide ids', () => {
+    withRoom(T);
+    const s = req(startWallSlide('m1') ?? undefined, 'a slide');
+    slideWallTo(s, 24);
+    const stepped = outline();
+    expect(stepped).toHaveLength(8);
+    expect(stepped.map((k) => k.id)).toEqual(expect.arrayContaining([s.ids.start, s.ids.end]));
+    slideWallTo(s, 0);
+    expect(outline()).toEqual(T);
+    slideWallTo(s, 24);
+    expect(outline()).toEqual(stepped);
+  });
+
+  it('a refused step keeps the last result and shows the reason; a following slide clears it', () => {
+    withRoom(R);
+    const s = req(startWallSlide('c1') ?? undefined, 'a slide');
+    slideWallTo(s, 12);
+    const at12 = usePlanStore.getState().room;
+    expect(at12.outline).toEqual([c('c1', 0, 12), c('c2', 144, 12), c('c3', 144, 168), c('c4', 0, 168)]);
+    slideWallTo(s, 165);
+    expect(usePlanStore.getState().room).toBe(at12);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['short-wall']);
+    slideWallTo(s, 20);
+    expect(corner('c1')).toEqual(c('c1', 0, 20));
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('a stop is magnetic', () => {
+    withRoom(Q);
+    const s = req(startWallSlide('q1') ?? undefined, 'a slide');
+    slideWallTo(s, 49.7);
+    expect(outline()).toHaveLength(4);
+    expect(corner('q1')).toEqual(c('q1', 0, 50));
+  });
+
+  it('doors and windows follow a slide that makes a step', () => {
+    const door: Door = { id: 'd1', kind: 'door', wallId: 'm1', offset: 8, width: 32, height: 80, hinge: 'start', swing: 'in' };
+    const win: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c1', offset: 4, width: 36, sill: 24, height: 48 };
+    withRoom(T, { openings: [door, win] });
+    slideWallTo(req(startWallSlide('m1') ?? undefined, 'a slide'), 24);
+    expect(outline()).toHaveLength(8);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    expect(usePlanStore.getState().openings).toEqual([door, win]);
+  });
+
+  it('a door that cannot follow blocks the slide', () => {
+    const door: Door = { id: 'd1', kind: 'door', wallId: 'c2', offset: 100, width: 32, height: 80, hinge: 'start', swing: 'in' };
+    withRoom(R, { openings: [door] });
+    const before = usePlanStore.getState().room;
+    slideWallTo(req(startWallSlide('c1') ?? undefined, 'a slide'), 60);
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['opening-off-wall']);
+  });
+
+  it('a slide does not move furniture; an item left outside is reported', () => {
+    const chair: Item = {
+      id: 'chair', kind: 'chair', name: 'Chair', host: 'shop.example', sourceUrl: null, price: null,
+      w: 20, d: 16, h: 30, x: 72, y: 10, angle: 0, model: { tier: 'box', label: 'Box', assetUrl: null },
+    };
+    withRoom(R, { items: [chair] });
+    expect(findConflicts(usePlanStore.getState().items, usePlanStore.getState().room).chair).toBeUndefined();
+    slideWallTo(req(startWallSlide('c1') ?? undefined, 'a slide'), 40);
+    expect(corner('c1')).toEqual(c('c1', 0, 40));
+    expect(itemById('chair')).toEqual(chair);
+    expect(findConflicts(usePlanStore.getState().items, usePlanStore.getState().room).chair).toBe('Outside the room');
+  });
+
+  it('startWallSlide on an unknown wall gives null', () => {
+    withRoom(R);
+    expect(startWallSlide('zz')).toBeNull();
+  });
+
+  it('slideSelectedWallToward slides the selected wall by the step, either way', () => {
+    withRoom(R);
+    useUiStore.getState().selectWall('c1');
+    slideSelectedWallToward({ x: 0, y: 1 }, 1);
+    expect(corner('c1')).toEqual(c('c1', 0, 1));
+    expect(corner('c2')).toEqual(c('c2', 144, 1));
+    slideSelectedWallToward({ x: 0, y: -1 }, 12);
+    expect(corner('c1')).toEqual(c('c1', 0, -11));
+    expect(corner('c2')).toEqual(c('c2', 144, -11));
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+  });
+
+  it('slideSelectedWallToward along the wall changes nothing, the room problem included', () => {
+    withRoom(R);
+    useUiStore.getState().selectWall('c1');
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    expectNothingChanges(() => slideSelectedWallToward({ x: 1, y: 0 }, 1));
+  });
+
+  it('slideSelectedWallToward stops at a stop nearer than the step', () => {
+    withRoom(U_SHALLOW);
+    useUiStore.getState().selectWall('m1');
+    slideSelectedWallToward({ x: 0, y: -1 }, 12);
+    expect(outline()).toEqual(T);
+  });
+
+  it('slideSelectedWallToward with no wall, or an unknown wall, selected changes nothing', () => {
+    withRoom(R);
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    expectNothingChanges(() => slideSelectedWallToward({ x: 0, y: 1 }, 1));
+    useUiStore.getState().selectWall('zz');
+    expectNothingChanges(() => slideSelectedWallToward({ x: 0, y: 1 }, 1));
+  });
+
+  it('setWallLengthTo moves the end the length anchor names', () => {
+    withRoom(R);
+    useUiStore.getState().setLengthAnchor('start');
+    expect(setWallLengthTo('c1', 120)).toBe(true);
+    expect(outline()).toEqual([c('c1', 24, 0), c('c2', 144, 0), c('c3', 144, 168), c('c4', 24, 168)]);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('setWallLengthTo refuses a length too short or too large with its reason', () => {
+    withRoom(R);
+    const before = usePlanStore.getState().room;
+    expect(setWallLengthTo('c1', 5)).toBe(false);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['short-wall']);
+    expect(setWallLengthTo('c1', 721)).toBe(false);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['too-large']);
+    expect(usePlanStore.getState().room).toBe(before);
+  });
+
+  it('setWallLengthTo refuses a length above the room limit even where the room would fit', () => {
+    // a1 → a2 is a diagonal 565.69 in long; at 721 in its end lands at (509.83, 509.83), inside 600 × 600.
+    withRoom([c('a1', 0, 0), c('a2', 400, 400), c('a3', 600, 600), c('a4', 0, 600)]);
+    const before = usePlanStore.getState().room;
+    expect(setWallLengthTo('a1', 721)).toBe(false);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['too-large']);
+    expect(usePlanStore.getState().room).toBe(before);
+  });
+
+  it('setWallLengthTo on an unknown wall changes nothing, the room problem included', () => {
+    withRoom(R);
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    expectNothingChanges(() => expect(setWallLengthTo('zz', 100)).toBe(false));
   });
 });
