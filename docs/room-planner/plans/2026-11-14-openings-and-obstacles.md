@@ -226,6 +226,24 @@ and `room-planner/three/roomMesh.test.ts` for that move only. A test asserts tha
 file under `room-planner/view/` or `room-planner/domain/` imports from `three` or
 from `room-planner/three/`.
 
+## Amendment 6 (2026-11-14, controller ruling after Task 12)
+
+Findings from the task reviews and from the controller's look at the browser
+screenshots that are worth fixing are fixed in an inserted **Task 12b:
+Pre-verification fixes**, executed and reviewed before Task 13 so the live check runs
+on final code (risk tier: judgment). One commit, message
+`fix(room-planner): address review findings before the openings live check`. Items:
+
+| # | Finding | Required behaviour |
+|---|---|---|
+| 1 | On the plan a window's double line is nearly invisible against the wall | a window is drawn as a band across the wall in the plan's background colour, 6 px wide and centred on the wall line, with a thin line along each long edge and a thin line along the wall's centre |
+| 2 | In the Styled view a door opening shows the page background, which is almost the wall's colour | every door and window hole has a thin dark frame along its edges (jambs and head; a window also its sill), so it reads as an opening |
+| 3 | A secondary-button pointer down on a corner handle, opening handle or obstacle starts a drag | only the primary button starts a room-mode drag or selects through it |
+| 4 | The Blueprint underside rule also applies to raised furniture parts | the underside is drawn only for obstacle prisms |
+| 5 | The half-extent and snap helper is written twice (`geometry.ts`, `obstacles.ts`) | one exported helper in `geometry.ts`, used by both; no behaviour change |
+| 6 | The empty-label naming rule (`Box` / `Column`) is written twice | one exported function in `room-planner/domain/obstacles.ts`, used by the plan and the sidebar |
+| 7 | Missing tests | a door drawing on the left wall (leaf into the room, arc on the room side); the size fields re-seed when another door is selected; an opening drag on the bottom wall (right-to-left) |
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
