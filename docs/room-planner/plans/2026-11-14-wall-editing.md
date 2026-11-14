@@ -835,3 +835,15 @@ output.
    adds a `CONFIG` key adds the same key and value to that test's list, and changes nothing
    else in the file. Found by Task 1's implementer (the plan's file lists missed a pinned
    test again; same class as slice C's Amendment 3).
+2. **`slideWall` refuses a slide that turns the room inside out (Task 1, rule 4).** Found by
+   Task 1's reviewer: sliding a wall past the opposite side gave a candidate with negative
+   signed area, which `normaliseOutline` reversed and accepted, so wall ids named different
+   walls (`slideWall(R, 'c1', 174, IDS)` was accepted as a thin strip below the old bottom
+   wall). New rule, checked on the candidate before `settle`: if the candidate's signed
+   area is not positive, or the slid wall's own direction is reversed
+   (`(B' − A') · u ≤ 0`, with A' and B' the slid wall's ends in the candidate), the result
+   is `{ ok: false, problem: 'crossing' }`. The single-neighbour bump (`U`, `m1`, −36) is
+   unaffected. New behaviour rows: `slideWall(R, 'c1', 174, IDS)`, `slideWall(R, 'c1', 200, IDS)`
+   and `slideWall(Q, 'q1', 160, IDS)` → `crossing`; for the triangle `t1 (0,0)`, `t2 (120,0)`,
+   `t3 (60,100)`, `slideWall(TRI, 't1', 110, IDS)` → `crossing` and
+   `slideWall(TRI, 't1', 50, IDS)` → ok with `t1 (30,50)`, `t2 (90,50)`, `t3` unchanged.
