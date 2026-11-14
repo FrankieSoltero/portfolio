@@ -85,6 +85,23 @@ moderate findings from one advisory, GHSA-g3hv-75wg-m249, in `minimatch` under
 `typescript-eslint`. It is dev-only, has no fix inside the named range, and is listed
 in the pull request. `npm audit --omit=dev` is unaffected (`0 0 4`).
 
+## Amendment 3 (2026-11-13, controller ruling after the Task 7 review)
+
+Two changes to Task 7, both because the plan was wrong:
+
+- **"Try again" reloads the page.** The plan had the button call `reset()`. Under the
+  App Router, `next/dynamic` wraps the loader in one `React.lazy`, and React caches a
+  rejected import for good, so `reset()` re-throws the same load error and the screen
+  comes straight back. The owner approved a screen a visitor can retry from; a full
+  page reload (`window.location.reload()`) is what makes the retry work. Wherever Task
+  7 or Task 11 (row P10) says the button calls `reset`, read "reloads the page".
+- **No canonical link.** `alternates.canonical` is removed from the page metadata. It
+  was a plan addition beyond the spec, and it would have been the site's first
+  canonical link: `lib/site.ts` falls back to the per-deployment `VERCEL_URL` when
+  `NEXT_PUBLIC_SITE_URL` is unset, so the static page could ship a canonical pointing
+  at a deployment address. The site-URL fallback itself is a follow-up for the pull
+  request (it already affects the sitemap and the feed).
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
