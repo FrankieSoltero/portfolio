@@ -884,3 +884,20 @@ output.
    `border-radius: 3px;`, `cursor: text;`, and a rule `.room-wall-label:hover` with
    `border-color: var(--color-accent);`. Asserted on the stylesheet text like the other
    style rows. (The overlap with the overall dimension lines is what Task 10 fixes.)
+8. **Live-check fixes (Task 14, first run).** Three defects, fixed in one dispatch
+   (`.soltero/lean-sdd/2026-11-14-wall-editing/task-14-fix-brief.md` holds the contract):
+   (a) *A wall label covered its own wall.* On a vertical wall the label, centred 18 px
+   outside the wall, is wider than 36 px, so it lay over the middle of the wall's hit band:
+   pressing the middle of the right wall opened the label instead of dragging the wall
+   (row W3), and with a door or window tool armed the click never reached the wall (row
+   W12). The label is now placed by its near edge, `CONFIG.wallLabelOffsetPx` (12) outside
+   the wall, and labels ignore the pointer while a door or window tool is armed.
+   (b) *A door moved when a different wall was dragged.* An opening kept its offset from its
+   wall's start corner, so sliding the wall at that corner carried the door along the wall
+   (row W13: dragging the left wall 49 in moved the door on the top wall 49 in). An opening
+   now keeps its physical place: when its wall keeps its direction and the wall's start
+   corner moves along the wall, the offset changes by the opposite amount, and an opening
+   that would end up past the wall's end refuses the edit. This also applies to corner
+   drags along a wall, typed lengths and the rectangle width and length fields.
+   (c) The sidebar's visible "A typed length moves" label is hidden from assistive
+   technology, because the control already carries that name (Task 13 review).
