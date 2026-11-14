@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
-import type { CameraState, Room } from '../domain/types';
+import { roomBounds } from '../domain/shape';
+import type { Bounds, CameraState, Room } from '../domain/types';
 import { computeCameraPose, orbitCamera, zoomCamera } from './camera';
 import type { PaneRect } from './panes';
 
 const ROOM: Room = { w: 144, l: 168, h: 96 };
+const BOUNDS: Bounds = roomBounds(ROOM);
+const HEIGHT = 96;
 const DEFAULT_CAMERA: CameraState = { ...CONFIG.camera };
 
 function pane(over: Partial<PaneRect>): PaneRect {
@@ -12,27 +15,27 @@ function pane(over: Partial<PaneRect>): PaneRect {
 }
 
 describe('computeCameraPose', () => {
-  it('targets the room centre at 35% of the room height', () => {
-    const pose = computeCameraPose(ROOM, DEFAULT_CAMERA, pane({}));
+  it('targets the bounds centre at 35% of the room height', () => {
+    const pose = computeCameraPose(BOUNDS, HEIGHT, DEFAULT_CAMERA, pane({}));
     expect(pose.target[0]).toBeCloseTo(72, 10);
     expect(pose.target[1]).toBeCloseTo(84, 10);
     expect(pose.target[2]).toBeCloseTo(33.6, 10);
   });
 
   it('sits 1.55 room diagonals from the target at zoom 1', () => {
-    const pose = computeCameraPose(ROOM, DEFAULT_CAMERA, pane({}));
+    const pose = computeCameraPose(BOUNDS, HEIGHT, DEFAULT_CAMERA, pane({}));
     expect(pose.distance).toBeCloseTo(Math.hypot(144, 168, 96) * 1.55, 10);
     expect(pose.distance).toBeCloseTo(373.86, 2);
   });
 
   it('halves the distance at zoom 2', () => {
-    const near = computeCameraPose(ROOM, { ...DEFAULT_CAMERA, zoom: 2 }, pane({}));
-    const far = computeCameraPose(ROOM, DEFAULT_CAMERA, pane({}));
+    const near = computeCameraPose(BOUNDS, HEIGHT, { ...DEFAULT_CAMERA, zoom: 2 }, pane({}));
+    const far = computeCameraPose(BOUNDS, HEIGHT, DEFAULT_CAMERA, pane({}));
     expect(near.distance).toBeCloseTo(far.distance / 2, 10);
   });
 
   it('places the camera on the orbit sphere given by yaw and pitch', () => {
-    const pose = computeCameraPose(ROOM, DEFAULT_CAMERA, pane({}));
+    const pose = computeCameraPose(BOUNDS, HEIGHT, DEFAULT_CAMERA, pane({}));
     const { yaw, pitch } = DEFAULT_CAMERA;
     const d = pose.distance;
     expect(pose.position[0]).toBeCloseTo(72 + d * Math.cos(pitch) * Math.sin(yaw), 10);
@@ -41,19 +44,28 @@ describe('computeCameraPose', () => {
   });
 
   it('derives focal length and vertical FOV from the safe width and pane height', () => {
-    const pose = computeCameraPose(ROOM, DEFAULT_CAMERA, pane({ w: 1000, safeW: 608, h: 600 }));
+    const pose = computeCameraPose(BOUNDS, HEIGHT, DEFAULT_CAMERA, pane({ w: 1000, safeW: 608, h: 600 }));
     expect(pose.focalPx).toBeCloseTo(750, 10);
     expect(pose.fovDeg).toBeCloseTo(43.60, 2);
   });
 
   it('uses the full pane width for the aspect ratio', () => {
-    const pose = computeCameraPose(ROOM, DEFAULT_CAMERA, pane({ w: 1000, safeW: 608, h: 600 }));
+    const pose = computeCameraPose(BOUNDS, HEIGHT, DEFAULT_CAMERA, pane({ w: 1000, safeW: 608, h: 600 }));
     expect(pose.aspect).toBeCloseTo(1000 / 600, 10);
   });
 
   it('offsets the view by half the width the safe area gives up', () => {
-    expect(computeCameraPose(ROOM, DEFAULT_CAMERA, pane({ w: 1000, safeW: 608 })).viewOffsetX).toBeCloseTo(196, 10);
-    expect(computeCameraPose(ROOM, DEFAULT_CAMERA, pane({ w: 1000, safeW: 1000 })).viewOffsetX).toBe(0);
+    expect(computeCameraPose(BOUNDS, HEIGHT, DEFAULT_CAMERA, pane({ w: 1000, safeW: 608 })).viewOffsetX).toBeCloseTo(196, 10);
+    expect(computeCameraPose(BOUNDS, HEIGHT, DEFAULT_CAMERA, pane({ w: 1000, safeW: 1000 })).viewOffsetX).toBe(0);
+  });
+
+  it('centres on an offset outline and sizes the orbit from its bounds and the height', () => {
+    const offset: Bounds = { minX: 20, minY: 10, maxX: 120, maxY: 60, w: 100, l: 50 };
+    const pose = computeCameraPose(offset, HEIGHT, DEFAULT_CAMERA, pane({}));
+    expect(pose.target[0]).toBeCloseTo(70, 10);
+    expect(pose.target[1]).toBeCloseTo(35, 10);
+    expect(pose.target[2]).toBeCloseTo(33.6, 10);
+    expect(pose.distance).toBeCloseTo(Math.hypot(100, 50, 96) * 1.55, 10);
   });
 });
 

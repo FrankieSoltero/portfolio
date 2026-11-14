@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
+import { roomBounds, roomHeight } from '../../domain/shape';
 import { startDrag } from '../../hooks/startDrag';
 import { useConflicts } from '../../state/selectors';
 import { usePlanStore } from '../../state/planStore';
@@ -67,7 +68,7 @@ export default function ThreeView({ pane }: { pane: PaneRect }): JSX.Element {
     const frame = requestAnimationFrame(() => {
       renderer.update({
         room, items, selectedId, conflicts,
-        pose: computeCameraPose(room, camera, pane),
+        pose: computeCameraPose(roomBounds(room), roomHeight(room), camera, pane),
         width: pane.w,
         height: pane.h,
         pixelRatio: Math.min(CONFIG.maxPixelRatio, window.devicePixelRatio || 1),

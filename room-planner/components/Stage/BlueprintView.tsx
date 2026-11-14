@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
+import { roomBounds, roomHeight } from '../../domain/shape';
 import { startDrag } from '../../hooks/startDrag';
 import { useConflicts } from '../../state/selectors';
 import { usePlanStore } from '../../state/planStore';
@@ -56,7 +57,7 @@ export function BlueprintView({ pane }: { pane: PaneRect }): JSX.Element {
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       drawBlueprint(g, {
         room, items, selectedId, conflicts, units,
-        pose: computeCameraPose(room, camera, pane),
+        pose: computeCameraPose(roomBounds(room), roomHeight(room), camera, pane),
         width: pane.w, safeW: pane.safeW, height: pane.h, tokens,
       });
     });

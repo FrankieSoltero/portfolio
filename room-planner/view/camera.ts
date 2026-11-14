@@ -4,7 +4,7 @@
  * Ported from prototype lines 408 (orbit), 572–575 (pose) and 730 (zoom).
  */
 import { CONFIG } from '../config';
-import type { CameraState, Room } from '../domain/types';
+import type { Bounds, CameraState } from '../domain/types';
 import type { PaneRect } from './panes';
 
 /** A point in plan space: plan x, plan y, height. */
@@ -25,10 +25,13 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/** Camera pose for the room at the given orbit state, fitted to the 3D pane. */
-export function computeCameraPose(room: Room, camera: CameraState, pane: PaneRect): CameraPose {
-  const target: Vec3 = [room.w / 2, room.l / 2, room.h * TARGET_HEIGHT_FRACTION];
-  const distance = Math.hypot(room.w, room.l, room.h) * DISTANCE_PER_DIAGONAL / camera.zoom;
+/**
+ * Camera pose for a room whose outline has the given bounding box and whose ceiling is
+ * `height` inches, at the given orbit state, fitted to the 3D pane.
+ */
+export function computeCameraPose(bounds: Bounds, height: number, camera: CameraState, pane: PaneRect): CameraPose {
+  const target: Vec3 = [bounds.minX + bounds.w / 2, bounds.minY + bounds.l / 2, height * TARGET_HEIGHT_FRACTION];
+  const distance = Math.hypot(bounds.w, bounds.l, height) * DISTANCE_PER_DIAGONAL / camera.zoom;
   const cp = Math.cos(camera.pitch);
   const position: Vec3 = [
     target[0] + distance * cp * Math.sin(camera.yaw),

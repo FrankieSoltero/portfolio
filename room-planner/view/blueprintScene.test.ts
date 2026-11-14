@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument, PARTS } from '../domain/catalog';
 import { mapPart } from '../domain/geometry';
+import { roomBounds, roomHeight } from '../domain/shape';
 import type { Item } from '../domain/types';
 import { computeCameraPose } from './camera';
 import type { Vec3 } from './camera';
@@ -112,7 +113,7 @@ describe('sortBoxes', () => {
 
 describe('makeProjector', () => {
   const pane: PaneRect = { left: 0, top: 0, w: 1000, h: 600, z: 1, inset: false, divider: false, safeW: 608 };
-  const pose = computeCameraPose({ w: 144, l: 168, h: 96 }, { ...CONFIG.camera }, pane);
+  const pose = computeCameraPose(roomBounds({ w: 144, l: 168, h: 96 }), roomHeight({ w: 144, l: 168, h: 96 }), { ...CONFIG.camera }, pane);
 
   it('maps the camera target to the centre of the safe area', () => {
     const project = makeProjector(pose, pane.safeW, pane.h);

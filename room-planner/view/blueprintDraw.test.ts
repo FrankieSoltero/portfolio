@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
+import { roomBounds, roomHeight } from '../domain/shape';
 import type { CameraState, Conflicts, Item, Units } from '../domain/types';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from './camera';
@@ -109,7 +110,7 @@ function input(over: Partial<{ items: readonly Item[]; selectedId: string | null
     selectedId: over.selectedId ?? null,
     conflicts: over.conflicts ?? {},
     units: over.units ?? 'ft',
-    pose: computeCameraPose(doc.room, camera, PANE),
+    pose: computeCameraPose(roomBounds(doc.room), roomHeight(doc.room), camera, PANE),
     width: PANE.w,
     safeW: PANE.safeW,
     height: PANE.h,

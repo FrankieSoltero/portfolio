@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
+import { roomBounds, roomHeight } from '../domain/shape';
 import type { Conflicts, Item, Room } from '../domain/types';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from '../view/camera';
@@ -58,7 +59,7 @@ function input(over: Partial<SceneInput> = {}): SceneInput {
     items: seedItems(),
     selectedId: null,
     conflicts: {},
-    pose: computeCameraPose(room, { ...CONFIG.camera }, PANE),
+    pose: computeCameraPose(roomBounds(room), roomHeight(room), { ...CONFIG.camera }, PANE),
     width: PANE.w,
     height: PANE.h,
     pixelRatio: 2,
@@ -284,7 +285,7 @@ describe('SceneRenderer', () => {
   });
 
   it('places the camera from the pose, mapping plan y to three z', () => {
-    const pose = computeCameraPose({ w: 144, l: 168, h: 96 }, { yaw: 0.3, pitch: 0.7, zoom: 1.3 }, PANE);
+    const pose = computeCameraPose(roomBounds({ w: 144, l: 168, h: 96 }), roomHeight({ w: 144, l: 168, h: 96 }), { yaw: 0.3, pitch: 0.7, zoom: 1.3 }, PANE);
     sr.update(input({ pose }));
     const cam = lastCamera();
     expect(cam.fov).toBeCloseTo(pose.fovDeg, 10);

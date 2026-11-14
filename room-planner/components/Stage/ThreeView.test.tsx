@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { findConflicts } from '../../domain/conflicts';
+import { roomBounds, roomHeight } from '../../domain/shape';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { readTokens } from '../../styles/tokens';
@@ -122,7 +123,7 @@ describe('ThreeView', () => {
     expect(input.items).toBe(plan.items);
     expect(input.selectedId).toBeNull();
     expect(input.conflicts).toEqual(findConflicts(plan.items, plan.room));
-    expect(input.pose).toEqual(computeCameraPose(plan.room, ui.camera, PANE));
+    expect(input.pose).toEqual(computeCameraPose(roomBounds(plan.room), roomHeight(plan.room), ui.camera, PANE));
     expect(input.width).toBe(1000);
     expect(input.height).toBe(600);
   });
