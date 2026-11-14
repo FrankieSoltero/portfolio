@@ -1162,3 +1162,64 @@ describe('wall band styles (stage.css)', () => {
     expect(css).toMatch(/\n\.room-edit-layer\.is-placing \.room-wall-hit \{[^}]*cursor: crosshair;/);
   });
 });
+
+describe('RoomEditLayer: a press starts its drag after focus has moved', () => {
+  /** The length of wall `id` in the stored outline. */
+  function lengthOf(id: string): number {
+    const wall = wallsOf(usePlanStore.getState().room.outline).find((w) => w.id === id);
+    if (!wall) throw new Error(`no wall ${id}`);
+    return wall.length;
+  }
+
+  /** Opens wall `id`'s on-plan length field and types `text` (feet, the default units) without Enter. */
+  async function typeLengthWithoutEnter(id: string, text: string): Promise<void> {
+    const user = userEvent.setup();
+    const label = document.querySelector<HTMLElement>(`button.room-wall-label[data-wall-label-id="${id}"]`);
+    if (!label) throw new Error(`no label for wall ${id}`);
+    await user.click(label);
+    expect(document.querySelector('div.room-wall-editor')).not.toBeNull();
+    await user.keyboard(text);
+  }
+
+  afterEach(() => {
+    fireEvent.pointerUp(window);
+  });
+
+  it('a length typed into wall 1\'s field survives a drag of wall 4: the drag adds to it', async () => {
+    renderLayer();
+    expect(usePlanStore.getState().units).toBe('ft');
+    expect(useUiStore.getState().lengthAnchor).toBe('end');
+    // 11 ft is 132 in: 12 in shorter than 144.
+    await typeLengthWithoutEnter('c1', '11');
+    const s = layout.scale;
+    const p = toPane({ x: 0, y: 84 }, layout);
+    fireEvent.pointerDown(wallHit('c4'), { clientX: p.x, clientY: p.y, button: 0 });
+    // Wall 4's inward normal is +x: 6 in into the room.
+    fireEvent.pointerMove(window, { clientX: p.x + 6 * s + 0.4, clientY: p.y });
+    fireEvent.pointerUp(window);
+    expect(lengthOf('c1')).toBeCloseTo(144 - 12 - 6, 6);
+  });
+
+  it('a length typed into wall 2\'s field survives a drag of Corner 3', async () => {
+    renderLayer();
+    // 13 ft is 156 in: 12 in shorter than 168; the end anchor moves Corner 3 up to y 156.
+    await typeLengthWithoutEnter('c2', '13');
+    const p = toPane({ x: 144, y: 168 }, layout);
+    fireEvent.pointerDown(handle(3), { clientX: p.x, clientY: p.y, button: 0 });
+    // A move of a few pixels, angle snapping on (no Alt), as the component drags.
+    fireEvent.pointerMove(window, { clientX: p.x + 2, clientY: p.y + 3 });
+    fireEvent.pointerUp(window);
+    const y = corner('c3')?.y ?? Number.NaN;
+    expect(Math.abs(y - 156)).toBeLessThanOrEqual(2);
+  });
+
+  it('a press on the band of the wall whose field is open closes the field and applies the length first', async () => {
+    renderLayer();
+    await typeLengthWithoutEnter('c1', '11');
+    const p = toPane({ x: 72, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    expect(document.querySelector('div.room-wall-editor')).toBeNull();
+    expect(lengthOf('c1')).toBeCloseTo(132, 6);
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+  });
+});

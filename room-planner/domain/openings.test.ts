@@ -653,41 +653,41 @@ describe('rehomeOpenings when a wall\'s start slides along the wall', () => {
   const rightAt120 = outline(['c1', 0, 0], ['c2', 120, 0], ['c3', 120, 168], ['c4', 0, 168]);
 
   it('keeps a door in its place in the room when the neighbouring wall slides along its wall', () => {
-    expect(okOpenings(rehomeOpenings(R, leftAt(24), [door('c1', 56)]))).toEqual([door('c1', 32)]);
+    expect(okOpenings(rehomeOpenings(R, leftAt(24), [door('c1', 56)], true))).toEqual([door('c1', 32)]);
   });
 
   it('refuses the edit when the neighbouring wall slides past the door', () => {
-    expect(rehomeOpenings(R, leftAt(60), [door('c1', 56)])).toEqual({ ok: false, problem: 'opening-off-wall' });
+    expect(rehomeOpenings(R, leftAt(60), [door('c1', 56)], true)).toEqual({ ok: false, problem: 'opening-off-wall' });
   });
 
   it('refuses the edit when the neighbouring wall slides onto a door near the wall\'s old start', () => {
     // The door would start 14 in before the wall's new start (10 − 24).
-    expect(rehomeOpenings(R, leftAt(24), [door('c1', 10)])).toEqual({ ok: false, problem: 'opening-off-wall' });
+    expect(rehomeOpenings(R, leftAt(24), [door('c1', 10)], true)).toEqual({ ok: false, problem: 'opening-off-wall' });
   });
 
   it('keeps a door on the slid wall itself unchanged', () => {
     const after = outline(['c1', 0, 12], ['c2', 144, 12], ['c3', 144, 168], ['c4', 0, 168]);
-    expect(okOpenings(rehomeOpenings(R, after, [door('c1', 56)]))).toEqual([door('c1', 56)]);
+    expect(okOpenings(rehomeOpenings(R, after, [door('c1', 56)], true))).toEqual([door('c1', 56)]);
   });
 
   it('moves the offset by the start\'s shift along a diagonal wall, and leaves a wall whose start moved across it', () => {
     const after = outline(['q1', 0, 10], ['q2', 110, 10], ['q3', 150, 50], ['q4', 150, 150], ['q5', 0, 150]);
     const onQ2 = door('q2', 20);
     const onQ1 = door('q1', 10, 'd2');
-    expect(okOpenings(rehomeOpenings(Q, after, [onQ2, onQ1]))).toEqual([{ ...onQ2, offset: 5.86 }, onQ1]);
+    expect(okOpenings(rehomeOpenings(Q, after, [onQ2, onQ1], true))).toEqual([{ ...onQ2, offset: 5.86 }, onQ1]);
   });
 
   it('keeps a door unchanged when only its wall\'s end moved', () => {
-    expect(okOpenings(rehomeOpenings(R, rightAt120, [door('c1', 56)]))).toEqual([door('c1', 56)]);
+    expect(okOpenings(rehomeOpenings(R, rightAt120, [door('c1', 56)], true))).toEqual([door('c1', 56)]);
   });
 
   it('keeps a window unchanged when its wall\'s start moved across the wall, not along it', () => {
     const window = win('w', 'c2', 60, 36);
-    expect(okOpenings(rehomeOpenings(R, rightAt120, [window]))).toEqual([window]);
+    expect(okOpenings(rehomeOpenings(R, rightAt120, [window], true))).toEqual([window]);
   });
 
   it('keeps a door on the bottom wall in its place after a width change at the wall\'s start', () => {
-    expect(okOpenings(rehomeOpenings(R, rightAt120, [door('c3', 60)]))).toEqual([door('c3', 36)]);
+    expect(okOpenings(rehomeOpenings(R, rightAt120, [door('c3', 60)], true))).toEqual([door('c3', 36)]);
   });
 
   it('leaves the offset alone when the wall\'s direction changes', () => {
@@ -696,13 +696,13 @@ describe('rehomeOpenings when a wall\'s start slides along the wall', () => {
   });
 
   it('leaves the opening exactly unchanged when the start moves less than 0.005 along the wall', () => {
-    expect(okOpenings(rehomeOpenings(R, leftAt(0.004), [door('c1', 56)]))).toEqual([door('c1', 56)]);
+    expect(okOpenings(rehomeOpenings(R, leftAt(0.004), [door('c1', 56)], true))).toEqual([door('c1', 56)]);
   });
 
   it('places an opening by its shifted offset when a corner is added on a slid wall', () => {
     const after = outline(['c1', 24, 0], ['n1', 84, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 24, 168]);
     const window = win('w', 'c1', 100, 36);
-    expect(okOpenings(rehomeOpenings(R, after, [window]))).toEqual([{ ...window, wallId: 'n1', offset: 16 }]);
+    expect(okOpenings(rehomeOpenings(R, after, [window], true))).toEqual([{ ...window, wallId: 'n1', offset: 16 }]);
   });
 
   it('never mutates its inputs', () => {
@@ -711,9 +711,18 @@ describe('rehomeOpenings when a wall\'s start slides along the wall', () => {
     const openings = frozen([door('c1', 56), door('c3', 60, 'd2')]);
     const copies = structuredClone([before, after, openings]);
 
-    expect(okOpenings(rehomeOpenings(before, after, openings))).toEqual([door('c1', 32), door('c3', 60, 'd2')]);
+    expect(okOpenings(rehomeOpenings(before, after, openings, true))).toEqual([door('c1', 32), door('c3', 60, 'd2')]);
 
     expect([before, after, openings]).toEqual(copies);
+  });
+
+  it('keeps the offset from the wall\'s start when the edit does not ask to keep openings in place', () => {
+    expect(rehomeOpenings(R, leftAt(24), [door('c1', 56)])).toEqual({ ok: true, openings: [door('c1', 56)] });
+    expect(rehomeOpenings(R, leftAt(24), [door('c1', 56)], false)).toEqual({ ok: true, openings: [door('c1', 56)] });
+  });
+
+  it('keeps the door in its place in the room when the edit asks for it', () => {
+    expect(rehomeOpenings(R, leftAt(24), [door('c1', 56)], true)).toEqual({ ok: true, openings: [door('c1', 32)] });
   });
 });
 

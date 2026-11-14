@@ -554,7 +554,7 @@ limits" and "Open questions for the owner (slice C)" in `docs/room-planner/READM
 
 ## 2026-11-14 — Wall editing
 
-Sixteen entries. The first five are plan defects found while building (fixed by plan Amendments 1 to 6, or by a ruling in Task 7). Entries 6 to 8 were found in review, 9 to 11 by looking at the running app, and 12 to 16 in the live check (Task 14). Items left as they are are listed under "Known limits" in `docs/room-planner/README.md`.
+Seventeen entries. The first five are plan defects found while building (fixed by plan Amendments 1 to 6, or by a ruling in Task 7). Entries 6 to 8 were found in review, 9 to 11 by looking at the running app, 12 to 16 in the live check (Task 14), and 17 in the final whole-branch review. Items left as they are are listed under "Known limits" in `docs/room-planner/README.md`.
 
 ### Pinned tests were missing from file lists, three times (plan Amendments 1, 5 and 6)
 - **Date:** 2026-11-14
@@ -581,7 +581,7 @@ Sixteen entries. The first five are plan defects found while building (fixed by 
 - **Date:** 2026-11-14
 - **What happened:** When added corners turned a wall, an opening was kept on the wall id even if that wall now ran another way. An opening on a wall missing from the earlier outline threw a `TypeError` where the old code returned a result. Neither is reachable from today's edits. Task 2's reviewer found both.
 - **Root cause:** The rule covered the cases the slice produces and left the others undefined.
-- **Fix:** Plan Amendment 4 added the direction guard and made a missing wall return a refusal.
+- **Fix:** Plan Amendment 4 added the direction guard, and an opening on an unknown wall is left unchanged for validation to judge.
 - **How to avoid:** A rule that takes two outlines should say what it does for every pair, including ones no current edit produces.
 
 ### The controller suggested a fix that could not work in a browser (Task 7)
@@ -644,7 +644,7 @@ Sixteen entries. The first five are plan defects found while building (fixed by 
 - **Date:** 2026-11-14
 - **What happened:** Openings keep an offset from their wall's start corner, so sliding the neighbouring wall at that corner carried the door along its wall.
 - **Root cause:** The spec did not say what should happen and the plan did not ask.
-- **Fix:** An opening keeps its place in the room when its wall's start slides along the wall. An edit that would push it past the wall's end is refused. This also changes corner drags along a wall, typed lengths and the rectangle width and length fields (see "Changed behaviour" in `docs/room-planner/README.md`).
+- **Fix:** An opening keeps its place in the room when its wall's start slides along the wall. An edit that would push it past the wall's end is refused. This also changes corner drags along a wall, typed lengths and the rectangle width and length fields (see "Changed behaviour" in `docs/room-planner/README.md`). The whole-branch review then found the first fix made corner drags depend on their path; the rule now applies only to edits that ask for it (plan Amendment 10).
 - **How to avoid:** For every edit that moves a point other things are measured from, the plan must state what those things do.
 
 ### The first label fix still overlapped the overall length dimension in the inset pane, and reached the hit band on diagonal walls (plan Amendment 9)
@@ -664,6 +664,13 @@ Sixteen entries. The first five are plan defects found while building (fixed by 
 ### The first live-check run was not on final code
 - **Date:** 2026-11-14
 - **What happened:** Rows W19 to W22 were run only after two fix rounds, and the whole table was re-run on the last commit.
-- **Root cause:** The first run happened before the fixes it prompted, as in slice B and slice C.
+- **Root cause:** The first run happened before the fixes it prompted, as slice B's check did.
 - **Fix:** The recorded run is run 3, on commit `c6d5f3b`, with nothing under `room-planner/` changed after it.
 - **How to avoid:** The recorded run is always the one on the final commit.
+
+### A typed length was lost when the field was left by dragging something (final review)
+- **Date:** 2026-11-14
+- **What happened:** With an on-plan length field open and a length typed but not applied, pressing another wall, a corner or a door and dragging it undid the typed length. The drag took its starting values before focus moved; moving focus applied the open field; the first drag move then recomputed from the older starting values and undid it.
+- **Root cause:** Two steps, each correct alone, ran in the wrong order.
+- **Fix:** A press moves focus first, then reads the drag's starting values (plan Amendment 10). A press on the wall whose own field is open leaves the field first.
+- **How to avoid:** When an action can trigger another edit as a side effect, read state after the side effect.

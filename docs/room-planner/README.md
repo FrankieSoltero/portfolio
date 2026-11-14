@@ -26,8 +26,9 @@ lived in `src/`. That folder is `room-planner/` in this repository.
     obstacles do not move with a wall; anything left outside the room is flagged as usual.
   - **Each wall shows its length** on the plan, outside the room, in the current units. A click
     on it (or Enter on it, as each is a button in the tab order) opens a field with the length:
-    Enter applies it and Escape cancels. A refused length leaves the field open with the reason.
-    Leaving the field also applies it.
+    Enter applies it and Escape cancels. A length refused on Enter leaves the field open with the
+    reason. Leaving the field also applies it and always closes the field; a refused length then
+    changes nothing and the reason is shown.
   - **Which end moves.** A typed length keeps every angle. A choice of three arrows along the wall
     (start, both ends, end; the default is the end) says which end moves. It is beside the
     on-plan field and above the sidebar wall list, is kept for the session only and is not saved
@@ -69,15 +70,17 @@ lived in `src/`. That folder is `room-planner/` in this repository.
     label drawn on the plan is not numbered.
   - Openings must fit inside their wall and must not overlap. A corner drag, wall drag or typed
     wall length that would break this stops at the last valid position and the sidebar says why.
-    An opening keeps its place in the room when the start of its wall slides along the wall (a
-    wall drag, a corner drag along a wall, a typed length, the rectangle width and length fields),
-    so a door does not travel when a neighbouring wall is dragged. An edit that would leave one
-    past its wall's end is refused: "That would leave a door or window without room on its wall."
-    Deleting a corner whose walls carry an opening is refused, unless the corner lies in a
-    straight run (the wall keeps its direction). A corner added to a wall keeps each opening on the
-    part it lies on, and cannot be added inside an opening. If an edit reverses the outline, each
-    opening stays on its physical wall. A starting shape replaces every wall, so it is refused
-    while the room has a door or window.
+    An opening keeps its place in the room when the start of its wall slides along the wall in a
+    wall drag, a typed wall length or the rectangle width and length fields, so a door does not
+    travel when a neighbouring wall is dragged. A corner drag keeps a door's distance from its
+    wall's start corner (as before). An edit that would leave one past its wall's end is refused:
+    "That would leave a door or window without room on its wall." Deleting a corner is refused
+    while its own wall (the one that starts at it) has a door or window, or while the wall before
+    it has one and would change direction; a corner in a straight run can be deleted with a door on
+    the wall before it. A corner added to a wall keeps each opening on the part it lies on, and
+    cannot be added inside an opening. If an edit reverses the outline, each opening stays on its
+    physical wall. A starting shape replaces every wall, so it is refused while the room has a door
+    or window.
   - In the Styled 3D view the walls have the door and window holes cut out. Each hole has a thin
     dark frame, and windows have a glass pane. The Blueprint view cuts the same holes, draws
     obstacles, and draws a raised obstacle's underside when the camera is below it.
@@ -118,8 +121,6 @@ Known limits of wall editing (slice D):
   exactly at its edge.
 - In Safari a click on another wall's label discards an open length field's text; in other
   browsers it applies it first.
-- While an on-plan length field is kept open by a refused length and focus is elsewhere, Escape
-  clears the selection and leaves the field open.
 - A neighbouring wall that is almost, but not quite, in line with the dragged wall (more than
   about 0.3 degrees off) makes its corner travel far for a small drag; the size limits refuse
   the result.
@@ -133,15 +134,15 @@ Changed behaviour (slice D, wall editing). These are on purpose:
 - Removing a corner that lies in a straight run is allowed with a door on the wall before it,
   because the wall keeps its direction. It used to be refused.
 - Doors and windows keep their place in the room when the start of their wall moves along the
-  wall: wall drags, corner drags along a wall, typed lengths and the rectangle width and length
-  fields. Before, they kept their offset from the wall's start and travelled with it. An edit
-  that would leave one past its wall's end is refused with "That would leave a door or window
-  without room on its wall."
+  wall in wall drags, typed wall lengths and the rectangle width and length fields. Before, they
+  kept their offset from the wall's start and travelled with it. A corner drag keeps a door's
+  distance from its wall's start corner (as before). An edit that would leave one past its wall's
+  end is refused with "That would leave a door or window without room on its wall."
 - A plain click on a wall selects it. It used to add a corner; that is now a double-click (or the
   `+` button in the sidebar).
 - In room mode the overall dimension lines sit further from the room.
 
-The checks on the final code: `npm run check` passes with 54 test files and 2045 tests, and the
+The checks on the final code: `npm run check` passes with 54 test files and 2061 tests, and the
 build shows `/room-planner` at 105 kB First Load JS.
 
 Open questions for the owner (slice C):

@@ -39,14 +39,15 @@ interface WallLengthEditorProps {
 /**
  * The editor that takes a wall label's place: a group named `Wall <n> length` holding a number input
  * in the room units (focused, its text selected, on opening) and three which-end radios. Nothing is
- * applied while typing. Enter, or focus leaving the group, applies the typed length with
- * setWallLengthTo: an accepted or unchanged length closes the editor (Enter then returns focus to the
- * label); a refused one keeps it open with the typed text. Text that does not parse keeps the editor
- * open on Enter and closes it on leaving, applying nothing either way. A mouse press anywhere in the
- * group but the input keeps focus where it is, so pressing a radio or the editor's background never
- * counts as leaving (Safari does not focus a pressed button at all). Escape closes it without
- * applying and goes no further. Arrow keys on the radios move the choice and go no further, so they
- * never slide the wall. User text is only ever parsed to a number.
+ * applied while typing. Enter applies the typed length with setWallLengthTo: an accepted or unchanged
+ * length closes the editor and returns focus to the label; a refused one keeps it open with the typed
+ * text. Focus leaving the group applies a readable, changed length the same way and always closes the
+ * editor: a refused length changes nothing and leaves its reason as the room problem. Text that does
+ * not parse keeps the editor open on Enter and closes it on leaving, applying nothing either way. A
+ * mouse press anywhere in the group but the input keeps focus where it is, so pressing a radio or the
+ * editor's background never counts as leaving (Safari does not focus a pressed button at all). Escape
+ * closes it without applying and goes no further. Arrow keys on the radios move the choice and go no
+ * further, so they never slide the wall. User text is only ever parsed to a number.
  */
 function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: WallLengthEditorProps): JSX.Element {
   const lengthAnchor = useUiStore((s) => s.lengthAnchor);
@@ -77,15 +78,19 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
   const angle = (Math.atan2(u.y, u.x) * 180) / Math.PI;
 
   /**
-   * Applies the draft and closes unless the length was refused. Unreadable text applies nothing: on
-   * Enter (`leaving` false) the editor stays open, on leaving it closes.
+   * Applies the draft. On Enter (`leaving` false) the editor closes, focus returning to the label,
+   * only when the length was accepted or unchanged; unreadable text or a refused length keeps it
+   * open. On leaving it always closes: a readable, changed length is applied first (a refused one
+   * changes nothing and sets the room problem), unreadable text applies nothing.
    */
   function apply(leaving: boolean): void {
     const inches = parseLengthInput(draft, units);
-    if (inches === null) {
-      if (leaving) onClose(false);
-    } else if (Math.abs(inches - wall.length) <= UNCHANGED_TOLERANCE_IN || setWallLengthTo(wall.id, inches)) {
-      onClose(!leaving);
+    const changed = inches !== null && Math.abs(inches - wall.length) > UNCHANGED_TOLERANCE_IN;
+    if (leaving) {
+      if (changed) setWallLengthTo(wall.id, inches);
+      onClose(false);
+    } else if (inches !== null && (!changed || setWallLengthTo(wall.id, inches))) {
+      onClose(true);
     }
   }
 
@@ -203,10 +208,11 @@ function uprightAngle(u: { x: number; y: number }): number {
  * selects its wall (a clicked button is not focused in every browser) and replaces the label with the
  * wall's length editor (WallLengthEditor). One editor is open at a time. Where a clicked button takes
  * focus, a real click on another label first moves focus out of the open editor, which applies its
- * draft as leaving does, and opening the new editor then closes the first without applying anything
- * more. Where it does not (Safari), focus stays in the open editor, so opening the new one closes the
- * first and its draft is discarded, not applied. After the labels it draws the
- * selected wall's moving-end marks (MovingEndMarks), if a wall of the outline is selected.
+ * draft and closes it as leaving does, and opening the new editor then closes the first (if still
+ * open) without applying anything more. Where it does not (Safari), focus stays in the open editor,
+ * so opening the new one closes the first and its draft is discarded, not applied. After the labels
+ * it draws the selected wall's moving-end marks (MovingEndMarks), if a wall of the outline is
+ * selected.
  */
 export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Element {
   const outline = usePlanStore((s) => s.room.outline);
@@ -266,6 +272,7 @@ export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Elemen
             data-wall-label-id={wall.id}
             aria-label={`Wall ${wall.index + 1}, ${text}`}
             aria-pressed={wall.id === selectedWallId}
+            title="Click to type a length. Arrow keys move the wall."
             style={{
               left: mid.x - out * n.x,
               top: mid.y - out * n.y,

@@ -188,6 +188,12 @@ describe('WallLengthLabels', () => {
     fireEvent.pointerDown(label('c1'), { button: 0 });
     expect(onParent).not.toHaveBeenCalled();
   });
+
+  it('every label carries a title saying what a click and the arrow keys do', () => {
+    render(<WallLengthLabels layout={LAYOUT} />);
+    expect(labels()).toHaveLength(4);
+    for (const el of labels()) expect(el).toHaveAttribute('title', 'Click to type a length. Arrow keys move the wall.');
+  });
 });
 
 describe('WallLengthLabels: moving-end marks', () => {
@@ -439,14 +445,13 @@ describe('WallLengthLabels: on-plan length editor', () => {
     expect(screen.getByRole('button', { name: 'Outside' })).toHaveFocus();
   });
 
-  it('focus leaving with a refused length keeps the editor open with the typed text', async () => {
+  it('focus leaving with a refused length closes the editor, changes nothing and shows the reason', async () => {
     const user = await openOn('c1');
     await user.keyboard('0.1');
     await user.click(screen.getByRole('button', { name: 'Outside' }));
     expect(setWallLengthTo).toHaveBeenCalledTimes(1);
     expect(corners()).toEqual(R.outline);
-    expect(editorEl()).not.toBeNull();
-    expect(lengthInput()).toHaveValue(0.1);
+    expect(editorEl()).toBeNull();
     expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['short-wall']);
   });
 

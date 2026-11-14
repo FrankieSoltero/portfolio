@@ -44,8 +44,9 @@ export interface PlanState extends PlanDocument {
   /** Sets the ceiling height. Items are deliberately not re-checked here; conflicts report them. */
   setRoomHeight(inches: number): void;
   /**
-   * Stores `result.outline` with the doors and windows carried onto their walls (rehomeOpenings),
-   * both in one update, and returns null. A refused `result`, or an outline the openings cannot
+   * Stores `result.outline` with the doors and windows carried onto their walls (rehomeOpenings,
+   * keeping them in place in the room when `result.keepOpeningsInPlace` is true), both in one
+   * update, and returns null. A refused `result`, or an outline the openings cannot
    * follow, changes nothing and returns its problem. Corners equal to the stored ones (same ids,
    * coordinates and order) are accepted without a write. Items and obstacles are not moved;
    * conflicts report any left outside.
@@ -198,7 +199,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
     if (!result.ok) return result.problem;
     const { room, openings } = get();
     if (sameOutline(room.outline, result.outline)) return null;
-    const carried = rehomeOpenings(room.outline, result.outline, openings);
+    const carried = rehomeOpenings(room.outline, result.outline, openings, result.keepOpeningsInPlace === true);
     if (!carried.ok) return carried.problem;
     // One write, so subscribers never see the new walls with the old openings. A value-equal list
     // keeps its reference, so reference comparisons (autosave, memoised views) see no change.

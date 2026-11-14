@@ -1943,4 +1943,46 @@ describe('wall slide and length actions', () => {
     useUiStore.getState().setRoomProblem('Walls cannot cross.');
     expectNothingChanges(() => expect(setWallLengthTo('zz', 100)).toBe(false));
   });
+
+  describe('which edits keep a door in its place in the room', () => {
+    const door = (wallId: string, offset: number): Door => ({ id: 'd1', kind: 'door', wallId, offset, width: 32, height: 80, hinge: 'start', swing: 'in' });
+    const NO_SNAP = { angleSnap: false, toleranceIn: 2 };
+
+    it('a wall slide keeps a door on the neighbouring wall in place', () => {
+      withRoom(R, { openings: [door('c1', 56)] });
+      slideWallTo(req(startWallSlide('c4') ?? undefined, 'a slide'), 24);
+      expect(corner('c1')).toEqual(c('c1', 24, 0));
+      expect(corner('c4')).toEqual(c('c4', 24, 168));
+      expect(usePlanStore.getState().openings).toEqual([door('c1', 32)]);
+    });
+
+    it('a typed length keeps it in place', () => {
+      withRoom(R, { openings: [door('c1', 56)] });
+      useUiStore.getState().setLengthAnchor('start');
+      expect(setWallLengthTo('c1', 120)).toBe(true);
+      expect(usePlanStore.getState().openings).toEqual([door('c1', 32)]);
+    });
+
+    it('the rectangle width field keeps it in place', () => {
+      withRoom(R, { openings: [door('c3', 60)] });
+      expect(usePlanStore.getState().applyOutline(setRectangleSize(outline(), { w: 120 }))).toBeNull();
+      expect(usePlanStore.getState().openings).toEqual([door('c3', 36)]);
+    });
+
+    it('a corner move keeps the door\'s offset from its wall\'s start', () => {
+      withRoom(R, { openings: [door('c1', 56)] });
+      expect(usePlanStore.getState().applyOutline(moveCorner(outline(), 'c1', { x: 10, y: 0 }))).toBeNull();
+      expect(corner('c1')).toEqual(c('c1', 10, 0));
+      expect(usePlanStore.getState().openings).toEqual([door('c1', 56)]);
+    });
+
+    it('a corner dragged away and back leaves the door where it was', () => {
+      withRoom(R, { openings: [door('c1', 56)] });
+      dragCornerTo('c1', { x: 10, y: 0 }, NO_SNAP);
+      dragCornerTo('c1', { x: 10, y: 20 }, NO_SNAP);
+      dragCornerTo('c1', { x: 0, y: 0 }, NO_SNAP);
+      expect(outline()).toEqual(R);
+      expect(usePlanStore.getState().openings).toEqual([door('c1', 56)]);
+    });
+  });
 });

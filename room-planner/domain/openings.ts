@@ -299,11 +299,12 @@ const SHIFT_NOISE = 0.005;
 
 /**
  * How far wall `wallId`'s start corner moved along the wall from `before` to `after`, in inches
- * (positive towards the wall's end), or 0 when the wall is not in both outlines, its direction
- * changed, or the shift is under SHIFT_NOISE. An opening keeps its place in the room by taking this
- * amount off its offset.
+ * (positive towards the wall's end), or 0 when `inPlace` is false (the edit did not ask to keep
+ * openings in place), the wall is not in both outlines, its direction changed, or the shift is under
+ * SHIFT_NOISE. An opening keeps its place in the room by taking this amount off its offset.
  */
-function startShift(before: readonly Corner[], after: readonly Corner[], wallId: string): number {
+function startShift(before: readonly Corner[], after: readonly Corner[], wallId: string, inPlace: boolean): number {
+  if (!inPlace) return 0;
   const from = before.findIndex((c) => c.id === wallId);
   const at = after.findIndex((c) => c.id === wallId);
   if (from < 0 || at < 0) return 0;
@@ -338,11 +339,18 @@ function keptInPlace(o: Opening, shift: number, length: number): Opening {
  * - When the added corners make a chain that turns (such as a step), the opening stays on `w` only if
  *   the chain's first segment keeps the wall's old direction; otherwise it is refused
  *   (corner-has-openings), since `w` is now a different physical wall.
- * An opening that stays on its wall keeps its place in the room: when the wall keeps its direction
- * and its start corner moved along it, the offset is reduced by that shift (see startShift), and the
- * shifted offset is also the one placed against the chain of added corners.
+ * With `inPlace`, an opening that stays on its wall keeps its place in the room: when the wall keeps
+ * its direction and its start corner moved along it, the offset is reduced by that shift (see
+ * startShift), and the shifted offset is also the one placed against the chain of added corners.
+ * Without it, the opening keeps its offset from the wall's start corner.
  */
-function rehomeOne(before: readonly Corner[], after: readonly Corner[], common: ReadonlySet<string>, o: Opening): Opening | OpeningProblem {
+function rehomeOne(
+  before: readonly Corner[],
+  after: readonly Corner[],
+  common: ReadonlySet<string>,
+  o: Opening,
+  inPlace: boolean,
+): Opening | OpeningProblem {
   const at = after.findIndex((c) => c.id === o.wallId);
   const from = before.findIndex((c) => c.id === o.wallId);
   const chain: Corner[] = [after[at]];
@@ -355,7 +363,7 @@ function rehomeOne(before: readonly Corner[], after: readonly Corner[], common: 
   const next = before[(from + 1) % before.length];
   const was = unitBetween(before[from], next);
   if (end.id !== next.id && !sameDirection(was, unitBetween(chain[0], end))) return 'corner-has-openings';
-  const shift = startShift(before, after, o.wallId);
+  const shift = startShift(before, after, o.wallId, inPlace);
   const firstLength = Math.hypot(chain[1].x - chain[0].x, chain[1].y - chain[0].y);
   if (chain.length === 2) return keptInPlace(o, shift, firstLength);
   const first = unitBetween(chain[0], chain[1]);
@@ -385,11 +393,18 @@ function rehomeOne(before: readonly Corner[], after: readonly Corner[], common: 
  * (corner-has-openings); one on a straight wall that gains corners moves onto the new wall it lies on,
  * and a corner inside one is refused (corner-in-opening). One on a wall that was not in `before` is
  * left as it is. The first refusal in opening order wins, and the result is validated on `after`.
- * Except in the reversed case, an opening that stays on its wall also keeps its place in the room:
- * when the wall keeps its direction and its start corner slid along it, the offset changes by the
+ * An opening that stays on its wall keeps its offset from the wall's start corner, unless `inPlace`
+ * is true (the edit's OutlineResult had keepOpeningsInPlace: a wall slide, a typed length, the
+ * rectangle size fields): then, except in the reversed case, it keeps its place in the room: when
+ * the wall keeps its direction and its start corner slid along it, the offset changes by the
  * opposite amount, so an opening pushed past either end of its wall refuses the edit (opening-off-wall).
  */
-export function rehomeOpenings(before: readonly Corner[], after: readonly Corner[], openings: readonly Opening[]): OpeningsResult {
+export function rehomeOpenings(
+  before: readonly Corner[],
+  after: readonly Corner[],
+  openings: readonly Opening[],
+  inPlace = false,
+): OpeningsResult {
   if (openings.length === 0) return { ok: true, openings: [] };
   const was = before.map((c) => c.id);
   const now = after.map((c) => c.id);
@@ -400,7 +415,7 @@ export function rehomeOpenings(before: readonly Corner[], after: readonly Corner
       openings.map((o) => {
         const length = lengths.get(o.wallId);
         // An opening on an unknown wall stays as it is and is refused by validation.
-        return length === undefined ? o : keptInPlace(o, startShift(before, after, o.wallId), length);
+        return length === undefined ? o : keptInPlace(o, startShift(before, after, o.wallId, inPlace), length);
       }),
     );
   }
@@ -413,7 +428,7 @@ export function rehomeOpenings(before: readonly Corner[], after: readonly Corner
   for (const o of openings) {
     // An opening on a wall that was not in `before` is left as it is for settle to judge.
     let next: Opening | OpeningProblem = o;
-    if (was.includes(o.wallId)) next = now.includes(o.wallId) ? rehomeOne(before, after, common, o) : 'corner-has-openings';
+    if (was.includes(o.wallId)) next = now.includes(o.wallId) ? rehomeOne(before, after, common, o, inPlace) : 'corner-has-openings';
     if (typeof next === 'string') return refuse(next);
     moved.push(next);
   }

@@ -75,8 +75,8 @@ const ROOM_MODE_HELP =
 
 /**
  * Replaces the outline with a starting shape sized and placed from the current outline's bounding
- * box (so the room stays under the furniture), with fresh corner ids, and clears the corner
- * selection. A shape that would not be a valid room (a bounding box too small for its walls), or
+ * box (so the room stays under the furniture), with fresh corner ids, and clears the corner and
+ * wall selection. A shape that would not be a valid room (a bounding box too small for its walls), or
  * any shape while the room has a door or window, is refused with its reason instead of being stored.
  */
 function applyStartingShape(shape: StartingShape): void {
@@ -90,7 +90,10 @@ function applyStartingShape(shape: StartingShape): void {
   const problem = usePlanStore.getState().applyOutline(invalid === null ? { ok: true, outline } : { ok: false, problem: invalid });
   const ui = useUiStore.getState();
   ui.setRoomProblem(problem === null ? null : ROOM_PROBLEM_TEXT[problem]);
-  if (problem === null) ui.selectCorner(null);
+  if (problem === null) {
+    ui.selectCorner(null);
+    ui.selectWall(null);
+  }
 }
 
 /**

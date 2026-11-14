@@ -374,6 +374,16 @@ describe('RoomSection', () => {
     expect(boundsOf(corners)).toEqual(before);
   });
 
+  it('clears the selected wall when a starting shape is accepted', async () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectWall('c1');
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+    render(<RoomSection />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'L-shape' }));
+    expect(usePlanStore.getState().room.outline).toHaveLength(6);
+    expect(useUiStore.getState().selectedWallId).toBeNull();
+  });
+
   it('applies a starting shape in furnish mode too', async () => {
     render(<RoomSection />);
     await userEvent.setup().click(screen.getByRole('button', { name: 'L-shape' }));

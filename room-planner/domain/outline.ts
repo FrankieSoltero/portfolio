@@ -18,7 +18,15 @@ export const OUTLINE_PROBLEM_TEXT: Readonly<Record<OutlineProblem, string>> = {
   'too-large': 'That would make the room too large.',
 };
 
-export type OutlineResult = { ok: true; outline: Corner[] } | { ok: false; problem: OutlineProblem };
+/**
+ * The outcome of an outline edit. An accepted result may carry `keepOpeningsInPlace: true`: the edit
+ * moved walls without turning them (a wall slide, a typed length, the rectangle size fields), so
+ * doors and windows keep their place in the room (see rehomeOpenings). Without it they keep their
+ * offset from their wall's start corner.
+ */
+export type OutlineResult =
+  | { ok: true; outline: Corner[]; keepOpeningsInPlace?: boolean }
+  | { ok: false; problem: OutlineProblem };
 
 export interface Wall { id: string; index: number; a: Corner; b: Corner; length: number }
 
@@ -43,6 +51,11 @@ const PARALLEL_SLACK = 1e-9;
 
 function unchanged(outline: readonly Corner[]): OutlineResult {
   return { ok: true, outline: outline.slice() };
+}
+
+/** `result` with keepOpeningsInPlace set when it is accepted; a refusal is returned as it is. */
+function keepingOpeningsInPlace(result: OutlineResult): OutlineResult {
+  return result.ok ? { ...result, keepOpeningsInPlace: true } : result;
 }
 
 /** Normalises the candidate outline, then accepts it or refuses with its first problem. */
@@ -239,7 +252,8 @@ function moveWallStart(outline: readonly Corner[], wallId: string, delta: number
  * At the moving end, a neighbour running in the same direction has the corner moved along the wall;
  * any other neighbour slides (see slideWall), which can add or remove corners, new ones taking ids
  * from `newId`. An unknown wall leaves the outline unchanged; a length that is not a finite number
- * is refused as too-large, and one below CONFIG.wallMin as short-wall.
+ * is refused as too-large, and one below CONFIG.wallMin as short-wall. Every accepted result, the
+ * unchanged one included, has keepOpeningsInPlace set.
  */
 export function setWallLength(
   outline: readonly Corner[],
@@ -247,6 +261,17 @@ export function setWallLength(
   length: number,
   anchor: LengthAnchor = 'end',
   newId: () => string = () => crypto.randomUUID(),
+): OutlineResult {
+  return keepingOpeningsInPlace(lengthenWall(outline, wallId, length, anchor, newId));
+}
+
+/** setWallLength without the keepOpeningsInPlace flag. */
+function lengthenWall(
+  outline: readonly Corner[],
+  wallId: string,
+  length: number,
+  anchor: LengthAnchor,
+  newId: () => string,
 ): OutlineResult {
   if (!Number.isFinite(length)) return notFinite();
   const wall = wallsOf(outline).find((w) => w.id === wallId);
@@ -315,9 +340,19 @@ function slideContext(outline: readonly Corner[], wallId: string) {
  * positive, or the slid wall's own direction reverses) is refused as crossing. A distance that is
  * not a finite number is refused as too-large; an unknown wall or a distance below 0.005 leaves the
  * outline unchanged. The caller must make `ids.start` and `ids.end` fresh and different from each
- * other (e.g. from crypto.randomUUID()).
+ * other (e.g. from crypto.randomUUID()). Every accepted result has keepOpeningsInPlace set.
  */
 export function slideWall(
+  outline: readonly Corner[],
+  wallId: string,
+  distance: number,
+  ids: { start: string; end: string },
+): OutlineResult {
+  return keepingOpeningsInPlace(slideWallBy(outline, wallId, distance, ids));
+}
+
+/** slideWall without the keepOpeningsInPlace flag. */
+function slideWallBy(
   outline: readonly Corner[],
   wallId: string,
   distance: number,
@@ -447,9 +482,15 @@ export function rectangleSize(outline: readonly Point[]): { w: number; l: number
  * Resizes a rectangle outline: corners at the largest x move so the width is `w`, corners at the
  * largest y move so the length is `l`; the minimum x and y stay. Sizes outside
  * [CONFIG.roomMin, CONFIG.roomMax] are refused (too-large above, short-wall below), and a size
- * that is not a finite number as too-large. Any other outline is returned unchanged.
+ * that is not a finite number as too-large. Any other outline is returned unchanged. Every accepted
+ * result has keepOpeningsInPlace set.
  */
 export function setRectangleSize(outline: readonly Corner[], size: { w?: number; l?: number }): OutlineResult {
+  return keepingOpeningsInPlace(resizeRectangle(outline, size));
+}
+
+/** setRectangleSize without the keepOpeningsInPlace flag. */
+function resizeRectangle(outline: readonly Corner[], size: { w?: number; l?: number }): OutlineResult {
   const given = [size.w, size.l].filter((v): v is number => v !== undefined);
   if (!given.every(Number.isFinite)) return notFinite();
   if (rectangleSize(outline) === null) return unchanged(outline);

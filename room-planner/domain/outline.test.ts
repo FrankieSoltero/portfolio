@@ -428,7 +428,7 @@ describe('setWallLength', () => {
   });
 
   it('leaves the outline unchanged for an unknown wall', () => {
-    expect(setWallLength(RECT, 'nope', 100)).toEqual({ ok: true, outline: RECT });
+    expect(setWallLength(RECT, 'nope', 100)).toEqual({ ok: true, outline: RECT, keepOpeningsInPlace: true });
   });
 
   it('moves the wall start and slides the previous wall', () => {
@@ -499,14 +499,14 @@ describe('setWallLength', () => {
   });
 
   it('leaves the outline equal to the input when the length is the same', () => {
-    expect(setWallLength(R, 'c1', 144, 'both')).toEqual({ ok: true, outline: R });
+    expect(setWallLength(R, 'c1', 144, 'both')).toEqual({ ok: true, outline: R, keepOpeningsInPlace: true });
   });
 
   it('refuses 5.9 and -1 as short-wall and NaN as too-large, and leaves an unknown wall unchanged', () => {
     expect(setWallLength(R, 'c1', 5.9)).toEqual({ ok: false, problem: 'short-wall' });
     expect(setWallLength(R, 'c1', -1)).toEqual({ ok: false, problem: 'short-wall' });
     expect(setWallLength(R, 'c1', Number.NaN)).toEqual({ ok: false, problem: 'too-large' });
-    expect(setWallLength(R, 'nope', 100)).toEqual({ ok: true, outline: R });
+    expect(setWallLength(R, 'nope', 100)).toEqual({ ok: true, outline: R, keepOpeningsInPlace: true });
   });
 
   it('refuses a length that makes the room too large', () => {
@@ -773,7 +773,7 @@ describe('setRectangleSize', () => {
   });
 
   it('leaves a non-rectangle unchanged', () => {
-    expect(setRectangleSize(L_SHAPE, { w: 120 })).toEqual({ ok: true, outline: L_SHAPE });
+    expect(setRectangleSize(L_SHAPE, { w: 120 })).toEqual({ ok: true, outline: L_SHAPE, keepOpeningsInPlace: true });
   });
 });
 
@@ -802,5 +802,41 @@ describe('startingShape', () => {
     expect(coords(startingShape('notched', 36, 36, counter('s')))).toEqual([
       [0, 0], [14, 0], [14, 6], [23, 6], [23, 0], [36, 0], [36, 36], [0, 36],
     ]);
+  });
+});
+
+describe('which edits keep doors and windows in place', () => {
+  /** True when the result is accepted and asks for openings to keep their place in the room. */
+  const keeps = (result: OutlineResult): boolean => result.ok && result.keepOpeningsInPlace === true;
+
+  it('slideWall, setWallLength and setRectangleSize ask for it on an accepted result', () => {
+    expect(keeps(slideWall(R, 'c1', 12, IDS))).toBe(true);
+    expect(keeps(setWallLength(R, 'c1', 120))).toBe(true);
+    expect(keeps(setRectangleSize(R, { w: 120 }))).toBe(true);
+  });
+
+  it('setWallLength asks for it with every anchor, in its same-direction branch and when nothing changes', () => {
+    for (const anchor of ['start', 'both', 'end'] as const) {
+      expect(keeps(setWallLength(R, 'c1', 120, anchor))).toBe(true);
+      expect(keeps(setWallLength(T, 'm1', 60, anchor))).toBe(true);
+    }
+    expect(keeps(setWallLength(R, 'c1', 144, 'both'))).toBe(true);
+    expect(keeps(setWallLength(R, 'nope', 100))).toBe(true);
+  });
+
+  it('a refused result is unchanged', () => {
+    expect(setWallLength(R, 'c1', 5.9)).toEqual({ ok: false, problem: 'short-wall' });
+    expect(slideWall(R, 'c1', 174, IDS)).toEqual({ ok: false, problem: 'crossing' });
+    expect(setRectangleSize(R, { w: 721 })).toEqual({ ok: false, problem: 'too-large' });
+  });
+
+  it('moveCorner, insertCorner and removeCorner do not ask for it', () => {
+    const moved = moveCorner(R, 'c1', { x: 10, y: 0 });
+    const inserted = insertCorner(R, 'c1', { x: 60, y: 0 }, 'n1');
+    const removed = removeCorner(T, 'm1');
+    for (const result of [moved, inserted, removed]) {
+      expect(result.ok).toBe(true);
+      expect(keeps(result)).toBe(false);
+    }
   });
 });
