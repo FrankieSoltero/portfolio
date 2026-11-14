@@ -250,6 +250,32 @@ planner misbehaved. Their expectations are corrected:
   this plan) loads Google Fonts. Corrected expectation: every request made while on
   `/room-planner` goes to `localhost:3210`, and no request anywhere carries plan data.
 
+## Amendment 11 (2026-11-14, controller ruling after the whole-branch review)
+
+The whole-branch review found that the planner could save a plan its own loader then
+refuses and erases, because limits were enforced only on load. One fix pass:
+
+1. **Write-side limits match the read-side limits, from one source.** The coordinate
+   range (±1440 in) moves into `CONFIG`; `validateOutline` refuses an outline with any
+   coordinate outside it (`too-large`). A looked-up product's link longer than 2048
+   characters is stored as no link; its name is cut to 200 characters and its host to
+   255. Placing an item when the plan already has 200 is refused with a message. A
+   test round-trips the document through `parsePlan` after each kind of edit.
+2. **Safety net:** the browser store does not write a document that `parsePlan` would
+   refuse (it reports the save as failed), so a readable saved plan is never replaced
+   by an unreadable one.
+3. **The storage notice is shown once per session,** not after every failed save.
+4. **Starting shapes keep the room where it is:** they are placed at the current
+   bounding box's top-left corner, not at `(0, 0)` (corrects Task 6's table).
+5. **`Reset plan` keeps what the browser can do:** if WebGL was found unavailable, it
+   stays marked unavailable after a reset (corrects Task 19).
+6. **No item is selected in room mode:** selecting an item while `mode` is `'room'`
+   does nothing.
+7. **The mode button's name changes (`Edit room` / `Done`) and it has no
+   `aria-pressed`** (corrects Task 14: a toggle's name should not change).
+8. Duplicates removed: `isAxisAlignedRectangle` (use `rectangleSize`), the second
+   `storedAngle`, the copied storage notice text, the second `LIMIT_SLACK`.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
