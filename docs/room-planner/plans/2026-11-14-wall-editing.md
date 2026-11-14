@@ -910,3 +910,19 @@ output.
    `CONFIG.wallLabelOffsetPx + CONFIG.wallLabelHalfHeightPx` outside the wall, so every
    label takes the same 18 px strip beside its wall whatever the wall's angle. Contract:
    `.soltero/lean-sdd/2026-11-14-wall-editing/task-14-fix2-brief.md`.
+10. **Final-review fixes.** Contract: `.soltero/lean-sdd/2026-11-14-wall-editing/final-fix-brief.md`.
+    (a) *Amendment 8(b) is narrowed: only wall slides, typed lengths and the rectangle width
+    and length fields keep openings in place; corner moves keep the old rule (the offset
+    from the wall's start is kept).* The whole-branch review showed that inferring "the wall
+    kept its direction" on every step made corner drags depend on their path: dragging a
+    corner away and back to where it started left a door 10 in from where it was. The edit
+    now says so itself: an accepted `OutlineResult` may carry `keepOpeningsInPlace: true`,
+    set by `slideWall`, `setWallLength` and `setRectangleSize`, and `applyOutline` passes it
+    to `rehomeOpenings`.
+    (b) *Drags start from the state after focus has moved.* A press on a wall, corner or
+    opening took its starting values before moving focus; moving focus can apply an open
+    length field, and the drag's first move then undid that length.
+    (c) Leaving the on-plan length field always closes it (a refused length shows its reason
+    and changes nothing); a press on the wall whose field is open leaves the field first.
+    (d) A starting shape clears the selected wall; two stale stylesheet comments; a `title`
+    on the length labels; the docs name this behaviour change.
