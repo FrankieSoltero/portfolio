@@ -548,6 +548,85 @@ describe('useKeyboardShortcuts slides a door the way the arrow points on screen'
   });
 });
 
+describe('useKeyboardShortcuts in room mode with a wall selected', () => {
+  /** The seeded room is R: c1 (0,0), c2 (144,0), c3 (144,168), c4 (0,168); wall c1 is the top wall. */
+  function outline(): Corner[] {
+    return usePlanStore.getState().room.outline;
+  }
+
+  beforeEach(() => {
+    renderHook(() => useKeyboardShortcuts());
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectWall('c1');
+  });
+
+  it('ArrowDown slides the selected top wall 1 in inward and prevents default', () => {
+    const ev = press(document.body, 'ArrowDown');
+    expect(outline()).toEqual([
+      { id: 'c1', x: 0, y: 1 }, { id: 'c2', x: 144, y: 1 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 },
+    ]);
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it('Shift+ArrowDown then slides the wall a further 12 in', () => {
+    press(document.body, 'ArrowDown');
+    press(document.body, 'ArrowDown', { shiftKey: true });
+    expect(outline().slice(0, 2)).toEqual([{ id: 'c1', x: 0, y: 13 }, { id: 'c2', x: 144, y: 13 }]);
+  });
+
+  it('ArrowRight, along the wall, leaves the outline unchanged but still prevents default', () => {
+    const before = outline();
+    const ev = press(document.body, 'ArrowRight');
+    expect(outline()).toBe(before);
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it.each(['number', 'radio'])('ArrowDown with focus in a %s input does not move the wall', (type) => {
+    const before = outline();
+    const ev = press(focused('input', type), 'ArrowDown');
+    expect(outline()).toBe(before);
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('Escape clears the selected wall', () => {
+    const before = outline();
+    press(document.body, 'Escape');
+    expect(useUiStore.getState().selectedWallId).toBeNull();
+    expect(outline()).toBe(before);
+  });
+
+  it('Escape with the door tool armed disarms the tool', () => {
+    useUiStore.getState().setRoomTool('door');
+    press(document.body, 'Escape');
+    expect(useUiStore.getState().roomTool).toBe('corner');
+  });
+
+  it.each(['Delete', 'Backspace'])('%s leaves the outline unchanged and the wall selected', (key) => {
+    const before = outline();
+    press(document.body, key);
+    expect(outline()).toBe(before);
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+  });
+
+  it('r changes nothing', () => {
+    const plan = usePlanStore.getState();
+    const ui = useUiStore.getState();
+    press(document.body, 'r');
+    expect(usePlanStore.getState()).toBe(plan);
+    expect(useUiStore.getState()).toBe(ui);
+  });
+
+  it('in furnish mode ArrowDown moves the selected item and no wall', () => {
+    useUiStore.getState().setMode('furnish');
+    useUiStore.getState().selectWall('c1');
+    useUiStore.getState().select(BED);
+    const before = outline();
+    press(document.body, 'ArrowDown');
+    expect(outline()).toBe(before);
+    expect(bed()).toMatchObject({ x: 72, y: 43.5 });
+  });
+});
+
 describe('useKeyboardShortcuts with focus in the selection bar Angle field', () => {
   function Workspace() {
     useKeyboardShortcuts();
