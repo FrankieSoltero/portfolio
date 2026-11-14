@@ -22,3 +22,9 @@ export interface CameraState { yaw: number; pitch: number; zoom: number }
 /** [u0,u1,v0,v1,z0,z1] fractions of width, depth, height; v=0 is the back edge */
 export type PartRect = readonly [number, number, number, number, number, number];
 export type Conflicts = Readonly<Record<string, string>>;
+/** A plan-space position in inches; x to the right, y down the screen. */
+export interface Point { x: number; y: number }
+/** A room outline corner; the wall starting at this corner shares its id. */
+export interface Corner extends Point { id: string }
+/** Axis-aligned bounding box of a set of points; w = maxX − minX, l = maxY − minY. */
+export interface Bounds { minX: number; minY: number; maxX: number; maxY: number; w: number; l: number }
