@@ -162,6 +162,35 @@ describe('PlanSection', () => {
     }
   });
 
+  it('reset in a browser without WebGL keeps WebGL marked unavailable and the blueprint style', async () => {
+    const store = createFakePlanStore();
+    render(<PlanSection planStore={store} />);
+    dirtyTheStores();
+    act(() => useUiStore.getState().markWebglUnavailable());
+
+    await act(async () => {
+      await confirmReset();
+    });
+    expect(store.clearCalls).toBe(1);
+    expectSeededPlanAndFreshUi();
+    expect(useUiStore.getState().webglAvailable).toBe(false);
+    expect(useUiStore.getState().renderStyle).toBe('blueprint');
+    expect(useUiStore.getState().notice).toBeNull();
+  });
+
+  it('reset where WebGL works leaves it available and the realistic style', async () => {
+    const store = createFakePlanStore();
+    render(<PlanSection planStore={store} />);
+    dirtyTheStores();
+    act(() => useUiStore.getState().setRenderStyle('blueprint'));
+
+    await act(async () => {
+      await confirmReset();
+    });
+    expect(useUiStore.getState().webglAvailable).toBe(true);
+    expect(useUiStore.getState().renderStyle).toBe('realistic');
+  });
+
   it('reset in a newer-version session: clears the key and lifts saveBlocked', async () => {
     const store = createFakePlanStore();
     render(<PlanSection planStore={store} />);

@@ -6,6 +6,7 @@ import type { OutlineResult } from '../domain/outline';
 import { interiorPoint } from '../domain/polygon';
 import { roomBounds } from '../domain/shape';
 import type { Corner, Item, PlanDocument, ProductPreview, Units } from '../domain/types';
+import { capProductText } from '../services/productLookup';
 
 /**
  * The plan document plus the only operations allowed to change it. All lengths are inches; an
@@ -24,9 +25,10 @@ export interface PlanState extends PlanDocument {
   applyOutline(result: OutlineResult): boolean;
   /**
    * Appends the preview as a new unrotated item centred near the room's interior point, placed by
-   * the same grid rule as a move; returns its new id.
+   * the same grid rule as a move, its text capped by capProductText; returns its new id. When the
+   * plan already has CONFIG.maxItems items, changes nothing and returns null.
    */
-  addItem(preview: ProductPreview): string;
+  addItem(preview: ProductPreview): string | null;
   /**
    * Moves an item's centre to (x, y), placed so its footprint's bounding-box min corner is on the
    * furniture grid, and kept inside the room bounds. Unknown ids are ignored.
@@ -85,15 +87,17 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   },
 
   addItem: (preview) => {
+    const { room, items } = get();
+    if (items.length >= CONFIG.maxItems) return null;
     const id = crypto.randomUUID();
-    const { room } = get();
     const centre = interiorPoint(room.outline);
+    const { name, host, sourceUrl } = capProductText(preview);
     const unplaced: Item = {
       id,
       kind: preview.kind,
-      name: preview.name,
-      host: preview.host,
-      sourceUrl: preview.sourceUrl,
+      name,
+      host,
+      sourceUrl,
       price: preview.price,
       w: preview.w,
       d: preview.d,

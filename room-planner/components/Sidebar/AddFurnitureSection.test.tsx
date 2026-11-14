@@ -268,6 +268,40 @@ describe('AddFurnitureSection', () => {
     expect(screen.getByRole('button', { name: 'Sofa' })).toBeInTheDocument();
   });
 
+  it('on a plan with 200 items shows why nothing was placed and keeps the preview; removing one lets it place', async () => {
+    const seed = usePlanStore.getState().items[0];
+    const items = Array.from({ length: 200 }, (_, i) => ({ ...seed, id: `box-${i}` }));
+    usePlanStore.getState().reset({ ...usePlanStore.getState(), items });
+    await renderPreview();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Place in room' }));
+    expect(usePlanStore.getState().items).toBe(items);
+    expect(screen.getByRole('alert').textContent).toBe('This plan already has 200 items. Remove one to add another.');
+    expect(useUiStore.getState().lookup).toEqual({ status: 'preview', product: SOFA });
+    expect(useUiStore.getState().selectedId).toBeNull();
+    expect(linkInput().value).toBe(SAMPLE_LINKS.sofa);
+
+    act(() => usePlanStore.getState().removeItem('box-0'));
+    await user.click(screen.getByRole('button', { name: 'Place in room' }));
+    expect(usePlanStore.getState().items).toHaveLength(200);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
+  });
+
+  it('clears the full-plan message when the preview is discarded', async () => {
+    const seed = usePlanStore.getState().items[0];
+    usePlanStore.getState().reset({
+      ...usePlanStore.getState(),
+      items: Array.from({ length: 200 }, (_, i) => ({ ...seed, id: `box-${i}` })),
+    });
+    await renderPreview();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Place in room' }));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('discards the preview without adding an item and empties the link', async () => {
     const before = usePlanStore.getState().items;
     await renderPreview();

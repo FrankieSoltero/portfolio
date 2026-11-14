@@ -74,13 +74,18 @@ const ROOM_MODE_HELP =
   'Drag a corner to reshape the room. Click a wall to add a corner. Hold Alt to turn off angle snapping.';
 
 /**
- * Replaces the outline with a starting shape sized from the current outline's bounding box, with
- * fresh corner ids, and clears the corner selection. A shape that would not be a valid room (a
- * bounding box too small for its walls) is refused with its reason instead of being stored.
+ * Replaces the outline with a starting shape sized and placed from the current outline's bounding
+ * box (so the room stays under the furniture), with fresh corner ids, and clears the corner
+ * selection. A shape that would not be a valid room (a bounding box too small for its walls) is
+ * refused with its reason instead of being stored.
  */
 function applyStartingShape(shape: StartingShape): void {
-  const { w, l } = boundsOf(usePlanStore.getState().room.outline);
-  const outline = startingShape(shape, w, l, () => crypto.randomUUID());
+  const { minX, minY, w, l } = boundsOf(usePlanStore.getState().room.outline);
+  const outline = startingShape(shape, w, l, () => crypto.randomUUID()).map((c) => ({
+    id: c.id,
+    x: c.x + minX,
+    y: c.y + minY,
+  }));
   const problem = validateOutline(outline);
   usePlanStore.getState().applyOutline(problem === null ? { ok: true, outline } : { ok: false, problem });
   const ui = useUiStore.getState();
@@ -118,7 +123,6 @@ export function RoomSection() {
       <button
         type="button"
         className={roomMode ? 'btn btn-primary' : 'btn btn-secondary'}
-        aria-pressed={roomMode}
         onClick={() => setMode(roomMode ? 'furnish' : 'room')}
       >
         {roomMode ? 'Done' : 'Edit room'}

@@ -28,6 +28,7 @@ export interface UiState {
     | { status: 'loading'; host: string }
     | { status: 'preview'; product: ProductPreview }
     | { status: 'error'; code: LookupErrorCode };
+  /** Selects an item, or clears the selection with null. In room mode an item id is ignored. */
   select(id: string | null): void;
   setLayout(l: LayoutMode): void;
   toggleInsetSwap(): void;
@@ -90,7 +91,7 @@ function initialUi(): UiData {
 export const useUiStore = create<UiState>()((set) => ({
   ...initialUi(),
 
-  select: (selectedId) => set({ selectedId }),
+  select: (selectedId) => set((s) => (s.mode === 'room' && selectedId !== null ? s : { selectedId })),
   setLayout: (layout) => set({ layout }),
   toggleInsetSwap: () => set((s) => ({ insetSwapped: !s.insetSwapped })),
   setTab: (tab) => set({ tab }),

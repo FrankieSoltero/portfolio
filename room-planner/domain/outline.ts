@@ -31,7 +31,7 @@ const MIN_CORNERS = 3;
  * Floating-point slack for the wall and room size limits. The limits are exact (a 5.99 in wall is
  * short, a 720.01 in room is too large), so this only absorbs arithmetic noise on stored values.
  */
-const LIMIT_SLACK = 1e-9;
+export const LIMIT_SLACK = 1e-9;
 
 /** Below this |cross product| two unit directions are treated as parallel. */
 const PARALLEL_SLACK = 1e-9;
@@ -69,9 +69,15 @@ export function wallsOf(outline: readonly Corner[]): Wall[] {
   });
 }
 
+/** True when both coordinates are within ±CONFIG.coordMax, the limit a saved plan accepts (exact). */
+function isInRange(p: Point): boolean {
+  return Math.abs(p.x) <= CONFIG.coordMax && Math.abs(p.y) <= CONFIG.coordMax;
+}
+
 /**
  * The first problem with the outline, checked in the order: a coordinate that is not a finite
- * number (too-large), too-few, too-many, short-wall, too-large, crossing; null when it is a valid room.
+ * number (too-large), too-few, too-many, short-wall, too-large (a bounding box wider or longer than
+ * CONFIG.roomMax, or a corner beyond ±CONFIG.coordMax), crossing; null when it is a valid room.
  */
 export function validateOutline(outline: readonly Corner[]): OutlineProblem | null {
   if (!outline.every(isFinitePoint)) return 'too-large';
@@ -80,6 +86,7 @@ export function validateOutline(outline: readonly Corner[]): OutlineProblem | nu
   if (wallsOf(outline).some((w) => w.length < CONFIG.wallMin - LIMIT_SLACK)) return 'short-wall';
   const { w, l } = boundsOf(outline);
   if (w > CONFIG.roomMax + LIMIT_SLACK || l > CONFIG.roomMax + LIMIT_SLACK) return 'too-large';
+  if (!outline.every(isInRange)) return 'too-large';
   if (!isSimplePolygon(outline, CONFIG.conflictEpsilon)) return 'crossing';
   return null;
 }
@@ -196,11 +203,12 @@ export function setWallLength(outline: readonly Corner[], wallId: string, length
 }
 
 /** Width and length of a 4-corner outline whose walls alternate horizontal and vertical; else null. */
-export function rectangleSize(outline: readonly Corner[]): { w: number; l: number } | null {
+export function rectangleSize(outline: readonly Point[]): { w: number; l: number } | null {
   if (outline.length !== 4) return null;
   const eps = CONFIG.conflictEpsilon;
-  const horizontal = wallsOf(outline).map(({ a, b }) => Math.abs(b.y - a.y) <= eps && Math.abs(b.x - a.x) > eps);
-  const vertical = wallsOf(outline).map(({ a, b }) => Math.abs(b.x - a.x) <= eps && Math.abs(b.y - a.y) > eps);
+  const walls = outline.map((a, i) => ({ a, b: outline[(i + 1) % outline.length] }));
+  const horizontal = walls.map(({ a, b }) => Math.abs(b.y - a.y) <= eps && Math.abs(b.x - a.x) > eps);
+  const vertical = walls.map(({ a, b }) => Math.abs(b.x - a.x) <= eps && Math.abs(b.y - a.y) > eps);
   const alternates =
     (horizontal[0] && vertical[1] && horizontal[2] && vertical[3]) ||
     (vertical[0] && horizontal[1] && vertical[2] && horizontal[3]);

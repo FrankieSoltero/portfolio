@@ -13,7 +13,9 @@ import type { LoadResult, PlanStore } from './planStorage';
  *
  * Every storage access, including the getter (reading `window.localStorage` throws when storage
  * is blocked), happens inside a `try`, so no method throws or rejects. Nothing read or written is
- * ever logged. The store keeps no state between calls.
+ * ever logged. The store keeps no state between calls. `save` writes nothing (and resolves false)
+ * for a document `parsePlan` would refuse, so a readable saved plan is never replaced by an
+ * unreadable one.
  */
 export function createBrowserPlanStore(storage: () => Storage = () => window.localStorage): PlanStore {
   const key = CONFIG.planStorageKey;
@@ -47,7 +49,10 @@ export function createBrowserPlanStore(storage: () => Storage = () => window.loc
   async function save(doc: PlanDocument): Promise<boolean> {
     try {
       // Built field by field: the argument may be a store state carrying actions and UI state.
-      const text = JSON.stringify({ schemaVersion: doc.schemaVersion, units: doc.units, room: doc.room, items: doc.items });
+      const fields = { schemaVersion: doc.schemaVersion, units: doc.units, room: doc.room, items: doc.items };
+      // Never replace a readable saved plan with one the next load would refuse and discard.
+      if (!parsePlan(fields).ok) return false;
+      const text = JSON.stringify(fields);
       if (text.length > CONFIG.maxStoredChars) return false;
       storage().setItem(key, text);
       return true;

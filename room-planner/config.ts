@@ -27,6 +27,10 @@ export const CONFIG = {
   angleSnapTolerancePx: 8,
   wallMin: 6,
   maxCorners: 64,
+  // Limits a saved plan must keep (planSchema reads them, so edits and loading agree): every
+  // outline corner within ±coordMax in, and at most maxItems items.
+  coordMax: 1440,
+  maxItems: 200,
   maxPixelRatio: 2,
   nudgeStep: 1,
   nudgeStepLarge: 12,

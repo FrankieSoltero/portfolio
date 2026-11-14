@@ -6,7 +6,8 @@ import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 
 const INVALID_NOTICE = 'Your saved plan could not be read, so the planner started fresh.';
-const STORAGE_NOTICE = 'This browser is blocking storage, so changes will not be saved.';
+/** The notice shown when the browser's storage cannot be used. */
+export const STORAGE_NOTICE = 'This browser is blocking storage, so changes will not be saved.';
 const NEWER_NOTICE =
   'Your saved plan was made with a newer version of the planner. It has been left untouched, and changes in this session will not be saved.';
 
@@ -21,14 +22,11 @@ function documentChanged(a: PlanDocument, b: PlanDocument): boolean {
   return a.schemaVersion !== b.schemaVersion || a.units !== b.units || a.room !== b.room || a.items !== b.items;
 }
 
-/** Shows the storage notice, unless it is already showing. */
-function reportStorageProblem(): void {
-  const ui = useUiStore.getState();
-  if (ui.notice !== STORAGE_NOTICE) ui.setNotice(STORAGE_NOTICE);
-}
-
-/** Puts the result of a load into the stores: the saved document, or the seeded one and a notice. */
-function applyLoad(result: LoadResult): void {
+/**
+ * Puts the result of a load into the stores: the saved document, or the seeded one and a notice.
+ * Unavailable storage is reported through `reportStorageProblem`.
+ */
+function applyLoad(result: LoadResult, reportStorageProblem: () => void): void {
   const ui = useUiStore.getState();
   switch (result.status) {
     case 'loaded':
@@ -60,7 +58,9 @@ function applyLoad(result: LoadResult): void {
  *
  * - The document applied from the load is not saved back: the subscription starts after it.
  * - Nothing is saved while the UI store's `saveBlocked` is true (read at save time).
- * - A failed or rejected save, and a rejected load, show the storage notice.
+ * - A failed or rejected save, and an unavailable or rejected load, show the storage notice, at most
+ *   once per mount: once dismissed (or cleared by a UI reset) it is not shown again, so a browser
+ *   that blocks storage does not re-show it on every edit. The other notices are unaffected.
  * - On unmount a pending save is made at once, the timer is cleared and the subscription removed.
  * - Closing or reloading the tab does not unmount React, so while subscribed a pending save is also
  *   made at once on `pagehide` and when the page becomes hidden (`visibilitychange`).
@@ -74,11 +74,19 @@ function applyLoad(result: LoadResult): void {
 export function usePlanPersistence(store: PlanStore): { ready: boolean } {
   const [ready, setReady] = useState(false);
   const loading = useRef<{ store: PlanStore; result: Promise<LoadResult>; applied: boolean } | null>(null);
+  const storageNoticeShown = useRef(false);
 
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let unsubscribe: (() => void) | null = null;
+
+    /** Shows the storage notice the first time storage fails in this mount; later failures stay quiet. */
+    function reportStorageProblem(): void {
+      if (storageNoticeShown.current) return;
+      storageNoticeShown.current = true;
+      useUiStore.getState().setNotice(STORAGE_NOTICE);
+    }
 
     function save(): void {
       timer = null;
@@ -110,7 +118,7 @@ export function usePlanPersistence(store: PlanStore): { ready: boolean } {
         if (!active) return;
         if (!load.applied) {
           load.applied = true;
-          applyLoad(result);
+          applyLoad(result, reportStorageProblem);
         }
         const stopDocument = usePlanStore.subscribe((next, prev) => {
           if (!documentChanged(next, prev)) return;

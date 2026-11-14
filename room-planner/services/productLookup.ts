@@ -1,3 +1,4 @@
+import { PRODUCT_TEXT_LIMITS } from '../domain/planSchema';
 import type { ProductPreview } from '../domain/types';
 
 /** Why a product lookup failed. Each code maps to user-facing copy in LOOKUP_MESSAGES. */
@@ -81,4 +82,29 @@ export function parseProductUrl(raw: string): ParsedProductUrl {
 /** Turns a product link into a preview the user can place in the room. */
 export interface ProductLookup {
   lookup(url: string, opts?: { signal?: AbortSignal }): Promise<ProductPreview>;
+}
+
+/** The name given to a product whose own name is empty. */
+export const UNTITLED_PRODUCT = 'Untitled product';
+
+/** The text a stored item takes from a looked-up product. */
+export interface ProductText {
+  name: string;
+  host: string;
+  sourceUrl: string | null;
+}
+
+/**
+ * Caps a looked-up product's text to what a saved plan accepts (PRODUCT_TEXT_LIMITS), so placing
+ * it never makes the plan unreadable: a link longer than the limit becomes null, the name is cut
+ * (and an empty one becomes UNTITLED_PRODUCT), and the host is cut. Every lookup's preview, and
+ * every item made from one, goes through this.
+ */
+export function capProductText(text: ProductText): ProductText {
+  const name = text.name.slice(0, PRODUCT_TEXT_LIMITS.nameMax);
+  return {
+    name: name === '' ? UNTITLED_PRODUCT : name,
+    host: text.host.slice(0, PRODUCT_TEXT_LIMITS.hostMax),
+    sourceUrl: text.sourceUrl !== null && text.sourceUrl.length <= PRODUCT_TEXT_LIMITS.urlMax ? text.sourceUrl : null,
+  };
 }

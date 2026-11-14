@@ -77,12 +77,29 @@ function v1Seed(): Record<string, unknown> {
   };
 }
 
-/** The seeded document with the first item's name padded so it serialises to exactly `chars` characters. */
+/**
+ * A document that serialises to exactly `chars` characters and that parsePlan accepts, so only the
+ * size limit can refuse it: 200 copies of the seeded bed whose link, name and host are padded, one
+ * field at a time, up to their saved-plan limits.
+ */
 function docSerialisingTo(chars: number): PlanDocument {
   const doc = createInitialDocument();
-  const pad = chars - serialised(doc).length;
-  doc.items[0] = { ...doc.items[0], name: doc.items[0].name + 'a'.repeat(pad) };
+  const link = 'https://shop.example/';
+  doc.items = Array.from({ length: CONFIG.maxItems }, (_, i) => ({ ...doc.items[0], id: `pad-${i}`, sourceUrl: link }));
+  let pad = chars - serialised(doc).length;
+  const take = (room: number): string => {
+    const n = Math.max(0, Math.min(pad, room));
+    pad -= n;
+    return 'a'.repeat(n);
+  };
+  doc.items = doc.items.map((item) => ({
+    ...item,
+    sourceUrl: link + take(2048 - link.length),
+    name: item.name + take(200 - item.name.length),
+    host: item.host + take(255 - item.host.length),
+  }));
   expect(serialised(doc)).toHaveLength(chars);
+  expect(parsePlan(JSON.parse(serialised(doc))).ok).toBe(true);
   return doc;
 }
 
@@ -238,6 +255,21 @@ describe('createBrowserPlanStore save', () => {
     const setItem = vi.spyOn(storage, 'setItem');
     const removeItem = vi.spyOn(storage, 'removeItem');
     const doc = docSerialisingTo(CONFIG.maxStoredChars + 1);
+    await expect(createBrowserPlanStore(() => storage).save(doc)).resolves.toBe(false);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
+    expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE, [KEY]: earlier });
+  });
+
+  it('writes nothing and resolves false when parsePlan would refuse the document (a 3000-character link)', async () => {
+    const earlier = serialised(createInitialDocument());
+    storage.setItem(KEY, earlier);
+    const setItem = vi.spyOn(storage, 'setItem');
+    const removeItem = vi.spyOn(storage, 'removeItem');
+    const doc = createInitialDocument();
+    doc.items[0] = { ...doc.items[0], sourceUrl: `https://shop.example/${'a'.repeat(3000 - 21)}` };
+    expect(doc.items[0].sourceUrl).toHaveLength(3000);
+    expect(parsePlan(JSON.parse(serialised(doc))).ok).toBe(false);
     await expect(createBrowserPlanStore(() => storage).save(doc)).resolves.toBe(false);
     expect(setItem).not.toHaveBeenCalled();
     expect(removeItem).not.toHaveBeenCalled();

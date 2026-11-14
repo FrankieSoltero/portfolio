@@ -27,13 +27,19 @@ export function removeSelected(): void {
   useUiStore.getState().select(null);
 }
 
-/** Places the previewed product in the room, selects it and ends the lookup; no-op unless in preview. */
-export function placePreview(): void {
+/**
+ * Places the previewed product in the room, selects it and ends the lookup; returns the new item's
+ * id. Returns null and changes nothing when not in preview, or when the plan is full (the preview
+ * is kept, so it can be placed once an item is removed).
+ */
+export function placePreview(): string | null {
   const ui = useUiStore.getState();
-  if (ui.lookup.status !== 'preview') return;
+  if (ui.lookup.status !== 'preview') return null;
   const id = usePlanStore.getState().addItem(ui.lookup.product);
+  if (id === null) return null;
   ui.select(id);
   ui.setLookup({ status: 'idle' });
+  return id;
 }
 
 /**

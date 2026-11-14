@@ -208,6 +208,12 @@ describe('createMockProductLookup catalogue matching', () => {
     expect(p.name).toBe('Odd%E0%A4%A');
   });
 
+  it('cuts a name from a very long path to 200 characters', async () => {
+    const p = await lookupNow(`https://market.example/x/${'b'.repeat(3000)}`);
+    expect(p.name).toBe(`B${'b'.repeat(199)}`);
+    expect(p.host).toBe('market.example');
+  });
+
   it('returns a fresh model object on every lookup', async () => {
     const a = await lookupNow(SAMPLE_LINKS.sofa);
     a.model.label = 'changed';

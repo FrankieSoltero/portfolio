@@ -1,6 +1,13 @@
 import { type ChangeEvent, type JSX, useId, useState } from 'react';
 import { CONFIG } from '../../config';
-import { OUTLINE_PROBLEM_TEXT, type OutlineResult, setWallLength, type Wall, wallsOf } from '../../domain/outline';
+import {
+  LIMIT_SLACK,
+  OUTLINE_PROBLEM_TEXT,
+  type OutlineResult,
+  setWallLength,
+  type Wall,
+  wallsOf,
+} from '../../domain/outline';
 import { parseLengthInput, roomInputStep, roomInputStr, roomUnitLabel } from '../../domain/units';
 import { addCornerOnWall } from '../../state/actions';
 import { usePlanStore } from '../../state/planStore';
@@ -10,9 +17,6 @@ import './sidebar.css';
 /** A draft within this many inches of the stored length still counts as showing it. */
 const DRAFT_TOLERANCE_IN = 0.01;
 
-/** Absorbs unit-conversion noise at the upper limit (18.288 m is exactly 720 in). */
-const LIMIT_SLACK_IN = 1e-9;
-
 /**
  * Sets wall `wallId` of the current outline to `inches` and records the outcome: an accepted
  * length clears the room problem, a refused one (including one outside the wall limits) leaves the
@@ -20,7 +24,8 @@ const LIMIT_SLACK_IN = 1e-9;
  */
 function applyWallLength(wallId: string, inches: number): void {
   const result: OutlineResult =
-    inches > CONFIG.roomMax + LIMIT_SLACK_IN
+    // LIMIT_SLACK absorbs unit-conversion noise at the upper limit (18.288 m is exactly 720 in).
+    inches > CONFIG.roomMax + LIMIT_SLACK
       ? { ok: false, problem: 'too-large' }
       : setWallLength(usePlanStore.getState().room.outline, wallId, inches);
   usePlanStore.getState().applyOutline(result);

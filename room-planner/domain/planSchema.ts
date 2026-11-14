@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import { CONFIG } from '../config';
+import { storedAngle } from './geometry';
 import { normaliseOutline, validateOutline } from './outline';
-import { round2 } from './polygon';
-import { normaliseAngle } from './shape';
 import type { Corner, Item, Kind, ModelTier, PlanDocument, Units } from './types';
 
 /**
@@ -19,23 +18,31 @@ export type ParseResult = { ok: true; doc: PlanDocument } | { ok: false; newer: 
 const CURRENT_VERSION = 2;
 
 /**
- * Limits of the stored format (Task 16 "Exact values"). The room size and corner count limits are
- * the planner's own (CONFIG), so a plan it can draw is never refused on load; the rest are fixed by
- * the format, not tunable.
+ * Lengths, in characters, of the text a stored item takes from a looked-up product. Exported so
+ * the lookup caps what it builds to what a saved plan accepts (see capProductText).
+ */
+export const PRODUCT_TEXT_LIMITS = {
+  urlMax: 2048,
+  nameMax: 200,
+  hostMax: 255,
+  labelMax: 200,
+} as const;
+
+/**
+ * Limits of the stored format (Task 16 "Exact values"). The room size, coordinate, corner count
+ * and item count limits are the planner's own (CONFIG), enforced when editing too, so a plan it can
+ * draw is never refused on load; the rest are fixed by the format, not tunable.
  */
 const LIMITS = {
   roomMin: CONFIG.roomMin,
   roomMax: CONFIG.roomMax,
-  coordMax: 1440,
+  coordMax: CONFIG.coordMax,
   cornersMin: 3,
   cornersMax: CONFIG.maxCorners,
-  itemsMax: 200,
-  nameMax: 200,
-  hostMax: 255,
-  urlMax: 2048,
+  itemsMax: CONFIG.maxItems,
+  ...PRODUCT_TEXT_LIMITS,
   priceMax: 10_000_000,
   sizeMax: 720,
-  labelMax: 200,
 } as const;
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -150,11 +157,6 @@ function issueReason(issues: readonly z.core.$ZodIssue[]): ParseResult {
 
 function hasDuplicateId(list: readonly { id: string }[]): boolean {
   return new Set(list.map((entry) => entry.id)).size !== list.length;
-}
-
-/** The angle wrapped into [0, 360) and rounded to 0.01; wrapped again so 359.996 stores as 0, not 360. */
-function storedAngle(deg: number): number {
-  return round2(normaliseAngle(round2(normaliseAngle(deg))));
 }
 
 /** A version 2 document in the raw shape planV2Schema reads; positions move from top-left to centre. */

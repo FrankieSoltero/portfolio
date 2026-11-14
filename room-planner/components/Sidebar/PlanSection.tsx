@@ -1,12 +1,10 @@
 import { type JSX, useRef } from 'react';
+import { STORAGE_NOTICE } from '../../hooks/usePlanPersistence';
 import type { PlanStore } from '../../services/planStorage';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import './sidebar.css';
-
-/** The notice usePlanPersistence shows when storage cannot be used; repeated here word for word. */
-const STORAGE_NOTICE = 'This browser is blocking storage, so changes will not be saved.';
 
 /**
  * Starts over: erases the saved plan, then restores the seeded plan and the initial UI state.
@@ -15,7 +13,9 @@ const STORAGE_NOTICE = 'This browser is blocking storage, so changes will not be
  * changes the document, so the autosave writes the seeded plan back after its debounce. The UI
  * store is reset last, which clears any notice and lifts `saveBlocked` (so a session that found a
  * plan from a newer planner saves again: the visitor has confirmed erasing it). If clearing
- * failed, the storage notice is set after the UI reset so the reset does not wipe it. Never rejects.
+ * failed, the storage notice is set after the UI reset so the reset does not wipe it. What the
+ * browser can do is kept: if WebGL was found unavailable, it is marked unavailable again after the
+ * UI reset, so the 3D view does not try WebGL again. Never rejects.
  */
 async function resetPlan(planStore: PlanStore): Promise<void> {
   let cleared = true;
@@ -25,7 +25,9 @@ async function resetPlan(planStore: PlanStore): Promise<void> {
     cleared = false;
   }
   usePlanStore.getState().reset();
+  const webglAvailable = useUiStore.getState().webglAvailable;
   useUiStore.getState().reset();
+  if (!webglAvailable) useUiStore.getState().markWebglUnavailable();
   if (!cleared) useUiStore.getState().setNotice(STORAGE_NOTICE);
 }
 

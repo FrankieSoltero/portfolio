@@ -3,8 +3,9 @@ import { useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
 import { PARTS } from '../../domain/catalog';
 import { OUTSIDE_THE_ROOM } from '../../domain/conflicts';
+import { rectangleSize } from '../../domain/outline';
 import { itemFootprint, roomBounds, roomOutline } from '../../domain/shape';
-import type { Item, Point } from '../../domain/types';
+import type { Item } from '../../domain/types';
 import { fmtFurnDims, fmtLen, gridStepInches } from '../../domain/units';
 import { startDrag } from '../../hooks/startDrag';
 import { usePlanStore } from '../../state/planStore';
@@ -30,22 +31,6 @@ const Z_SELECTED = 4;
 const Z_RUG = 1;
 const Z_ITEM = 2;
 const RAD_TO_DEG = 180 / Math.PI;
-
-/** True when the outline is four corners joined by alternately horizontal and vertical walls. */
-function isAxisAlignedRectangle(pts: readonly Point[]): boolean {
-  if (pts.length !== 4) return false;
-  const eps = CONFIG.conflictEpsilon;
-  const horizontal: boolean[] = [];
-  for (let i = 0; i < 4; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % 4];
-    const flatY = Math.abs(b.y - a.y) <= eps;
-    const flatX = Math.abs(b.x - a.x) <= eps;
-    if (flatX === flatY) return false; // diagonal or zero-length wall
-    horizontal.push(flatY);
-  }
-  return horizontal[0] !== horizontal[1] && horizontal[1] !== horizontal[2] && horizontal[2] !== horizontal[3];
-}
 
 /**
  * The interactive 2D plan: dimension lines, the room outline, furniture boxes, clearance lines
@@ -127,7 +112,7 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
       <svg className="plan-outline" aria-hidden="true">
         <polygon className="plan-outline-wall" points={wallPoints} />
       </svg>
-      {isAxisAlignedRectangle(outline) && (
+      {rectangleSize(outline) !== null && (
         <div
           className="blueprint plan-outline-frame"
           style={{ left: boundsTopLeft.x, top: boundsTopLeft.y, width: boundsW, height: boundsH }}

@@ -159,7 +159,7 @@ describe('planStore', () => {
   });
 
   it('addItem appends the preview centred, unrotated, with a new id and copied source and model', () => {
-    const id = usePlanStore.getState().addItem(SOFA);
+    const id = req(usePlanStore.getState().addItem(SOFA) ?? undefined, 'added id');
     const { items } = usePlanStore.getState();
     expect(items).toHaveLength(3);
     const added = req(items[2], 'added item');
@@ -177,7 +177,7 @@ describe('planStore', () => {
   });
 
   it('addItem with an odd width and depth puts the footprint min corner on the 1 in grid', () => {
-    const id = usePlanStore.getState().addItem({ ...SOFA, w: 55, d: 27 });
+    const id = req(usePlanStore.getState().addItem({ ...SOFA, w: 55, d: 27 }) ?? undefined, 'added id');
     const added = itemById(id);
     expect(added).toMatchObject({ x: 72.5, y: 84.5, angle: 0 });
     expect(added.x - added.w / 2).toBe(45);
@@ -187,7 +187,7 @@ describe('planStore', () => {
   it('addItem in an L-shaped room centres the item inside the outline', () => {
     const outline = lShape();
     usePlanStore.getState().applyOutline({ ok: true, outline });
-    const id = usePlanStore.getState().addItem(SOFA);
+    const id = req(usePlanStore.getState().addItem(SOFA) ?? undefined, 'added id');
     const added = itemById(id);
     expect(added.angle).toBe(0);
     expect(Number.isInteger(added.x - added.w / 2) && Number.isInteger(added.y - added.d / 2)).toBe(true);
@@ -753,5 +753,126 @@ describe('selectors', () => {
     act(() => useUiStore.getState().select('seed-desk'));
     rerender();
     expect(result.current).toBe(itemById('seed-desk'));
+  });
+});
+
+describe('saved-plan limits on edits', () => {
+  const NO_SNAP = { angleSnap: false, toleranceIn: 2 };
+
+  /** Replaces the plan's items with `n` small boxes. */
+  function fillItems(n: number): void {
+    const items = Array.from({ length: n }, (_, i) => ({ ...itemById('seed-bed'), id: `box-${i}`, w: 10, d: 10 }));
+    usePlanStore.getState().reset({ ...docOf(usePlanStore.getState()), items });
+  }
+
+  /**
+   * Walks the seed rectangle by dragging its corners one at a time, (dx, dy) each, leading corners
+   * first, for at most `rounds` rounds. Stops at the first refused edit and returns true, or
+   * returns false when every edit was accepted.
+   */
+  function walkRoom(dx: number, dy: number, rounds: number): boolean {
+    const leading = dx > 0 ? ['c2', 'c3'] : dx < 0 ? ['c1', 'c4'] : dy > 0 ? ['c3', 'c4'] : ['c1', 'c2'];
+    const order = [...leading, ...['c1', 'c2', 'c3', 'c4'].filter((id) => !leading.includes(id))];
+    for (let round = 0; round < rounds; round++) {
+      for (const id of order) {
+        const c = req(usePlanStore.getState().room.outline.find((k) => k.id === id), id);
+        dragCornerTo(id, { x: c.x + dx, y: c.y + dy }, NO_SNAP);
+        if (useUiStore.getState().roomProblem !== null) return true;
+      }
+    }
+    return false;
+  }
+
+  it('addItem cuts a preview name to 200 characters, its host to 255, and stores a link over 2048 as null', () => {
+    const id = usePlanStore.getState().addItem({
+      ...SOFA,
+      name: 'n'.repeat(500),
+      host: 'h'.repeat(300),
+      sourceUrl: `https://shop.example/${'a'.repeat(3000)}`,
+    });
+    const added = itemById(req(id ?? undefined, 'added id'));
+    expect(added.name).toBe('n'.repeat(200));
+    expect(added.host).toBe('h'.repeat(255));
+    expect(added.sourceUrl).toBeNull();
+  });
+
+  it('addItem adds the 200th item and returns null, changing nothing, once the plan has 200', () => {
+    expect(CONFIG.maxItems).toBe(200);
+    fillItems(199);
+    expect(typeof usePlanStore.getState().addItem(SOFA)).toBe('string');
+    expect(usePlanStore.getState().items).toHaveLength(200);
+
+    const before = usePlanStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = usePlanStore.subscribe(listener);
+    const id = usePlanStore.getState().addItem(SOFA);
+    unsubscribe();
+    expect(id).toBeNull();
+    expect(usePlanStore.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('placePreview on a full plan adds nothing, selects nothing, keeps the preview and returns null', () => {
+    fillItems(200);
+    useUiStore.getState().setLookup({ status: 'preview', product: SOFA });
+    const before = usePlanStore.getState().items;
+    expect(placePreview()).toBeNull();
+    expect(usePlanStore.getState().items).toBe(before);
+    expect(useUiStore.getState().selectedId).toBeNull();
+    expect(useUiStore.getState().lookup).toEqual({ status: 'preview', product: SOFA });
+  });
+
+  it('placePreview returns the id of the item it placed', () => {
+    useUiStore.getState().setLookup({ status: 'preview', product: SOFA });
+    const id = placePreview();
+    expect(id).toBe(req(usePlanStore.getState().items[2], 'placed item').id);
+  });
+
+  it.each([
+    [500, 0], [-500, 0], [0, 500], [0, -500],
+  ])('corners walked by (%s, %s) per step stop at ±1440, so an item cannot be moved or nudged past it', (dx, dy) => {
+    useUiStore.getState().setMode('room');
+    expect(walkRoom(dx, dy, 20)).toBe(true);
+    expect(useUiStore.getState().roomProblem).toBe('That would make the room too large.');
+    for (const c of usePlanStore.getState().room.outline) {
+      expect(Math.abs(c.x)).toBeLessThanOrEqual(1440);
+      expect(Math.abs(c.y)).toBeLessThanOrEqual(1440);
+    }
+    useUiStore.getState().setMode('furnish');
+    useUiStore.getState().select('seed-bed');
+    const far = 1e6;
+    usePlanStore.getState().moveItemTo('seed-bed', Math.sign(dx) * far, Math.sign(dy) * far);
+    let bed = itemById('seed-bed');
+    expect(Math.abs(bed.x)).toBeLessThanOrEqual(1440);
+    expect(Math.abs(bed.y)).toBeLessThanOrEqual(1440);
+    nudgeSelected(Math.sign(dx) * far, Math.sign(dy) * far);
+    bed = itemById('seed-bed');
+    expect(Math.abs(bed.x)).toBeLessThanOrEqual(1440);
+    expect(Math.abs(bed.y)).toBeLessThanOrEqual(1440);
+  });
+});
+
+describe('selection in room mode', () => {
+  it('select(id) does nothing in room mode', () => {
+    useUiStore.getState().setMode('room');
+    const before = useUiStore.getState();
+    useUiStore.getState().select('seed-bed');
+    expect(useUiStore.getState()).toBe(before);
+    expect(useUiStore.getState().selectedId).toBeNull();
+  });
+
+  it('select(null) clears the selection in room mode too', () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.setState({ selectedId: 'seed-bed' });
+    useUiStore.getState().select(null);
+    expect(useUiStore.getState().selectedId).toBeNull();
+  });
+
+  it('select(id) selects in furnish mode, and placePreview there selects the placed item', () => {
+    useUiStore.getState().select('seed-bed');
+    expect(useUiStore.getState().selectedId).toBe('seed-bed');
+    useUiStore.getState().setLookup({ status: 'preview', product: SOFA });
+    const id = placePreview();
+    expect(useUiStore.getState().selectedId).toBe(id);
   });
 });

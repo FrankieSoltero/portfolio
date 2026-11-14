@@ -1,6 +1,12 @@
 import { CONFIG } from '../config';
 import type { ItemModel, Kind, ProductPreview } from '../domain/types';
-import { parseProductUrl, type ParsedProductUrl, type ProductLookup } from './productLookup';
+import {
+  capProductText,
+  parseProductUrl,
+  type ParsedProductUrl,
+  type ProductLookup,
+  UNTITLED_PRODUCT,
+} from './productLookup';
 
 /** Links the UI offers as one-click examples. */
 export const SAMPLE_LINKS: { sofa: string; shelf: string; unknown: string } = {
@@ -48,7 +54,6 @@ const MODELS: Record<CatalogueKind, ModelTemplate> = {
 };
 
 const UNKNOWN_SIZE = { w: 36, d: 24, h: 30 } as const;
-const UNTITLED = 'Untitled product';
 
 function makeModel(template: ModelTemplate): ItemModel {
   return { ...template, assetUrl: null };
@@ -70,17 +75,26 @@ function nameFromPath(path: string): string {
     .replace(/\.\w+$/, '')
     .replace(/[-_]+/g, ' ')
     .trim();
-  const name = !slug || /^\d+$/.test(slug) ? UNTITLED : slug;
+  const name = !slug || /^\d+$/.test(slug) ? UNTITLED_PRODUCT : slug;
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
+/**
+ * The preview for a parsed link, its name and host capped by capProductText. The link itself is
+ * kept for the preview; the item placed from it stores null for a link over the saved-plan limit.
+ */
 function buildPreview(parsed: ParsedProductUrl): ProductPreview {
   const row = CATALOGUE.find((r) => r.match.test(parsed.url));
+  const { name, host } = capProductText({
+    name: row ? row.name : nameFromPath(parsed.path),
+    host: parsed.host,
+    sourceUrl: parsed.url,
+  });
   if (row) {
     return {
       kind: row.kind,
-      name: row.name,
-      host: parsed.host,
+      name,
+      host,
       sourceUrl: parsed.url,
       price: row.price,
       w: row.w,
@@ -92,8 +106,8 @@ function buildPreview(parsed: ParsedProductUrl): ProductPreview {
   }
   return {
     kind: 'box',
-    name: nameFromPath(parsed.path),
-    host: parsed.host,
+    name,
+    host,
     sourceUrl: parsed.url,
     price: null,
     ...UNKNOWN_SIZE,

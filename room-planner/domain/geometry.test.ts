@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialDocument } from './catalog';
-import { moveItem, rotateItemBy, setItemAngle, shiftItem } from './geometry';
+import { moveItem, rotateItemBy, setItemAngle, shiftItem, storedAngle } from './geometry';
 import { boundsOf } from './polygon';
 import { footprintCorners, itemFootprint, roomBounds } from './shape';
 import type { Item } from './types';
@@ -138,5 +138,26 @@ describe('setItemAngle', () => {
     expect(setItemAngle(desk, 405).angle).toBe(45);
     expect(setItemAngle(desk, 12.346).angle).toBe(12.35);
     expect(desk.angle).toBe(90);
+  });
+});
+
+describe('storedAngle', () => {
+  it.each([
+    [-90, 270], [12.346, 12.35], [359.996, 0], [720.004, 0], [-0.004, 0], [360, 0], [405.5, 45.5], [450, 90],
+  ])('stores %s as %s (normalised, rounded to 0.01, inside [0, 360))', (deg, stored) => {
+    expect(storedAngle(deg)).toBe(stored);
+  });
+
+  it('stores a huge finite angle as a finite angle inside [0, 360)', () => {
+    for (const deg of [1e307, -1e307, Number.MAX_VALUE]) {
+      const angle = storedAngle(deg);
+      expect(Number.isFinite(angle) && angle >= 0 && angle < 360).toBe(true);
+    }
+  });
+
+  it('turns a huge finite angle into a finite one through rotateItemBy and setItemAngle', () => {
+    const desk = seed('seed-desk');
+    expect(Number.isFinite(setItemAngle(desk, 1e307).angle)).toBe(true);
+    expect(Number.isFinite(rotateItemBy(desk, 1e307).angle)).toBe(true);
   });
 });

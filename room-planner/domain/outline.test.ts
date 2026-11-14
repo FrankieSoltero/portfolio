@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import {
+  LIMIT_SLACK,
   OUTLINE_PROBLEM_TEXT,
   insertCorner,
   moveCorner,
@@ -123,6 +124,27 @@ describe('validateOutline', () => {
       // Also too few corners: the non-finite coordinate is reported first.
       expect(validateOutline(corners([0, 0], [v, 0]))).toBe('too-large');
     }
+  });
+
+  it('reports too-large for a corner beyond ±CONFIG.coordMax (1440) in x or y, and accepts exactly ±1440', () => {
+    expect(CONFIG.coordMax).toBe(1440);
+    expect(validateOutline(corners([1340, 0], [1440.01, 0], [1440.01, 100], [1340, 100]))).toBe('too-large');
+    expect(validateOutline(corners([-1440.01, 0], [-1340, 0], [-1340, 100], [-1440.01, 100]))).toBe('too-large');
+    expect(validateOutline(corners([0, 1340], [100, 1340], [100, 1440.01], [0, 1440.01]))).toBe('too-large');
+    expect(validateOutline(corners([0, -1440.01], [100, -1440.01], [100, -1340], [0, -1340]))).toBe('too-large');
+    expect(validateOutline(corners([1340, -1440], [1440, -1440], [1440, -1340], [1340, -1340]))).toBeNull();
+    expect(validateOutline(corners([-1440, 1340], [-1340, 1340], [-1340, 1440], [-1440, 1440]))).toBeNull();
+  });
+
+  it('checks the coordinate limit with the size rule: after short-wall, before crossing', () => {
+    // 3 in walls beyond 1440: short-wall is reported first.
+    expect(validateOutline(corners([1500, 0], [1503, 0], [1503, 100], [1500, 100]))).toBe('short-wall');
+    // A bow-tie beyond 1440: too-large is reported before crossing.
+    expect(validateOutline(corners([1500, 0], [1600, 100], [1600, 0], [1500, 100]))).toBe('too-large');
+  });
+
+  it('exports LIMIT_SLACK, the floating-point slack on the wall and room size limits', () => {
+    expect(LIMIT_SLACK).toBe(1e-9);
   });
 
   it('reports several problems in the order too-few, too-many, short-wall, too-large, crossing', () => {
@@ -357,6 +379,12 @@ describe('rectangleSize', () => {
   it('gives null for an L-shape or a 4-corner outline that is not axis-aligned', () => {
     expect(rectangleSize(L_SHAPE)).toBeNull();
     expect(rectangleSize(corners([0, 0], [100, 10], [90, 110], [-10, 100]))).toBeNull();
+  });
+
+  it('accepts plain points without ids, as the plan view reads the outline', () => {
+    const pts: readonly Point[] = [{ x: 10, y: 20 }, { x: 130, y: 20 }, { x: 130, y: 200 }, { x: 10, y: 200 }];
+    expect(rectangleSize(pts)).toEqual({ w: 120, l: 180 });
+    expect(rectangleSize(L_SHAPE.map(({ x, y }) => ({ x, y })))).toBeNull();
   });
 
   it('gives the size of a rectangle away from the origin or starting from another corner', () => {

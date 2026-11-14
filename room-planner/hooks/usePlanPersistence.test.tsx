@@ -10,7 +10,7 @@ import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { createFakePlanStore, type FakePlanStore } from '../test/fakePlanStore';
 import { placedItem, planDoc, rectRoom } from '../test/fixtures';
-import { usePlanPersistence } from './usePlanPersistence';
+import { STORAGE_NOTICE, usePlanPersistence } from './usePlanPersistence';
 
 const INVALID_TEXT = 'Your saved plan could not be read, so the planner started fresh.';
 const STORAGE_TEXT = 'This browser is blocking storage, so changes will not be saved.';
@@ -267,6 +267,83 @@ describe('usePlanPersistence: autosave', () => {
     stop();
     expect(store.saveCalls).toHaveLength(2);
     expect(uiWrites).toBe(0);
+  });
+});
+
+describe('usePlanPersistence: storage notice once per mount', () => {
+  it('exports the storage notice text', () => {
+    expect(STORAGE_NOTICE).toBe(STORAGE_TEXT);
+  });
+
+  it('a failed save after the notice was dismissed does not show it again', async () => {
+    const store = createFakePlanStore({ save: { type: 'resolve', value: false } });
+    await mountReady(store);
+    nudgeBed();
+    advance(CONFIG.saveDebounceMs);
+    await settle();
+    expect(useUiStore.getState().notice).toBe(STORAGE_TEXT);
+
+    act(() => useUiStore.getState().setNotice(null));
+    nudgeBed();
+    advance(CONFIG.saveDebounceMs);
+    await settle();
+    expect(store.saveCalls).toHaveLength(2);
+    expect(useUiStore.getState().notice).toBeNull();
+  });
+
+  it('a failed save after an unavailable load whose notice was dismissed does not show it again', async () => {
+    const store = createFakePlanStore({
+      load: { type: 'resolve', value: { status: 'unavailable' } },
+      save: { type: 'reject', error: new Error('blocked') },
+    });
+    await mountReady(store);
+    expect(useUiStore.getState().notice).toBe(STORAGE_TEXT);
+
+    act(() => useUiStore.getState().setNotice(null));
+    nudgeBed();
+    advance(CONFIG.saveDebounceMs);
+    await settle();
+    expect(store.saveCalls).toHaveLength(1);
+    expect(useUiStore.getState().notice).toBeNull();
+  });
+
+  it('a UI reset does not re-arm it within the same mount', async () => {
+    const store = createFakePlanStore({ save: { type: 'resolve', value: false } });
+    await mountReady(store);
+    nudgeBed();
+    advance(CONFIG.saveDebounceMs);
+    await settle();
+    expect(useUiStore.getState().notice).toBe(STORAGE_TEXT);
+
+    act(() => useUiStore.getState().reset());
+    nudgeBed();
+    advance(CONFIG.saveDebounceMs);
+    await settle();
+    expect(store.saveCalls).toHaveLength(2);
+    expect(useUiStore.getState().notice).toBeNull();
+  });
+
+  it('leaves the invalid-plan notice to show as before', async () => {
+    const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'invalid' } } });
+    await mountReady(store);
+    expect(useUiStore.getState().notice).toBe(INVALID_TEXT);
+  });
+
+  it('shows the notice again in a new mount', async () => {
+    const store = createFakePlanStore({ save: { type: 'resolve', value: false } });
+    const first = await mountReady(store);
+    nudgeBed();
+    advance(CONFIG.saveDebounceMs);
+    await settle();
+    first.unmount();
+    act(() => useUiStore.getState().setNotice(null));
+
+    const second = createFakePlanStore({ save: { type: 'resolve', value: false } });
+    await mountReady(second);
+    nudgeBed();
+    advance(CONFIG.saveDebounceMs);
+    await settle();
+    expect(useUiStore.getState().notice).toBe(STORAGE_TEXT);
   });
 });
 

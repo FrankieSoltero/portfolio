@@ -1,4 +1,5 @@
 import { type ChangeEvent, type JSX, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import { CONFIG } from '../../config';
 import type { ProductPreview } from '../../domain/types';
 import { fmtMoney, furnInputStr, furnUnitLabel, parseFurnInput } from '../../domain/units';
 import { SAMPLE_LINKS } from '../../services/mockProductLookup';
@@ -32,6 +33,14 @@ const SAMPLES: readonly { label: string; url: string }[] = [
   { label: 'Bookshelf', url: SAMPLE_LINKS.shelf },
   { label: 'Page without sizes', url: SAMPLE_LINKS.unknown },
 ];
+
+/** Why "Place in room" added nothing; shown in the same alert line as a lookup error. */
+type PlaceErrorCode = 'plan_full';
+
+const MESSAGES: Record<LookupErrorCode | PlaceErrorCode, string> = {
+  ...LOOKUP_MESSAGES,
+  plan_full: `This plan already has ${CONFIG.maxItems} items. Remove one to add another.`,
+};
 
 function isAbortError(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'name' in err && err.name === 'AbortError';
@@ -129,7 +138,7 @@ function PreviewCard({
 export function AddFurnitureSection({ lookup }: { lookup: ProductLookup }): JSX.Element {
   const state = useUiStore((s) => s.lookup);
   const [url, setUrl] = useState('');
-  const [error, setError] = useState<LookupErrorCode | null>(null);
+  const [error, setError] = useState<LookupErrorCode | PlaceErrorCode | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
 
   useEffect(
@@ -192,13 +201,18 @@ export function AddFurnitureSection({ lookup }: { lookup: ProductLookup }): JSX.
   }
 
   function onPlace() {
-    placePreview();
+    if (placePreview() === null) {
+      setError('plan_full');
+      return;
+    }
+    setError(null);
     setUrl('');
   }
 
   function onDiscard() {
     cancelPending();
     useUiStore.getState().setLookup({ status: 'idle' });
+    setError(null);
     setUrl('');
   }
 
@@ -233,7 +247,7 @@ export function AddFurnitureSection({ lookup }: { lookup: ProductLookup }): JSX.
       </div>
       {error !== null && (
         <div className="lookup-warning" role="alert">
-          {LOOKUP_MESSAGES[error]}
+          {MESSAGES[error]}
         </div>
       )}
       {isIdle && (

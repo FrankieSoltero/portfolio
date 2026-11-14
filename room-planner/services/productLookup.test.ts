@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { LOOKUP_MESSAGES, LookupError, parseProductUrl } from './productLookup';
+import { PRODUCT_TEXT_LIMITS, parsePlan } from '../domain/planSchema';
+import { createInitialDocument } from '../domain/catalog';
+import { LOOKUP_MESSAGES, LookupError, UNTITLED_PRODUCT, capProductText, parseProductUrl } from './productLookup';
 
 function expectInvalid(raw: string): void {
   let caught: unknown;
@@ -102,5 +104,44 @@ describe('parseProductUrl', () => {
     'file:///etc/passwd',
   ])('rejects a scheme-like input that resembles host:port: %s', (raw) => {
     expectInvalid(raw);
+  });
+});
+
+describe('capProductText', () => {
+  const LONG_URL = `https://shop.example/${'a'.repeat(3000)}`;
+
+  it('uses the saved-plan limits: link 2048, name 200, host 255, model label 200 characters', () => {
+    expect(PRODUCT_TEXT_LIMITS).toEqual({ urlMax: 2048, nameMax: 200, hostMax: 255, labelMax: 200 });
+  });
+
+  it('keeps text within the limits unchanged', () => {
+    const text = { name: 'Alder 3-seat sofa', host: 'shop.example', sourceUrl: 'https://shop.example/living/sofa' };
+    expect(capProductText(text)).toEqual(text);
+    expect(capProductText({ ...text, sourceUrl: null }).sourceUrl).toBeNull();
+  });
+
+  it('stores a link longer than 2048 characters as null and keeps one of exactly 2048', () => {
+    const exact = LONG_URL.slice(0, 2048);
+    expect(capProductText({ name: 'n', host: 'h', sourceUrl: exact }).sourceUrl).toBe(exact);
+    expect(capProductText({ name: 'n', host: 'h', sourceUrl: LONG_URL.slice(0, 2049) }).sourceUrl).toBeNull();
+    expect(capProductText({ name: 'n', host: 'h', sourceUrl: LONG_URL }).sourceUrl).toBeNull();
+  });
+
+  it('cuts the name to 200 characters and the host to 255', () => {
+    const capped = capProductText({ name: 'n'.repeat(500), host: 'h'.repeat(300), sourceUrl: null });
+    expect(capped.name).toBe('n'.repeat(200));
+    expect(capped.host).toBe('h'.repeat(255));
+  });
+
+  it('never leaves the name empty: an empty name becomes the default name', () => {
+    expect(UNTITLED_PRODUCT).toBe('Untitled product');
+    expect(capProductText({ name: '', host: 'h', sourceUrl: null }).name).toBe('Untitled product');
+  });
+
+  it('gives fields a saved plan accepts', () => {
+    const doc = createInitialDocument();
+    const capped = capProductText({ name: 'n'.repeat(500), host: 'h'.repeat(300), sourceUrl: LONG_URL });
+    doc.items[0] = { ...doc.items[0], ...capped };
+    expect(parsePlan(JSON.parse(JSON.stringify(doc))).ok).toBe(true);
   });
 });

@@ -7,9 +7,13 @@ import type { Bounds, Item } from './types';
  * on the plan in [0, 360). Stored coordinates and angles are rounded to 0.01.
  */
 
-/** `deg` rounded to 0.01 and wrapped into [0, 360); rounding first so 359.996 stores as 0, not 360. */
-function storedAngle(deg: number): number {
-  return round2(normaliseAngle(round2(deg)));
+/**
+ * An angle as it is stored: wrapped into [0, 360), rounded to 0.01, then wrapped again so 359.996
+ * stores as 0, not 360. Wrapping before rounding keeps a huge finite angle finite. The one rule for
+ * every stored angle (edits here, and planSchema on load).
+ */
+export function storedAngle(deg: number): number {
+  return round2(normaliseAngle(round2(normaliseAngle(deg))));
 }
 
 /** Trig results are rounded to this precision, so quarter turns give exact half-extents. */

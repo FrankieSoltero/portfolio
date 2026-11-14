@@ -24,11 +24,17 @@ lived in `src/`. That folder is `room-planner/` in this repository.
   on load (`room-planner/domain/planSchema.ts`). It is never sent to a server. "Reset plan"
   erases it.
 
-Known limits, recorded by the plan review and the live check:
+Known limits. The Blueprint approximation and the two-tabs overwrite are decisions 5 and 9 of
+the plan [`plans/2026-11-13-room-shape-and-saving.md`](plans/2026-11-13-room-shape-and-saving.md);
+the desktop-only layout comes from the original design handoff
+([`design_handoff/README.md`](design_handoff/README.md)).
 
 - The layout is designed for desktop widths. It does not reflow on a phone.
 - The Blueprint view's hidden-surface order is approximate in very concave rooms.
 - Two tabs open at once overwrite each other's saved plan.
+
+The limits on a plan (200 items, 64 corners, coordinates within ±120 ft) are enforced both
+when editing and when loading, so an edit can never produce a saved plan that fails to load.
 
 ## Folders and files
 

@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { rectangleSize, setRectangleSize, startingShape } from '../../domain/outline';
+import { boundsOf } from '../../domain/polygon';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { Header } from '../Header';
@@ -251,23 +252,23 @@ describe('RoomSection', () => {
     );
   });
 
-  it('has an Edit room button, not pressed, that switches to room mode', async () => {
+  it('has an Edit room button, not a pressed toggle, that switches to room mode', async () => {
     render(<RoomSection />);
     const button = screen.getByRole('button', { name: 'Edit room' });
-    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button).not.toHaveAttribute('aria-pressed');
     await userEvent.setup().click(button);
     expect(useUiStore.getState().mode).toBe('room');
   });
 
-  it('reads Done, pressed, in room mode and switches back to furnish mode', async () => {
+  it('reads Done, not a pressed toggle, in room mode and switches back to furnish mode', async () => {
     useUiStore.getState().setMode('room');
     render(<RoomSection />);
     expect(screen.queryByRole('button', { name: 'Edit room' })).toBeNull();
     const button = screen.getByRole('button', { name: 'Done' });
-    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button).not.toHaveAttribute('aria-pressed');
     await userEvent.setup().click(button);
     expect(useUiStore.getState().mode).toBe('furnish');
-    expect(screen.getByRole('button', { name: 'Edit room' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Edit room' })).not.toHaveAttribute('aria-pressed');
   });
 
   it('lists the walls with their lengths', () => {
@@ -318,11 +319,11 @@ describe('RoomSection', () => {
   });
 
   it.each([
-    ['L-shape', [[0, 0], [60, 0], [60, 48], [120, 48], [120, 96], [0, 96]]],
-    ['Notched', [[0, 0], [45, 0], [45, 12], [75, 12], [75, 0], [120, 0], [120, 96], [0, 96]]],
-    ['Rectangle', [[0, 0], [120, 0], [120, 96], [0, 96]]],
+    ['L-shape', [[12, 24], [72, 24], [72, 72], [132, 72], [132, 120], [12, 120]]],
+    ['Notched', [[12, 24], [57, 24], [57, 36], [87, 36], [87, 24], [132, 24], [132, 120], [12, 120]]],
+    ['Rectangle', [[12, 24], [132, 24], [132, 120], [12, 120]]],
   ] as const)('replaces the outline with %s sized from the current bounds, with fresh ids', async (name, xy) => {
-    // A 120 × 96 L-shape away from the origin: its bounding box, not its position, sizes the shape.
+    // A 120 × 96 L-shape away from the origin: its bounding box sizes and places the shape.
     let n = 0;
     usePlanStore.getState().applyOutline({
       ok: true,
@@ -341,6 +342,21 @@ describe('RoomSection', () => {
     expect(useUiStore.getState().roomProblem).toBeNull();
     expect(useUiStore.getState().selectedCornerId).toBeNull();
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  });
+
+  it('keeps the room where it is: a shape chosen after the corners moved starts at the old bounding box', async () => {
+    usePlanStore.getState().applyOutline({
+      ok: true,
+      outline: startingShape('rectangle', 144, 168, () => crypto.randomUUID()).map((c) => ({ ...c, x: c.x + 24, y: c.y + 12 })),
+    });
+    const before = boundsOf(usePlanStore.getState().room.outline);
+    expect([before.minX, before.minY]).toEqual([24, 12]);
+    render(<RoomSection />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'L-shape' }));
+    const corners = usePlanStore.getState().room.outline;
+    expect(corners).toHaveLength(6);
+    expect([corners[0].x, corners[0].y]).toEqual([24, 12]);
+    expect(boundsOf(corners)).toEqual(before);
   });
 
   it('applies a starting shape in furnish mode too', async () => {
