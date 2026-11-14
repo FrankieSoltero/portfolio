@@ -474,6 +474,9 @@ describe('setWallLength', () => {
     ['same-direction neighbour at the end', T, 'm1', 60, 'end'],
     ['same-direction neighbours, both', T, 'm1', 60, 'both'],
     ['start alone', V, 'v1', 112, 'start'],
+    // A diagonal wall whose next wall is nearly in line (coordinates rounded to 0.01).
+    ['end, nearly in-line neighbour (D)', D, 'd2', 50, 'end'],
+    ['start, nearly in-line neighbour (D)', D, 'd2', 50, 'start'],
   ];
 
   it.each(TYPED_OK)('keeps the direction of every wall (%s)', (_, outline, wallId, length, anchor) => {

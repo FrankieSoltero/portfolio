@@ -566,12 +566,16 @@ describe('PlanView in room mode', () => {
     expect(cornerHandles()).toHaveLength(0);
   });
 
+  // The inset pane's margin is only 48 px, so it uses the smaller extra (22 + 14 = 36 px) to keep
+  // the width line's text inside the pane; the main pane uses dimOffsetRoomExtra (30 + 22 = 52 px).
   it.each([
-    ['main', 30, MAIN],
-    ['inset', 22, INSET],
-  ] as const)('moves the dimension lines a further dimOffsetRoomExtra px out in the %s pane (%i px base)', (_name, off, pane) => {
+    ['main', 30, 22, 52, MAIN],
+    ['inset', 22, 14, 36, INSET],
+  ] as const)('moves the dimension lines further out in room mode in the %s pane (%i px base + %i px)', (_name, off, extra, total, pane) => {
     expect(CONFIG.dimOffsetRoomExtra).toBe(22);
+    expect(CONFIG.dimOffsetRoomExtraInset).toBe(14);
     expect(pane.inset ? CONFIG.dimOffsetInset : CONFIG.dimOffset).toBe(off);
+    expect(pane.inset ? CONFIG.dimOffsetRoomExtraInset : CONFIG.dimOffsetRoomExtra).toBe(extra);
     useUiStore.getState().setMode('room');
     render(<PlanView pane={pane} />);
     const bounds = roomBounds(usePlanStore.getState().room);
@@ -579,9 +583,9 @@ describe('PlanView in room mode', () => {
     const wDim = document.querySelector<HTMLElement>('.plan-dim-w');
     const lDim = document.querySelector<HTMLElement>('.plan-dim-l');
     if (!wDim || !lDim) throw new Error('no dimension lines');
-    expect(px(wDim, 'top')).toBeCloseTo(tl.y - (off + CONFIG.dimOffsetRoomExtra), 3);
+    expect(px(wDim, 'top')).toBeCloseTo(tl.y - total, 3);
     expect(px(wDim, 'left')).toBeCloseTo(tl.x, 3);
-    expect(px(lDim, 'left')).toBeCloseTo(tl.x - (off + CONFIG.dimOffsetRoomExtra), 3);
+    expect(px(lDim, 'left')).toBeCloseTo(tl.x - total, 3);
     expect(px(lDim, 'top')).toBeCloseTo(tl.y, 3);
     // Back in furnish mode the lines return to the base offset.
     act(() => useUiStore.getState().setMode('furnish'));

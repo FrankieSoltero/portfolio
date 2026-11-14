@@ -79,7 +79,7 @@ describe('CONFIG', () => {
       camera: { yaw: -0.65, pitch: 0.55, zoom: 1 },
       pitchMin: 0.12, pitchMax: 1.45, zoomMin: 0.6, zoomMax: 2.5,
       orbitYawPerPx: 0.008, orbitPitchPerPx: 0.006, zoomPerDelta: 0.001,
-      planMargin: 64, planMarginInset: 48, dimOffset: 30, dimOffsetInset: 22, dimOffsetRoomExtra: 22,
+      planMargin: 64, planMarginInset: 48, dimOffset: 30, dimOffsetInset: 22, dimOffsetRoomExtra: 22, dimOffsetRoomExtraInset: 14,
       insetGap: 16, minPlanScale: 0.2, minSafeWidth: 200, conflictEpsilon: 0.01,
       cornerSnap: 1, angleSnapDeg: 15, angleSnapTolerancePx: 8, wallMin: 6, maxCorners: 64, sameDirectionSlack: 0.005, wallDragThresholdPx: 4, wallLabelOffsetPx: 18, coordMax: 1440, maxItems: 200,
       maxPixelRatio: 2, nudgeStep: 1, nudgeStepLarge: 12,

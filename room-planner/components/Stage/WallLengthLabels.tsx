@@ -182,9 +182,11 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
  * on its wall's band) selects its wall; a pointer down on it does not reach the plan background.
  * Each carries `data-wall-label-id` so a wall press can focus it. A click (or Enter) on a label
  * selects its wall (a clicked button is not focused in every browser) and replaces the label with the
- * wall's length editor (WallLengthEditor). One editor is open at a time: a real click on another label
- * first moves focus out of the open editor, which applies its draft as leaving does, and opening the
- * new editor then closes the first without applying anything more. After the labels it draws the
+ * wall's length editor (WallLengthEditor). One editor is open at a time. Where a clicked button takes
+ * focus, a real click on another label first moves focus out of the open editor, which applies its
+ * draft as leaving does, and opening the new editor then closes the first without applying anything
+ * more. Where it does not (Safari), focus stays in the open editor, so opening the new one closes the
+ * first and its draft is discarded, not applied. After the labels it draws the
  * selected wall's moving-end marks (MovingEndMarks), if a wall of the outline is selected.
  */
 export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Element {

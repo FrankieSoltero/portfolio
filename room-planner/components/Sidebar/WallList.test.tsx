@@ -357,6 +357,17 @@ describe('WallList: which end a typed length moves', () => {
     expect(control().compareDocumentPosition(firstRow as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('shows the visible label "A typed length moves" once, before the control, in the small field-label style', () => {
+    const { container } = render(<WallList />);
+    const labels = screen.getAllByText('A typed length moves');
+    expect(labels).toHaveLength(1);
+    const label = labels[0] as HTMLElement;
+    expect(label).toHaveClass('shape-buttons-label');
+    expect(container.querySelectorAll('.shape-buttons-label')).toHaveLength(1);
+    expect(label.compareDocumentPosition(control()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(control()).toHaveAttribute('aria-label', 'A typed length moves');
+  });
+
   it('follows lengthAnchor when it changes elsewhere', () => {
     render(<WallList />);
     act(() => useUiStore.getState().setLengthAnchor('both'));

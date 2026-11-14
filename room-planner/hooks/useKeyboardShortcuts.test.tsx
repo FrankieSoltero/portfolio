@@ -601,11 +601,13 @@ describe('useKeyboardShortcuts in room mode with a wall selected', () => {
     expect(useUiStore.getState().roomTool).toBe('corner');
   });
 
-  it.each(['Delete', 'Backspace'])('%s leaves the outline unchanged and the wall selected', (key) => {
+  it.each(['Delete', 'Backspace'])('%s leaves the outline unchanged, the wall selected and the room problem as it was', (key) => {
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
     const before = outline();
     press(document.body, key);
     expect(outline()).toBe(before);
     expect(useUiStore.getState().selectedWallId).toBe('c1');
+    expect(useUiStore.getState().roomProblem).toBe('Walls cannot cross.');
   });
 
   it('r changes nothing', () => {

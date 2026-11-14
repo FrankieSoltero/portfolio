@@ -75,6 +75,29 @@ describe('WallLengthLabels', () => {
     expect(parseFloat(label('c1').style.top)).toBeCloseTo(2, 6);
   });
 
+  it('puts a diagonal wall\'s label 18 px outside it, along (0.8, −0.6) from the midpoint', () => {
+    // Wall a1 runs (0,0) → (30,40): u = (0.6, 0.8), inward normal n = (−0.8, 0.6).
+    act(() => {
+      usePlanStore.getState().applyOutline({
+        ok: true,
+        outline: [
+          { id: 'a1', x: 0, y: 0 },
+          { id: 'a2', x: 30, y: 40 },
+          { id: 'a3', x: -30, y: 60 },
+        ],
+      });
+    });
+    render(<WallLengthLabels layout={LAYOUT} />);
+    const wall = wallsOf(usePlanStore.getState().room.outline).find((w) => w.id === 'a1');
+    if (!wall) throw new Error('no wall a1');
+    const { n } = wallFrame(wall);
+    expect(n.x).toBeCloseTo(-0.8, 9);
+    expect(n.y).toBeCloseTo(0.6, 9);
+    // Midpoint (15, 20) is pane (40, 60); 18 px along (0.8, −0.6) is (54.4, 49.2).
+    expect(parseFloat(label('a1').style.left)).toBeCloseTo(54.4, 6);
+    expect(parseFloat(label('a1').style.top)).toBeCloseTo(49.2, 6);
+  });
+
   it('follows the units when they change to m', () => {
     render(<WallLengthLabels layout={LAYOUT} />);
     act(() => usePlanStore.getState().setUnits('m'));
@@ -405,6 +428,20 @@ describe('WallLengthLabels: on-plan length editor', () => {
     expect(setWallLengthTo).not.toHaveBeenCalled();
     expect(useUiStore.getState().lengthAnchor).toBe('both');
     expect(lengthInput()).toHaveValue(13);
+    expect(corners()).toEqual(R.outline);
+  });
+
+  it('a mouse press then a click on a radio still chooses it, though the group prevents the press\'s default', async () => {
+    const user = await openOn('c1');
+    await user.keyboard('13');
+    const start = screen.getByRole('radio', { name: 'Corner 1 end' });
+    expect(fireEvent.mouseDown(start)).toBe(false);
+    await user.click(start);
+    expect(useUiStore.getState().lengthAnchor).toBe('start');
+    expect(start).toHaveAttribute('aria-checked', 'true');
+    expect(lengthInput()).toHaveFocus();
+    expect(lengthInput()).toHaveValue(13);
+    expect(setWallLengthTo).not.toHaveBeenCalled();
     expect(corners()).toEqual(R.outline);
   });
 

@@ -651,6 +651,16 @@ describe('RoomEditLayer handles take focus on a primary press', () => {
     expect(document.activeElement).toBe(other);
   });
 
+  it.each(['door', 'window'] as const)('with the %s tool armed, a primary press on a wall band places it and moves focus to no wall label', (tool) => {
+    renderLayer();
+    act(() => useUiStore.getState().setRoomTool(tool));
+    focusElsewhere();
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    expect(placeOpeningOnWall).toHaveBeenCalledTimes(1);
+    expect(document.activeElement?.closest('[data-wall-label-id]')).toBeNull();
+    expect(useUiStore.getState().selectedWallId).toBeNull();
+  });
+
   it('after a press on a wall band, ArrowDown slides the wall 1 in and does not change the radio', async () => {
     function Shortcuts(): null {
       useKeyboardShortcuts();

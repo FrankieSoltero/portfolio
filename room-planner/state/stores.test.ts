@@ -1779,6 +1779,7 @@ describe('wall slide and length actions', () => {
     expect(s.wallId).toBe('c1');
     expect(s.outline).toEqual(R);
     expect(s.stops).toEqual([168]);
+    // The normal is (−u.y, u.x), so its x is −0 here; `+ 0` turns it into 0, which toEqual tells apart from −0.
     expect({ x: s.normal.x + 0, y: s.normal.y }).toEqual({ x: 0, y: 1 });
     expect(s.ids.start).not.toBe(s.ids.end);
     slideWallTo(s, 11.6);

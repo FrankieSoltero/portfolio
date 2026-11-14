@@ -20,6 +20,8 @@ export const CONFIG = {
   dimOffsetInset: 22,
   // In room mode the overall dimension lines sit this many px further out, clear of the wall labels.
   dimOffsetRoomExtra: 22,
+  // The inset pane's margin is smaller (planMarginInset), so its lines move out less, keeping the text inside the pane.
+  dimOffsetRoomExtraInset: 14,
   insetGap: 16,
   minPlanScale: 0.2,
   minSafeWidth: 200,
