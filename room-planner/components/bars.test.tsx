@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProductPreview } from '../domain/types';
@@ -19,8 +19,10 @@ const DESK_ID = 'seed-desk';
 const BED_ID = 'seed-bed';
 
 const HINT_2D =
-  'Drag a piece on the plan to move it, or nudge it with the arrow keys. Select one to see its clearance to each wall. R rotates, Delete removes. Drag the 3D view to orbit.';
+  'Drag a piece on the plan to move it, or nudge it with the arrow keys. Select one to see its clearance to each wall. R turns it 90°, Shift+R turns it 15°, Delete removes. Drag the 3D view to orbit.';
 const HINT_3D = 'Drag to orbit, scroll to zoom. Pick a piece from the list to highlight it.';
+const HINT_ROOM =
+  'Drag a corner to reshape the room. Click a wall to add a corner. Select a corner and press Delete to remove it.';
 
 function preview(overrides: Partial<ProductPreview>): ProductPreview {
   return {
@@ -174,5 +176,180 @@ describe('SelectionBar', () => {
     expect(usePlanStore.getState().items.some((i) => i.id === DESK_ID)).toBe(false);
     expect(useUiStore.getState().selectedId).toBeNull();
     expect(screen.getByText(HINT_2D)).toBeInTheDocument();
+  });
+});
+
+describe('SelectionBar Angle field', () => {
+  function angleField(): HTMLInputElement {
+    return screen.getByLabelText('Angle') as HTMLInputElement;
+  }
+
+  /**
+   * Simulates the browser reporting `value` as the typed text of a number input. jsdom sanitises
+   * text such as "abc" to "", so the value is forced, as the room input tests do.
+   */
+  function typeRaw(el: HTMLInputElement, value: string): void {
+    Object.defineProperty(el, 'value', { configurable: true, writable: true, value });
+    fireEvent.change(el);
+  }
+
+  it('is a labelled number input from 0 to 359 in steps of 1 with an aria-hidden ° suffix', () => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    const { container } = render(<SelectionBar />);
+    const el = angleField();
+    expect(el).toHaveAttribute('type', 'number');
+    expect(el).toHaveAttribute('min', '0');
+    expect(el).toHaveAttribute('max', '359');
+    expect(el).toHaveAttribute('step', '1');
+    expect(el).toHaveClass('input');
+    expect(container.querySelector(`label[for="${el.id}"]`)).toHaveTextContent(/^Angle$/);
+    const field = el.closest('.angle-field');
+    expect(field).not.toBeNull();
+    const suffix = field?.querySelector('.angle-field-suffix');
+    expect(suffix).toHaveTextContent(/^°$/);
+    expect(suffix).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('shows the selected item angle: 45 for an item at 45°', () => {
+    act(() => {
+      usePlanStore.getState().setItemAngle(DESK_ID, 45);
+      useUiStore.getState().select(DESK_ID);
+    });
+    render(<SelectionBar />);
+    expect(angleField().value).toBe('45');
+  });
+
+  it('shows a stored 22.5° as 22.5 and 90° as 90', () => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    expect(angleField().value).toBe('90');
+    act(() => usePlanStore.getState().setItemAngle(DESK_ID, 22.5));
+    expect(angleField().value).toBe('22.5');
+  });
+
+  it('writes a typed 30 to the store with setItemAngle', () => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    typeRaw(angleField(), '30');
+    expect(desk().angle).toBe(30);
+    expect(angleField().value).toBe('30');
+  });
+
+  it('writes a typed 30 when the user types it key by key', async () => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    const user = userEvent.setup();
+    await user.clear(angleField());
+    await user.type(angleField(), '30');
+    expect(desk().angle).toBe(30);
+    expect(angleField().value).toBe('30');
+  });
+
+  it.each([
+    ['0', 0],
+    ['359', 359],
+    ['359.5', 359.5],
+  ])('accepts %s as typed', (text, angle) => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    typeRaw(angleField(), text);
+    expect(desk().angle).toBe(angle);
+    expect(angleField().value).toBe(text);
+  });
+
+  it.each(['360', '400', '-10', '-0.5', '', 'abc'])('does not write %j and keeps the typed text', (text) => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    const before = usePlanStore.getState().items;
+    typeRaw(angleField(), text);
+    expect(usePlanStore.getState().items).toBe(before);
+    expect(desk().angle).toBe(90);
+    expect(angleField().value).toBe(text);
+  });
+
+  it('re-seeds a rejected draft when the selection changes', () => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    typeRaw(angleField(), '400');
+    act(() => useUiStore.getState().select(BED_ID));
+    expect(angleField().value).toBe('0');
+    act(() => useUiStore.getState().select(DESK_ID));
+    expect(angleField().value).toBe('90');
+  });
+
+  it('re-seeds the draft when the selection changes to an item at the same angle', () => {
+    act(() => {
+      usePlanStore.getState().setItemAngle(BED_ID, 30);
+      useUiStore.getState().select(DESK_ID);
+    });
+    render(<SelectionBar />);
+    typeRaw(angleField(), '30.001');
+    expect(desk().angle).toBe(30);
+    act(() => useUiStore.getState().select(BED_ID));
+    expect(angleField().value).toBe('30');
+  });
+
+  it('re-seeds a rejected draft when the stored angle changes', async () => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    typeRaw(angleField(), '400');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Rotate 90°' }));
+    expect(desk().angle).toBe(180);
+    expect(angleField().value).toBe('180');
+  });
+
+  it('keeps a draft that still shows the stored angle after rounding', () => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    typeRaw(angleField(), '30.001');
+    expect(desk().angle).toBe(30);
+    expect(angleField().value).toBe('30.001');
+  });
+
+  it('re-seeds a draft that the stored angle no longer matches after it normalises', () => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    // 359.999 is in [0, 360) and is accepted, but it is stored rounded to 0.01: 360, which is 0°.
+    typeRaw(angleField(), '359.999');
+    expect(desk().angle).toBe(0);
+    expect(angleField().value).toBe('0');
+  });
+});
+
+describe('SelectionBar in room mode', () => {
+  it('shows only the room-mode hint, with no item controls, even if an item is still selected', () => {
+    act(() => {
+      useUiStore.getState().setMode('room');
+      useUiStore.getState().select(DESK_ID);
+    });
+    render(<SelectionBar />);
+    expect(screen.getByText(HINT_ROOM)).toHaveClass('selection-hint');
+    expect(screen.queryByText('Tack writing desk')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByLabelText('Angle')).toBeNull();
+    expect(screen.queryByText(HINT_2D)).toBeNull();
+  });
+
+  it('switches between the room-mode hint and the furnish controls as the mode changes', () => {
+    act(() => useUiStore.getState().select(DESK_ID));
+    render(<SelectionBar />);
+    act(() => useUiStore.getState().setMode('room'));
+    expect(screen.getByText(HINT_ROOM)).toBeInTheDocument();
+    act(() => useUiStore.getState().setMode('furnish'));
+    expect(screen.queryByText(HINT_ROOM)).toBeNull();
+    expect(screen.getByText(HINT_2D)).toBeInTheDocument();
+  });
+
+  it('shows the 3D hint, not the room-mode hint, when the plan is not visible', () => {
+    act(() => {
+      useUiStore.getState().setLayout('tabs');
+      useUiStore.getState().setTab('3d');
+      useUiStore.getState().setMode('room');
+      useUiStore.getState().select(DESK_ID);
+    });
+    render(<SelectionBar />);
+    expect(screen.getByText(HINT_3D)).toBeInTheDocument();
+    expect(screen.queryByText(HINT_ROOM)).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

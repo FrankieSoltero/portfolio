@@ -9,6 +9,10 @@ import {
 } from '../state/actions';
 import { useUiStore } from '../state/uiStore';
 
+/** R turns the selected item by the coarse step; Shift+R by the fine step (degrees clockwise). */
+export const ROTATE_STEP_COARSE = 90;
+export const ROTATE_STEP_FINE = 15;
+
 const ARROWS: Readonly<Record<string, readonly [number, number]>> = {
   ArrowRight: [1, 0],
   ArrowLeft: [-1, 0],
@@ -61,14 +65,16 @@ function onKeyDown(e: KeyboardEvent): void {
 
   // Prototype lines 275–281: text fields swallow these keys, a focused radio does not.
   if (inFormField(e.target, false)) return;
-  if (e.key === 'r' || e.key === 'R') rotateSelected();
+  // Shift decides the step, not the letter's case: caps-lock R without Shift is a coarse turn.
+  if (e.key === 'r' || e.key === 'R') rotateSelected(e.shiftKey ? ROTATE_STEP_FINE : ROTATE_STEP_COARSE);
   else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
   else if (e.key === 'Escape') useUiStore.getState().select(null);
 }
 
 /**
- * Workspace shortcuts. Furnish mode acts on the selected item: R rotate, Delete/Backspace remove,
- * Escape deselect, arrows nudge. Room mode acts on the selected corner (see onRoomKeyDown).
+ * Workspace shortcuts. Furnish mode acts on the selected item: R turns it 90°, Shift+R 15°,
+ * Delete/Backspace remove, Escape deselect, arrows nudge. Room mode acts on the selected corner
+ * (see onRoomKeyDown).
  */
 export function useKeyboardShortcuts(): void {
   useEffect(() => {

@@ -1,12 +1,13 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SelectionBar } from '../components/SelectionBar';
 import { CONFIG } from '../config';
 import type { Corner, Item } from '../domain/types';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { startDrag } from './startDrag';
 import { useElementSize } from './useElementSize';
-import { useKeyboardShortcuts } from './useKeyboardShortcuts';
+import { ROTATE_STEP_COARSE, ROTATE_STEP_FINE, useKeyboardShortcuts } from './useKeyboardShortcuts';
 
 const BED = 'seed-bed';
 
@@ -60,6 +61,43 @@ describe('useKeyboardShortcuts', () => {
     useUiStore.getState().select(BED);
     press(document.body, key);
     expect(bed()?.angle).toBe(90);
+  });
+
+  it('names the rotation steps: 90° coarse, 15° fine', () => {
+    expect(ROTATE_STEP_COARSE).toBe(90);
+    expect(ROTATE_STEP_FINE).toBe(15);
+  });
+
+  // Shift decides the step, not the letter's case: Shift+R arrives as 'R', caps-lock R without Shift turns 90°.
+  it.each(['R', 'r'])('Shift+%s turns the selected item 15°', (key) => {
+    useUiStore.getState().select(BED);
+    press(document.body, key, { shiftKey: true });
+    expect(bed()?.angle).toBe(15);
+  });
+
+  it('Shift+R three times turns the desk from 90° to 135°, and R then adds 90°', () => {
+    useUiStore.getState().select('seed-desk');
+    for (let i = 0; i < 3; i++) press(document.body, 'R', { shiftKey: true });
+    expect(desk()?.angle).toBe(135);
+    press(document.body, 'r');
+    expect(desk()?.angle).toBe(225);
+  });
+
+  it('Shift+R past 345° wraps to 0°', () => {
+    usePlanStore.getState().setItemAngle(BED, 345);
+    useUiStore.getState().select(BED);
+    press(document.body, 'R', { shiftKey: true });
+    expect(bed()?.angle).toBe(0);
+  });
+
+  it.each([
+    ['input', 'text'],
+    ['input', 'number'],
+    ['textarea', undefined],
+  ] as const)('Shift+R with focus in %s %s is ignored', (tag, type) => {
+    useUiStore.getState().select(BED);
+    press(focused(tag, type), 'R', { shiftKey: true });
+    expect(bed()?.angle).toBe(0);
   });
 
   it.each(['Delete', 'Backspace'])('%s removes the selected item and clears the selection', (key) => {
@@ -261,6 +299,15 @@ describe('useKeyboardShortcuts in room mode', () => {
     expect(usePlanStore.getState().items).toBe(before.items);
   });
 
+  it('Shift+R does nothing in room mode', () => {
+    useUiStore.getState().selectCorner('c2');
+    useUiStore.getState().select(BED);
+    const before = usePlanStore.getState();
+    press(document.body, 'R', { shiftKey: true });
+    expect(usePlanStore.getState().room).toBe(before.room);
+    expect(usePlanStore.getState().items).toBe(before.items);
+  });
+
   it('item shortcuts do not act on a selected item in room mode', () => {
     useUiStore.getState().select(BED);
     const before = usePlanStore.getState();
@@ -291,6 +338,45 @@ describe('useKeyboardShortcuts in room mode', () => {
     press(document.body, 'ArrowLeft');
     expect(corner('c2')).toEqual({ id: 'c2', x: 144, y: 0 });
     expect(bed()).toMatchObject({ x: 71, y: 42.5 });
+  });
+});
+
+describe('useKeyboardShortcuts with focus in the selection bar Angle field', () => {
+  function Workspace() {
+    useKeyboardShortcuts();
+    return <SelectionBar />;
+  }
+
+  function angleField(): HTMLInputElement {
+    return screen.getByLabelText('Angle') as HTMLInputElement;
+  }
+
+  beforeEach(() => {
+    act(() => useUiStore.getState().select(BED));
+    render(<Workspace />);
+    angleField().focus();
+  });
+
+  it.each([
+    ['r', {}],
+    ['R', {}],
+    ['R', { shiftKey: true }],
+  ] as const)('%s %o typed in the field does not rotate the item', (key, init) => {
+    press(angleField(), key, init);
+    expect(bed()?.angle).toBe(0);
+    expect(angleField().value).toBe('0');
+  });
+
+  it.each(['Delete', 'Backspace'])('%s typed in the field does not remove the item', (key) => {
+    press(angleField(), key);
+    expect(bed()).toBeDefined();
+    expect(useUiStore.getState().selectedId).toBe(BED);
+  });
+
+  it.each(['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'])('%s typed in the field does not nudge the item', (key) => {
+    const ev = press(angleField(), key, { shiftKey: true });
+    expect(bed()).toMatchObject({ x: 72, y: 42.5, angle: 0 });
+    expect(ev.defaultPrevented).toBe(false);
   });
 });
 
