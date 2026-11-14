@@ -188,6 +188,20 @@ describe('addOpening', () => {
     expect(door.offset).toBe(0);
   });
 
+  it('takes the full width of a diagonal wall exactly 12 long despite floating-point noise', () => {
+    // (3.22, 4.19) → (10.42, 13.79) is 12 long but computes as 11.999999999999996.
+    const outline = corners('s', [3.22, 4.19], [10.42, 13.79], [-20, 30]);
+    const [door] = okOpenings(addOpening(outline, [], 'door', 's1', { x: 6, y: 8 }, 'n1'));
+    expect(door).toMatchObject({ width: 12, offset: 0 });
+  });
+
+  it('takes the full width of a diagonal wall 12.55 long despite floating-point noise', () => {
+    // (0, 0) → (7.53, 10.04) is 12.55 long but computes as 12.549999999999999.
+    const outline = corners('s', [0, 0], [7.53, 10.04], [-20, 30]);
+    const [door] = okOpenings(addOpening(outline, [], 'door', 's1', { x: 3, y: 4 }, 'n1'));
+    expect(door).toMatchObject({ width: 12.55, offset: 0 });
+  });
+
   it('refuses a wall shorter than the narrowest opening', () => {
     const outline = corners('s', [0, 0], [10, 0], [10, 100], [0, 100]);
     expect(addOpening(outline, [], 'door', 's1', { x: 5, y: 0 }, 'n1')).toEqual({ ok: false, problem: 'opening-off-wall' });
@@ -320,6 +334,23 @@ describe('rehomeOpenings', () => {
     expect(rehomeOpenings(R, after(84), [opening])).toEqual({ ok: false, problem: 'corner-in-opening' });
   });
 
+  it('handles a corner added at the last index of the outline', () => {
+    const opening = win('w', 'c4', 60, 32);
+    const after = (y: number): Corner[] => [...R, { id: 'n1', x: 0, y }];
+    expect(okOpenings(rehomeOpenings(R, after(48), [opening]))).toEqual([opening]);
+    expect(okOpenings(rehomeOpenings(R, after(128), [opening]))).toEqual([{ ...opening, wallId: 'n1', offset: 20 }]);
+  });
+
+  it('keeps an opening flush with the end of a diagonal wall on it when a corner is added before it', () => {
+    // Wall q1 is 107.7033 long; the door is flush with its end. After N, wall n1 is 104.8492 long:
+    // round2(75.70 − 2.8541) = 72.85 would end at 104.85, so the offset is clamped to 72.84.
+    const before = corners('q', [0, 0], [100, 40], [0, 100]);
+    const after: Corner[] = [before[0], { id: 'n1', x: 2.65, y: 1.06 }, ...before.slice(1)];
+    const door: Door = { ...D1, wallId: 'q1', offset: 75.7, width: 32 };
+    expect(validateOpenings(before, [door])).toBeNull();
+    expect(okOpenings(rehomeOpenings(before, after, [door]))).toEqual([{ ...door, wallId: 'n1', offset: 72.84 }]);
+  });
+
   it('refuses removing a corner on whose walls an opening sits', () => {
     const after = R.filter((c) => c.id !== 'c2');
     expect(rehomeOpenings(R, after, [D1])).toEqual({ ok: false, problem: 'corner-has-openings' });
@@ -338,6 +369,39 @@ describe('rehomeOpenings', () => {
     ]);
     const window = win('w', 't1', 10, 30);
     expect(okOpenings(rehomeOpenings(before, after, [window]))).toEqual([{ ...window, wallId: 't2', offset: 60 }]);
+  });
+
+  it('wraps to the last corner when the first corner of the array is removed', () => {
+    const after = R.slice(1);
+    expect(rehomeOpenings(R, after, [win('w', 'c4', 10)])).toEqual({ ok: false, problem: 'corner-has-openings' });
+    expect(rehomeOpenings(R, after, [D1])).toEqual({ ok: false, problem: 'corner-has-openings' });
+    const onC2 = win('w', 'c2', 10);
+    expect(okOpenings(rehomeOpenings(R, after, [onC2]))).toEqual([onC2]);
+  });
+
+  it('measures the reversed offset with the wall length in after', () => {
+    const before = corners('t', [0, 0], [100, 0], [0, 100]);
+    const after: Corner[] = [{ id: 't3', x: 0, y: -100 }, { id: 't2', x: 120, y: 0 }, { id: 't1', x: 0, y: 0 }];
+    const door: Door = { ...D1, wallId: 't1', offset: 10, width: 30, hinge: 'start' };
+    expect(okOpenings(rehomeOpenings(before, after, [door]))).toEqual([{ ...door, wallId: 't2', offset: 80, hinge: 'end' }]);
+  });
+
+  it('reverses openings on the first and on the closing wall of a 4-corner outline', () => {
+    // R mirrored across y = 0 and listed in reverse, which keeps the signed area positive.
+    const after: Corner[] = [{ id: 'c4', x: 0, y: -168 }, { id: 'c3', x: 144, y: -168 }, { id: 'c2', x: 144, y: 0 }, { id: 'c1', x: 0, y: 0 }];
+    const closing = win('w', 'c4', 60, 32);
+    expect(okOpenings(rehomeOpenings(R, after, [D1, closing]))).toEqual([
+      { ...D1, wallId: 'c2', offset: 92, hinge: 'end' },
+      { ...closing, wallId: 'c1', offset: 76 },
+    ]);
+  });
+
+  it('keeps a reversed opening on a diagonal wall when rounding would push it past the end', () => {
+    // Wall t1 → t2 is 42.0595 long: round2(42.0595 − 0 − 30) = 12.06 would end at 42.06, so it is clamped to 12.05.
+    const before = corners('t', [0, 0], [40, 13], [0, 100]);
+    const after: Corner[] = [{ id: 't3', x: 20, y: -50 }, { id: 't2', x: 40, y: 13 }, { id: 't1', x: 0, y: 0 }];
+    const door: Door = { ...D1, wallId: 't1', offset: 0, width: 30, hinge: 'start' };
+    expect(okOpenings(rehomeOpenings(before, after, [door]))).toEqual([{ ...door, wallId: 't2', offset: 12.05, hinge: 'end' }]);
   });
 
   it('refuses replacing the outline while there are openings', () => {

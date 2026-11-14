@@ -78,15 +78,21 @@ function clean(v: number): number {
   return v === 0 ? 0 : v;
 }
 
-/** The largest multiple of 0.01 not above v, so a stored value never runs past the wall end. */
+/**
+ * Tolerance for rounding a length down to 0.01: half of LIMIT_SLACK, so a computed length a hair
+ * under a hundredth (a 12 in diagonal wall computes as 11.999999999999996) keeps that hundredth,
+ * and whatever is rounded down still fits its wall in validateOpenings.
+ */
+const FLOOR_SLACK = LIMIT_SLACK / 2;
+
+/** v rounded down to a multiple of 0.01 (up to FLOOR_SLACK), so a stored value never runs past the wall end. */
 function floor2(v: number): number {
-  const r = round2(v);
-  return r > v ? round2(r - 0.01) : r;
+  return Math.floor((v + FLOOR_SLACK) * 100) / 100;
 }
 
-/** Clamps an offset into [0, wall length − width], keeping it a multiple of 0.01. */
-function clampOffset(offset: number, wall: Wall, width: number): number {
-  return Math.max(0, Math.min(offset, floor2(wall.length - width)));
+/** Clamps an offset into [0, wall length − width], the upper bound rounded down to 0.01. */
+function clampOffset(offset: number, length: number, width: number): number {
+  return Math.max(0, Math.min(offset, floor2(length - width)));
 }
 
 /** True when v is a finite number within [min, max]; the limits are exact up to LIMIT_SLACK. */
@@ -176,7 +182,7 @@ export function addOpening(
   const width = narrow ? floor2(wall.length) : defaults.width;
   // A non-finite `at` gives a NaN offset, which validation refuses as opening-size.
   const t = projectOntoSegment(at, wall.a, wall.b).t * wall.length;
-  const offset = clampOffset(Math.round(t - width / 2), wall, width);
+  const offset = clampOffset(Math.round(t - width / 2), wall.length, width);
   const opening: Opening =
     kind === 'door'
       ? { id: newId, kind, wallId, offset, width, height: DOOR_DEFAULTS.height, hinge: DOOR_DEFAULTS.hinge, swing: DOOR_DEFAULTS.swing }
@@ -194,7 +200,7 @@ export function slideOpening(outline: readonly Corner[], openings: readonly Open
   const opening = openings[index];
   const wall = wallById(outline, opening.wallId);
   const rounded = Math.round(offset);
-  const next = wall === undefined ? rounded : clampOffset(rounded, wall, opening.width);
+  const next = wall === undefined ? rounded : clampOffset(rounded, wall.length, opening.width);
   return settle(
     outline,
     openings.map((o, i) => (i === index ? { ...o, offset: next } : o)),
@@ -237,7 +243,11 @@ function sameIds(p: readonly string[], q: readonly string[]): boolean {
   return p.length === q.length && p.every((id, i) => id === q[i]);
 }
 
-/** Each opening moves to the same physical wall in the reversed outline, measured from its new start. */
+/**
+ * Each opening moves to the same physical wall in the reversed outline, measured from its new start;
+ * the new offset is rounded to 0.01 and clamped into [0, new length − width], so rounding never
+ * pushes it past the wall end.
+ */
 function rehomeReversed(before: readonly Corner[], after: readonly Corner[], openings: readonly Opening[]): OpeningsResult {
   const wallsBefore = wallsOf(before);
   const lengthsAfter = new Map(wallsOf(after).map((w) => [w.id, w.length]));
@@ -247,7 +257,7 @@ function rehomeReversed(before: readonly Corner[], after: readonly Corner[], ope
     // An opening on an unknown wall stays as it is and is refused by validation.
     if (wall === undefined || length === undefined) return o;
     const wallId = wall.b.id;
-    const offset = round2(length - o.offset - o.width);
+    const offset = clampOffset(round2(length - o.offset - o.width), length, o.width);
     return o.kind === 'door'
       ? { ...o, wallId, offset, hinge: o.hinge === 'start' ? 'end' : 'start' }
       : { ...o, wallId, offset };
@@ -255,15 +265,23 @@ function rehomeReversed(before: readonly Corner[], after: readonly Corner[], ope
   return settle(after, moved);
 }
 
-/** The new corner N at index k of `after` splits wall A → B: openings past it move to wall N. */
+/**
+ * The new corner N at index k of `after` splits wall A → B: openings past it move to wall N, their
+ * offset rounded to 0.01 and clamped into [0, |B − N| − width], so rounding never pushes one past
+ * the wall end.
+ */
 function rehomeAdded(after: readonly Corner[], k: number, openings: readonly Opening[]): OpeningsResult {
   const n = after[k];
   const a = after[(k - 1 + after.length) % after.length];
+  const b = after[(k + 1) % after.length];
   const t = Math.hypot(n.x - a.x, n.y - a.y);
+  const lengthN = Math.hypot(b.x - n.x, b.y - n.y);
   const moved: Opening[] = [];
   for (const o of openings) {
     if (o.wallId !== a.id || o.offset + o.width <= t + LIMIT_SLACK) moved.push(o);
-    else if (o.offset >= t - LIMIT_SLACK) moved.push({ ...o, wallId: n.id, offset: round2(o.offset - t) });
+    else if (o.offset >= t - LIMIT_SLACK) {
+      moved.push({ ...o, wallId: n.id, offset: clampOffset(round2(o.offset - t), lengthN, o.width) });
+    }
     else return refuse('corner-in-opening');
   }
   return settle(after, moved);
