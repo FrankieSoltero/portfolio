@@ -179,6 +179,17 @@ the tasks named; they add no new scope.
 11. **Fix pass.** If Task 13 records a `Fail`, the controller dispatches one fix task
     ("Task 13b"), reviewed like any other, then re-runs the failed rows before Task 14.
 
+## Amendment 2 (2026-11-14, controller ruling after the Task 2 review)
+
+Task 2's rules rounded a re-homed offset with `round2`, which can round up by 0.005
+and push an opening past the end of a diagonal wall, so a legitimate corner insert or
+outline reversal was refused. Corrected rule: after an offset is recomputed by
+`rehomeOpenings` (the reversed and corner-added cases), it is rounded and then clamped
+into `[0, L − width]`, where `L` is the length of the opening's wall in the new
+outline, rounded down to 0.01 with a tolerance for floating-point noise. The same
+tolerant rounding-down is used wherever a width or an upper offset bound is derived
+from a wall's length, so a wall exactly 12 in long takes a 12 in opening.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
