@@ -13,7 +13,10 @@ export interface Item {
   price: number | null; w: number; d: number; h: number;
   x: number; y: number; angle: number; model: ItemModel;
 }
-export interface PlanDocument { schemaVersion: 2; units: Units; room: Room; items: Item[] }
+/** The stored plan, version 3: the room, its furniture, its doors and windows, and its fixed obstacles. */
+export interface PlanDocument {
+  schemaVersion: 3; units: Units; room: Room; items: Item[]; openings: Opening[]; obstacles: Obstacle[];
+}
 export interface ProductPreview {
   kind: Kind; name: string; host: string; sourceUrl: string; price: number | null;
   w: number; d: number; h: number; known: boolean; model: ItemModel;

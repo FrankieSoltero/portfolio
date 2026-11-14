@@ -9,7 +9,10 @@ describe('createInitialDocument', () => {
   it('returns the seeded plan document', () => {
     const doc = createInitialDocument();
     const model = { tier: 'retailer', label: '3D model from retailer', assetUrl: null };
-    expect(doc.schemaVersion).toBe(2);
+    expect(doc.schemaVersion).toBe(3);
+    expect(Object.keys(doc)).toEqual(['schemaVersion', 'units', 'room', 'items', 'openings', 'obstacles']);
+    expect(doc.openings).toEqual([]);
+    expect(doc.obstacles).toEqual([]);
     expect(doc.units).toBe('ft');
     expect(doc.room).toEqual({
       outline: [{ id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 }],
@@ -25,6 +28,8 @@ describe('createInitialDocument', () => {
     const a = createInitialDocument();
     const b = createInitialDocument();
     expect(a).not.toBe(b);
+    expect(a.openings).not.toBe(b.openings);
+    expect(a.obstacles).not.toBe(b.obstacles);
     const [firstA] = a.items;
     const [firstB] = b.items;
     expect(firstA).toBeDefined();

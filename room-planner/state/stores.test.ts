@@ -6,7 +6,7 @@ import { findConflicts } from '../domain/conflicts';
 import { setRectangleSize, startingShape } from '../domain/outline';
 import { boundsOf, pointInPolygon } from '../domain/polygon';
 import { footprintCorners, itemFootprint } from '../domain/shape';
-import type { Corner, Item, PlanDocument, ProductPreview } from '../domain/types';
+import type { Corner, Door, Item, Obstacle, PlanDocument, ProductPreview } from '../domain/types';
 import {
   addCornerOnWall,
   dragCornerTo,
@@ -39,7 +39,14 @@ const SOFA: ProductPreview = {
 };
 
 function docOf(state: PlanDocument): PlanDocument {
-  return { schemaVersion: state.schemaVersion, units: state.units, room: state.room, items: state.items };
+  return {
+    schemaVersion: state.schemaVersion,
+    units: state.units,
+    room: state.room,
+    items: state.items,
+    openings: state.openings,
+    obstacles: state.obstacles,
+  };
 }
 
 function req<T>(value: T | undefined, what: string): T {
@@ -77,6 +84,25 @@ describe('planStore', () => {
     const custom: PlanDocument = { ...createInitialDocument(), units: 'm', items: [] };
     usePlanStore.getState().reset(custom);
     expect(docOf(usePlanStore.getState())).toEqual(custom);
+  });
+
+  it('starts with no openings and no obstacles', () => {
+    expect(freshPlan.schemaVersion).toBe(3);
+    expect(freshPlan.openings).toEqual([]);
+    expect(freshPlan.obstacles).toEqual([]);
+  });
+
+  it('reset carries all six document fields: a given door and box, then the seed again', () => {
+    const door: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+    const box: Obstacle = { id: 'b1', shape: 'box', label: 'Box', x: 40, y: 120, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 };
+    const custom: PlanDocument = { ...createInitialDocument(), openings: [door], obstacles: [box] };
+    usePlanStore.getState().reset(custom);
+    const s = usePlanStore.getState();
+    expect(docOf(s)).toEqual(custom);
+    expect(s.openings).toBe(custom.openings);
+    expect(s.obstacles).toBe(custom.obstacles);
+    usePlanStore.getState().reset();
+    expect(docOf(usePlanStore.getState())).toEqual(createInitialDocument());
   });
 
   it('setUnits changes units only, leaving room and items untouched', () => {

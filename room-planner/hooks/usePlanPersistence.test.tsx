@@ -3,7 +3,7 @@ import { Activity, StrictMode, type JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import type { PlanDocument } from '../domain/types';
+import type { Door, Obstacle, PlanDocument } from '../domain/types';
 import { createBrowserPlanStore } from '../services/browserPlanStore';
 import type { PlanStore } from '../services/planStorage';
 import { usePlanStore } from '../state/planStore';
@@ -21,11 +21,14 @@ const SAVED: PlanDocument = planDoc(rectRoom(120, 150, 96), [
   placedItem({ id: 'saved-box', w: 20, d: 20, h: 20, cx: 60, cy: 60 }),
 ]);
 
-/** The four document fields of the plan store, as a plain object. */
+/** The six document fields of the plan store, as a plain object. */
 function currentDoc(): PlanDocument {
   const s = usePlanStore.getState();
-  return { schemaVersion: s.schemaVersion, units: s.units, room: s.room, items: s.items };
+  return { schemaVersion: s.schemaVersion, units: s.units, room: s.room, items: s.items, openings: s.openings, obstacles: s.obstacles };
 }
+
+const DOOR: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+const BOX: Obstacle = { id: 'b1', shape: 'box', label: 'Box', x: 40, y: 120, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 };
 
 /** Lets pending promise callbacks (and the React updates they cause) run. */
 async function settle(): Promise<void> {
@@ -127,6 +130,18 @@ describe('usePlanPersistence: loading', () => {
     expect(useUiStore.getState().notice).toBe(STORAGE_TEXT);
   });
 
+  it('applies a loaded document with a door, and saves nothing for it', async () => {
+    const withDoor = planDoc(rectRoom(120, 150, 96), [], 'ft', [DOOR], [BOX]);
+    const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'loaded', doc: withDoor } } });
+    await mountReady(store);
+    expect(usePlanStore.getState().openings).toEqual([DOOR]);
+    expect(usePlanStore.getState().obstacles).toEqual([BOX]);
+    expect(currentDoc()).toEqual(withDoor);
+    advance(CONFIG.saveDebounceMs * 3);
+    await settle();
+    expect(store.saveCalls).toHaveLength(0);
+  });
+
   it('does not save the document it applied from load', async () => {
     const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'loaded', doc: SAVED } } });
     await mountReady(store);
@@ -208,12 +223,34 @@ describe('usePlanPersistence: autosave', () => {
     expect(store.saveCalls).toHaveLength(1);
   });
 
-  it('passes save an object with exactly the four document keys', async () => {
+  it('passes save an object with exactly the six document keys', async () => {
     const store = createFakePlanStore();
     await mountReady(store);
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
-    expect(Object.keys(store.saveCalls[0]).sort()).toEqual(['items', 'room', 'schemaVersion', 'units']);
+    expect(Object.keys(store.saveCalls[0]).sort()).toEqual(['items', 'obstacles', 'openings', 'room', 'schemaVersion', 'units']);
+  });
+
+  it('saves once when the openings list is replaced, with all six fields', async () => {
+    const store = createFakePlanStore();
+    await mountReady(store);
+    act(() => usePlanStore.setState({ openings: [DOOR] }));
+    advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toHaveLength(1);
+    expect(store.saveCalls[0]).toEqual(currentDoc());
+    expect(store.saveCalls[0].openings).toEqual([DOOR]);
+    advance(1000);
+    expect(store.saveCalls).toHaveLength(1);
+  });
+
+  it('saves once when the obstacles list is replaced, with all six fields', async () => {
+    const store = createFakePlanStore();
+    await mountReady(store);
+    act(() => usePlanStore.setState({ obstacles: [BOX] }));
+    advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toHaveLength(1);
+    expect(store.saveCalls[0]).toEqual(currentDoc());
+    expect(store.saveCalls[0].obstacles).toEqual([BOX]);
   });
 
   it('does not save for UI state changes or plan updates that change no document field', async () => {
@@ -225,7 +262,9 @@ describe('usePlanPersistence: autosave', () => {
       useUiStore.getState().setCamera({ yaw: 1, pitch: 0.5, zoom: 1.5 });
       useUiStore.getState().setMode('room');
       const s = usePlanStore.getState();
-      usePlanStore.setState({ schemaVersion: s.schemaVersion, units: s.units, room: s.room, items: s.items });
+      usePlanStore.setState({
+        schemaVersion: s.schemaVersion, units: s.units, room: s.room, items: s.items, openings: s.openings, obstacles: s.obstacles,
+      });
     });
     advance(1000);
     await settle();

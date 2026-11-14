@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { newObstacle } from '../domain/obstacles';
 import { itemFootprint, roomHeight, roomOutline } from '../domain/shape';
+import type { Opening } from '../domain/types';
 import { placedItem, planDoc, rectRoom } from './fixtures';
 
 describe('rectRoom', () => {
@@ -62,10 +64,19 @@ describe('placedItem', () => {
 });
 
 describe('planDoc', () => {
-  it('assembles a version 2 document, in feet unless told otherwise', () => {
+  it('assembles a version 3 document, in feet unless told otherwise, with no openings or obstacles by default', () => {
     const room = rectRoom(144, 168, 96);
     const items = [placedItem({ w: 20, d: 20, h: 20, cx: 10, cy: 10 })];
-    expect(planDoc(room, items)).toEqual({ schemaVersion: 2, units: 'ft', room, items });
+    expect(planDoc(room, items)).toEqual({ schemaVersion: 3, units: 'ft', room, items, openings: [], obstacles: [] });
     expect(planDoc(room, items, 'm').units).toBe('m');
+  });
+
+  it('takes the openings and obstacles it is given', () => {
+    const room = rectRoom(144, 168, 96);
+    const openings: Opening[] = [{ id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' }];
+    const obstacles = [newObstacle('box', { x: 40, y: 120 }, 96, 'b1')];
+    const doc = planDoc(room, [], 'ft', openings, obstacles);
+    expect(doc).toEqual({ schemaVersion: 3, units: 'ft', room, items: [], openings, obstacles });
+    expect(Object.keys(doc)).toEqual(['schemaVersion', 'units', 'room', 'items', 'openings', 'obstacles']);
   });
 });

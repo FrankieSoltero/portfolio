@@ -49,7 +49,14 @@ export function createBrowserPlanStore(storage: () => Storage = () => window.loc
   async function save(doc: PlanDocument): Promise<boolean> {
     try {
       // Built field by field: the argument may be a store state carrying actions and UI state.
-      const fields = { schemaVersion: doc.schemaVersion, units: doc.units, room: doc.room, items: doc.items };
+      const fields: PlanDocument = {
+        schemaVersion: doc.schemaVersion,
+        units: doc.units,
+        room: doc.room,
+        items: doc.items,
+        openings: doc.openings,
+        obstacles: doc.obstacles,
+      };
       // Never replace a readable saved plan with one the next load would refuse and discard.
       if (!parsePlan(fields).ok) return false;
       const text = JSON.stringify(fields);

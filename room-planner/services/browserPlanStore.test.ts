@@ -51,9 +51,25 @@ function blockedError(): DOMException {
   return new DOMException('Access is denied for this document.', 'SecurityError');
 }
 
-/** The four document fields, serialised in the order the store writes them. */
+/** The six document fields, serialised in the order the store writes them. */
 function serialised(doc: PlanDocument): string {
-  return JSON.stringify({ schemaVersion: doc.schemaVersion, units: doc.units, room: doc.room, items: doc.items });
+  return JSON.stringify({
+    schemaVersion: doc.schemaVersion,
+    units: doc.units,
+    room: doc.room,
+    items: doc.items,
+    openings: doc.openings,
+    obstacles: doc.obstacles,
+  });
+}
+
+/** The seeded document holding one door and one box. */
+function docWithDoorAndBox(): PlanDocument {
+  return {
+    ...createInitialDocument(),
+    openings: [{ id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' }],
+    obstacles: [{ id: 'b1', shape: 'box', label: 'Box', x: 40, y: 120, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 }],
+  };
 }
 
 /** The version 1 seeded document exactly as slice A wrote it (commit 6ed5e96). */
@@ -128,12 +144,26 @@ describe('createBrowserPlanStore load', () => {
     expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE });
   });
 
-  it('loads a saved version 2 document and leaves it stored', async () => {
+  it('loads a saved version 3 document and leaves it stored', async () => {
     const doc = createInitialDocument();
     storage.setItem(KEY, serialised(doc));
     const store = createBrowserPlanStore(() => storage);
     await expect(store.load()).resolves.toEqual({ status: 'loaded', doc });
     expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE, [KEY]: serialised(doc) });
+  });
+
+  it('loads a saved version 3 document with a door and a box', async () => {
+    const doc = docWithDoorAndBox();
+    storage.setItem(KEY, serialised(doc));
+    await expect(createBrowserPlanStore(() => storage).load()).resolves.toEqual({ status: 'loaded', doc });
+  });
+
+  it('loads a saved version 2 document as version 3 with empty lists, and leaves it stored', async () => {
+    const seed = createInitialDocument();
+    const stored = JSON.stringify({ schemaVersion: 2, units: seed.units, room: seed.room, items: seed.items });
+    storage.setItem(KEY, stored);
+    await expect(createBrowserPlanStore(() => storage).load()).resolves.toEqual({ status: 'loaded', doc: createInitialDocument() });
+    expect(storage.getItem(KEY)).toBe(stored);
   });
 
   it('loads a version 1 document converted by parsePlan', async () => {
@@ -144,7 +174,7 @@ describe('createBrowserPlanStore load', () => {
     const result = await createBrowserPlanStore(() => storage).load();
     expect(result).toEqual({ status: 'loaded', doc: expected.doc });
     if (result.status !== 'loaded') throw new Error('unreachable');
-    expect(result.doc.schemaVersion).toBe(2);
+    expect(result.doc.schemaVersion).toBe(3);
     expect(result.doc.room.outline).toEqual([
       { id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 },
     ]);
@@ -171,7 +201,7 @@ describe('createBrowserPlanStore load', () => {
     expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE });
   });
 
-  it.each([3, 40])('leaves a plan saved by a newer planner (schemaVersion %s) untouched', async (version) => {
+  it.each([4, 40])('leaves a plan saved by a newer planner (schemaVersion %s) untouched', async (version) => {
     const stored = JSON.stringify({ ...createInitialDocument(), schemaVersion: version });
     storage.setItem(KEY, stored);
     const setItem = vi.spyOn(storage, 'setItem');
@@ -218,7 +248,7 @@ describe('createBrowserPlanStore save', () => {
     await expect(store.load()).resolves.toEqual({ status: 'loaded', doc });
   });
 
-  it('writes exactly the one key holding only the four document fields', async () => {
+  it('writes exactly the one key holding only the six document fields', async () => {
     const empty = new MemoryStorage();
     const doc = createInitialDocument();
     // A store state object: the document's fields plus actions and UI state.
@@ -231,7 +261,28 @@ describe('createBrowserPlanStore save', () => {
     };
     await expect(createBrowserPlanStore(() => empty).save(state)).resolves.toBe(true);
     expect(empty.entries()).toEqual({ [KEY]: serialised(doc) });
-    expect(Object.keys(JSON.parse(empty.getItem(KEY) as string) as object)).toEqual(['schemaVersion', 'units', 'room', 'items']);
+    expect(Object.keys(JSON.parse(empty.getItem(KEY) as string) as object)).toEqual([
+      'schemaVersion', 'units', 'room', 'items', 'openings', 'obstacles',
+    ]);
+  });
+
+  it('writes the openings and obstacles, and round-trips them through load', async () => {
+    const doc = docWithDoorAndBox();
+    const store = createBrowserPlanStore(() => storage);
+    await expect(store.save(doc)).resolves.toBe(true);
+    expect(storage.getItem(KEY)).toBe(serialised(doc));
+    await expect(store.load()).resolves.toEqual({ status: 'loaded', doc });
+  });
+
+  it('writes nothing and resolves false for a document with an invalid opening (off its wall)', async () => {
+    const earlier = serialised(createInitialDocument());
+    storage.setItem(KEY, earlier);
+    const setItem = vi.spyOn(storage, 'setItem');
+    const doc = docWithDoorAndBox();
+    doc.openings = [{ ...doc.openings[0], offset: 200 }];
+    await expect(createBrowserPlanStore(() => storage).save(doc)).resolves.toBe(false);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE, [KEY]: earlier });
   });
 
   it('leaves other keys untouched and overwrites an earlier save', async () => {
@@ -358,7 +409,7 @@ describe('createBrowserPlanStore when storage fails', () => {
     await store.load();
     storage.setItem(KEY, JSON.stringify({ ...createInitialDocument(), units: 'cubits' }));
     await store.load();
-    storage.setItem(KEY, JSON.stringify({ ...createInitialDocument(), schemaVersion: 3 }));
+    storage.setItem(KEY, JSON.stringify({ ...createInitialDocument(), schemaVersion: 4 }));
     await store.load();
     storage.setItem(KEY, 'x'.repeat(CONFIG.maxStoredChars + 1));
     await store.load();

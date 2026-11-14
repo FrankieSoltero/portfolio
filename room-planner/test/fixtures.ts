@@ -1,4 +1,4 @@
-import type { Item, Kind, PlanDocument, Room, Units } from '../domain/types';
+import type { Item, Kind, Obstacle, Opening, PlanDocument, Room, Units } from '../domain/types';
 
 /**
  * Test fixture builders. Their arguments describe a room or a placement without naming how the
@@ -49,7 +49,16 @@ export function placedItem(spec: PlacedItemSpec): Item {
   };
 }
 
-/** A plan document in the current schema; units default to feet like the seeded plan. */
-export function planDoc(room: Room, items: Item[], units: Units = 'ft'): PlanDocument {
-  return { schemaVersion: 2, units, room, items };
+/**
+ * A plan document in the current schema; units default to feet like the seeded plan, and the room
+ * has no doors, windows or obstacles unless given.
+ */
+export function planDoc(
+  room: Room,
+  items: Item[],
+  units: Units = 'ft',
+  openings: Opening[] = [],
+  obstacles: Obstacle[] = [],
+): PlanDocument {
+  return { schemaVersion: 3, units, room, items, openings, obstacles };
 }

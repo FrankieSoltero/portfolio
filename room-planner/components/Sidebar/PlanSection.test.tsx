@@ -57,7 +57,14 @@ async function confirmReset(): Promise<void> {
 function expectSeededPlanAndFreshUi(): void {
   const seed = createInitialDocument();
   const plan = usePlanStore.getState();
-  expect({ schemaVersion: plan.schemaVersion, units: plan.units, room: plan.room, items: plan.items }).toEqual(seed);
+  expect({
+    schemaVersion: plan.schemaVersion,
+    units: plan.units,
+    room: plan.room,
+    items: plan.items,
+    openings: plan.openings,
+    obstacles: plan.obstacles,
+  }).toEqual(seed);
   const ui = useUiStore.getState();
   expect(ui.selectedId).toBeNull();
   expect(ui.mode).toBe('furnish');

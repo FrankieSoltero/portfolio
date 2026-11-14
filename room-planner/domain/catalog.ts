@@ -30,7 +30,7 @@ export const BOOK_COLOURS = ['#7c8a96', '#b9a48a', '#5f6b5c', '#a2584a', '#d8d2c
 /** The seeded plan shown on first load. Returns a fresh object every call. */
 export function createInitialDocument(): PlanDocument {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     units: 'ft',
     room: {
       outline: [{ id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 }],
@@ -48,5 +48,7 @@ export function createInitialDocument(): PlanDocument {
         model: { tier: 'retailer', label: '3D model from retailer', assetUrl: null },
       },
     ],
+    openings: [],
+    obstacles: [],
   };
 }

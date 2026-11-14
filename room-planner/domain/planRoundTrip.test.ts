@@ -14,6 +14,8 @@ import {
 } from '../state/actions';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
+import { addObstacle, newObstacle } from './obstacles';
+import { addOpening } from './openings';
 import { setWallLength, wallsOf } from './outline';
 import { parsePlan } from './planSchema';
 import type { PlanDocument, ProductPreview } from './types';
@@ -50,7 +52,7 @@ const BOX: ProductPreview = {
 
 function currentDocument(): PlanDocument {
   const s = usePlanStore.getState();
-  return { schemaVersion: s.schemaVersion, units: s.units, room: s.room, items: s.items };
+  return { schemaVersion: s.schemaVersion, units: s.units, room: s.room, items: s.items, openings: s.openings, obstacles: s.obstacles };
 }
 
 /** Asserts that the current document survives a JSON round trip through parsePlan. */
@@ -172,6 +174,23 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
       fireEvent.click(screen.getByRole('button', { name }));
       expectReadable(`starting shape ${name}`);
     }
+  });
+
+  it('a door, a window, a box and a column survive a JSON round trip unchanged', () => {
+    const { room } = usePlanStore.getState();
+    const door = addOpening(room.outline, [], 'door', 'c1', { x: 36, y: 0 }, 'door-1');
+    if (!door.ok) throw new Error(`door refused: ${door.problem}`);
+    const both = addOpening(room.outline, door.openings, 'window', 'c2', { x: 144, y: 118 }, 'window-1');
+    if (!both.ok) throw new Error(`window refused: ${both.problem}`);
+    const box = addObstacle([], newObstacle('box', { x: 40.004, y: 120 }, room.height, 'box-1'));
+    if (!box.ok) throw new Error(`box refused: ${box.problem}`);
+    const all = addObstacle(box.obstacles, newObstacle('cylinder', { x: 100, y: 100 }, room.height, 'column-1'));
+    if (!all.ok) throw new Error(`column refused: ${all.problem}`);
+    usePlanStore.setState({ openings: both.openings, obstacles: all.obstacles });
+    expect(currentDocument().openings.map((o) => o.kind)).toEqual(['door', 'window']);
+    expect(currentDocument().obstacles.map((o) => o.shape)).toEqual(['box', 'cylinder']);
+    expectReadable('a door, a window, a box and a column');
+    expect(parsePlan(JSON.parse(JSON.stringify(currentDocument())))).toEqual({ ok: true, doc: currentDocument() });
   });
 
   it('units and ceiling height', () => {

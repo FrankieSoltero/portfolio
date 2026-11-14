@@ -67,7 +67,14 @@ function sameOutline(a: readonly Corner[], b: readonly Corner[]): boolean {
 }
 
 function documentFields(doc: PlanDocument): PlanDocument {
-  return { schemaVersion: doc.schemaVersion, units: doc.units, room: doc.room, items: doc.items };
+  return {
+    schemaVersion: doc.schemaVersion,
+    units: doc.units,
+    room: doc.room,
+    items: doc.items,
+    openings: doc.openings,
+    obstacles: doc.obstacles,
+  };
 }
 
 // Every geometry call passes CONFIG.furnitureSnap, so the snap step is never taken from a caller.

@@ -11,15 +11,29 @@ export const STORAGE_NOTICE = 'This browser is blocking storage, so changes will
 const NEWER_NOTICE =
   'Your saved plan was made with a newer version of the planner. It has been left untouched, and changes in this session will not be saved.';
 
-/** The plan store's four document fields as a plain object: what is saved, and nothing else. */
+/** The plan store's six document fields as a plain object: what is saved, and nothing else. */
 function currentDocument(): PlanDocument {
   const s = usePlanStore.getState();
-  return { schemaVersion: s.schemaVersion, units: s.units, room: s.room, items: s.items };
+  return {
+    schemaVersion: s.schemaVersion,
+    units: s.units,
+    room: s.room,
+    items: s.items,
+    openings: s.openings,
+    obstacles: s.obstacles,
+  };
 }
 
 /** True when any document field changed (by reference); UI state and no-op updates do not count. */
 function documentChanged(a: PlanDocument, b: PlanDocument): boolean {
-  return a.schemaVersion !== b.schemaVersion || a.units !== b.units || a.room !== b.room || a.items !== b.items;
+  return (
+    a.schemaVersion !== b.schemaVersion ||
+    a.units !== b.units ||
+    a.room !== b.room ||
+    a.items !== b.items ||
+    a.openings !== b.openings ||
+    a.obstacles !== b.obstacles
+  );
 }
 
 /**
