@@ -6,6 +6,7 @@ import type { ProductPreview } from '../../domain/types';
 import type { ProductLookup } from '../../services/productLookup';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
+import { createFakePlanStore } from '../../test/fakePlanStore';
 import { ItemList } from './ItemList';
 import { Sidebar } from './Sidebar';
 
@@ -149,14 +150,14 @@ describe('ItemList', () => {
 });
 
 describe('Sidebar', () => {
-  it('is an aside.sidebar with sections 01, 02, 03 in DOM order', () => {
-    const { container } = render(<Sidebar lookup={fakeLookup()} />);
+  it('is an aside.sidebar with sections 01, 02, 03, 04 in DOM order: Room, Add furniture, In this room, Plan', () => {
+    const { container } = render(<Sidebar lookup={fakeLookup()} planStore={createFakePlanStore()} />);
     const aside = container.querySelector('aside');
     expect(aside).not.toBeNull();
     expect(aside).toHaveClass('sidebar');
     const nums = Array.from(container.querySelectorAll('.sidebar-heading-num')).map((n) => n.textContent);
-    expect(nums).toEqual(['01', '02', '03']);
+    expect(nums).toEqual(['01', '02', '03', '04']);
     const headings = screen.getAllByRole('heading', { level: 6 }).map((h) => h.textContent);
-    expect(headings).toEqual(['01Room', '02Add furniture from a link', '03In this room']);
+    expect(headings).toEqual(['01Room', '02Add furniture from a link', '03In this room', '04Plan']);
   });
 });

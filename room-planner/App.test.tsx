@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { CONFIG } from './config';
 import { createInitialDocument } from './domain/catalog';
 import type { ProductLookup } from './services/productLookup';
 import { usePlanStore } from './state/planStore';
@@ -22,7 +23,7 @@ const seenLookups = vi.hoisted((): ProductLookup[] => []);
 vi.mock('./components/Sidebar/Sidebar', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./components/Sidebar/Sidebar')>();
   return {
-    Sidebar: (props: { lookup: ProductLookup }): JSX.Element => {
+    Sidebar: (props: Parameters<typeof actual.Sidebar>[0]): JSX.Element => {
       seenLookups.push(props.lookup);
       return <actual.Sidebar {...props} />;
     },
@@ -153,5 +154,106 @@ describe('App: saved plan', () => {
     expect(children.map((el) => el.className.split(' ')[0])).toEqual(['nav', 'notice', 'app-body']);
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(container.querySelector('.notice')).not.toBeInTheDocument();
+  });
+});
+
+describe('App: reset plan', () => {
+  const STORAGE_NOTICE = 'This browser is blocking storage, so changes will not be saved.';
+
+  /** Lets pending promise callbacks (the reset's awaited clear, the save's result) run. */
+  async function flushPromises(): Promise<void> {
+    await act(async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+  }
+
+  async function advance(ms: number): Promise<void> {
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+    await flushPromises();
+  }
+
+  function bedX(): number {
+    const bed = usePlanStore.getState().items.find((i) => i.id === 'seed-bed');
+    if (!bed) throw new Error('bed not in the plan');
+    return bed.x;
+  }
+
+  async function confirmReset(): Promise<void> {
+    fireEvent.click(screen.getByRole('button', { name: 'Reset plan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Erase everything and start over' }));
+    await flushPromises();
+  }
+
+  it('passes its planStore to the sidebar: a confirmed reset clears it, then the autosave saves the seeded document', async () => {
+    const { store } = await renderApp();
+    vi.useFakeTimers();
+    act(() => usePlanStore.getState().moveItemTo('seed-bed', 100, 100));
+    await advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toHaveLength(1);
+    expect(store.saveCalls[0]?.items.find((i) => i.id === 'seed-bed')?.x).toBe(100);
+
+    await confirmReset();
+    expect(store.clearCalls).toBe(1);
+    expect(bedX()).not.toBe(100);
+    expect(useUiStore.getState().notice).toBeNull();
+
+    await advance(CONFIG.saveDebounceMs - 1);
+    expect(store.saveCalls).toHaveLength(1);
+    await advance(1);
+    expect(store.saveCalls).toHaveLength(2);
+    expect(store.saveCalls[1]).toEqual(createInitialDocument());
+  });
+
+  it('when clear rejects: resets, shows the storage notice, and still saves the seeded document', async () => {
+    const { store, container } = await renderApp();
+    store.clear = vi.fn(() => Promise.reject(new Error('storage blocked')));
+    vi.useFakeTimers();
+    act(() => usePlanStore.getState().moveItemTo('seed-bed', 100, 100));
+
+    await confirmReset();
+    expect(store.clear).toHaveBeenCalledTimes(1);
+    expect(bedX()).not.toBe(100);
+    expect(container.querySelector('.notice')).toHaveTextContent(STORAGE_NOTICE);
+    await advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls.at(-1)).toEqual(createInitialDocument());
+  });
+
+  it('in a newer-version session: a confirmed reset clears the key, removes the notice and resumes saving', async () => {
+    const { store, container } = await renderApp(
+      createFakePlanStore({ load: { type: 'resolve', value: { status: 'newer' } } }),
+    );
+    expect(useUiStore.getState().saveBlocked).toBe(true);
+    expect(container.querySelector('.notice')).toBeInTheDocument();
+    vi.useFakeTimers();
+    act(() => usePlanStore.getState().moveItemTo('seed-bed', 100, 100));
+    await advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toHaveLength(0);
+
+    await confirmReset();
+    expect(store.clearCalls).toBe(1);
+    expect(useUiStore.getState().saveBlocked).toBe(false);
+    expect(container.querySelector('.notice')).not.toBeInTheDocument();
+    await advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toEqual([createInitialDocument()]);
+  });
+
+  it('Escape while the reset is armed cancels it without clearing the selection; once idle, Escape deselects', async () => {
+    const { store } = await renderApp();
+    act(() => useUiStore.getState().select('seed-desk'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset plan' }));
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(cancel).toHaveFocus();
+
+    fireEvent.keyDown(cancel, { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    const reset = screen.getByRole('button', { name: 'Reset plan' });
+    expect(reset).toHaveFocus();
+    expect(useUiStore.getState().selectedId).toBe('seed-desk');
+    expect(store.clearCalls).toBe(0);
+
+    fireEvent.keyDown(reset, { key: 'Escape' });
+    expect(useUiStore.getState().selectedId).toBeNull();
   });
 });

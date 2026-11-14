@@ -35,7 +35,7 @@ export default function App({ planStore }: { planStore: PlanStore }): JSX.Elemen
       <Header />
       <Notice />
       <div className="app-body">
-        <Sidebar lookup={lookup} />
+        <Sidebar lookup={lookup} planStore={planStore} />
         <main className="app-main">
           <TopBar />
           <Stage />

@@ -56,3 +56,11 @@
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);
 }
 .shape-buttons-row > .btn { padding-inline: var(--space-1); }
+
+/* Plan section: where the plan is kept, then the reset. The note is a <p>, so drop its margin. */
+.plan-section-note { margin: 0; }
+
+/* Inline two-step confirmation. Armed, the long confirm label and Cancel wrap onto two lines in
+   the 320px sidebar instead of overflowing it. */
+.confirm-button { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2); }
+.confirm-button > .btn { max-width: 100%; text-align: center; }
