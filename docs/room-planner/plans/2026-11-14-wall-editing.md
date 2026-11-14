@@ -876,3 +876,11 @@ output.
    every button in the layer; the wall labels are buttons too. It now selects
    `button.room-corner` and keeps its expected list. Found by Task 8's implementer; again a
    pinned test the plan's "Test changes" missed.
+7. **The wall labels must look clickable (Task 9 adds the styles).** Seen by the controller
+   in a screenshot after Task 8: the labels were plain 12 px text, hard to tell from the
+   overall dimension text and with no hint that they can be clicked. Task 9 adds to
+   `.room-wall-label` in `stage.css`: `padding: 1px 6px;`,
+   `border: 1px solid color-mix(in srgb, var(--color-text) 35%, transparent);`,
+   `border-radius: 3px;`, `cursor: text;`, and a rule `.room-wall-label:hover` with
+   `border-color: var(--color-accent);`. Asserted on the stylesheet text like the other
+   style rows. (The overlap with the overall dimension lines is what Task 10 fixes.)
