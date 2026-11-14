@@ -19,13 +19,23 @@ import { footprintCorners, itemFootprint } from '../domain/shape';
 import type { Corner, Door, Item, Obstacle, PlanDocument, ProductPreview, WindowOpening } from '../domain/types';
 import {
   addCornerOnWall,
+  addObstacleAtCentre,
   dragCornerTo,
+  dragObstacleTo,
   nudgeSelected,
   nudgeSelectedCorner,
+  nudgeSelectedObstacle,
+  placeOpeningOnWall,
   placePreview,
   removeSelected,
   removeSelectedCorner,
+  removeSelectedRoomThing,
   rotateSelected,
+  rotateSelectedObstacle,
+  slideOpeningTo,
+  slideSelectedOpening,
+  updateSelectedObstacle,
+  updateSelectedOpening,
 } from './actions';
 import { ROOM_PROBLEM_TEXT, usePlanStore } from './planStore';
 import { totalPrice, useConflicts, useSelectedItem, useWarnings } from './selectors';
@@ -488,6 +498,15 @@ describe('uiStore', () => {
       [() => useUiStore.getState().setNotice('y'), { notice: 'y' }],
       [() => useUiStore.getState().setSaveBlocked(true), { saveBlocked: true }],
       [() => useUiStore.getState().selectCorner(null), { selectedCornerId: null }],
+      // A room selection clears the other two (here the selected corner); null clears only its own.
+      [() => useUiStore.getState().selectOpening('d1'), { selectedOpeningId: 'd1', selectedCornerId: null }],
+      [() => useUiStore.getState().selectObstacle('b1'), { selectedObstacleId: 'b1', selectedCornerId: null }],
+      [() => useUiStore.getState().selectOpening(null), { selectedOpeningId: null }],
+      [() => useUiStore.getState().selectObstacle(null), { selectedObstacleId: null }],
+      // Arming a door or window tool clears the room selections; the corner tool changes only the tool.
+      [() => useUiStore.getState().setRoomTool('door'), { roomTool: 'door', selectedCornerId: null }],
+      [() => useUiStore.getState().setRoomTool('window'), { roomTool: 'window', selectedCornerId: null }],
+      [() => useUiStore.getState().setRoomTool('corner'), { roomTool: 'corner' }],
     ];
     for (const [apply, change] of cases) {
       // Start from non-default values so a setter that clears another field is caught.
@@ -518,6 +537,82 @@ describe('uiStore', () => {
       notice: null,
       saveBlocked: false,
     });
+  });
+});
+
+describe('uiStore: doors, windows and obstacles', () => {
+  it('starts with the corner tool and no opening or obstacle selected', () => {
+    expect(freshUi).toMatchObject({ roomTool: 'corner', selectedOpeningId: null, selectedObstacleId: null });
+  });
+
+  it.each([
+    ['selectCorner', 'selectOpening', 'selectedCornerId', 'selectedOpeningId'],
+    ['selectCorner', 'selectObstacle', 'selectedCornerId', 'selectedObstacleId'],
+    ['selectOpening', 'selectCorner', 'selectedOpeningId', 'selectedCornerId'],
+    ['selectOpening', 'selectObstacle', 'selectedOpeningId', 'selectedObstacleId'],
+    ['selectObstacle', 'selectCorner', 'selectedObstacleId', 'selectedCornerId'],
+    ['selectObstacle', 'selectOpening', 'selectedObstacleId', 'selectedOpeningId'],
+  ] as const)('%s then %s leaves only the second selected', (first, second, firstField, secondField) => {
+    useUiStore.getState()[first]('x1');
+    expect(useUiStore.getState()[firstField]).toBe('x1');
+    useUiStore.getState()[second]('x2');
+    const s = useUiStore.getState();
+    expect(s[firstField]).toBeNull();
+    expect(s[secondField]).toBe('x2');
+    expect([s.selectedCornerId, s.selectedOpeningId, s.selectedObstacleId].filter((v) => v !== null)).toEqual(['x2']);
+  });
+
+  it('a null selection clears only its own field', () => {
+    useUiStore.getState().selectObstacle('b1');
+    useUiStore.getState().selectOpening(null);
+    useUiStore.getState().selectCorner(null);
+    expect(useUiStore.getState().selectedObstacleId).toBe('b1');
+    useUiStore.getState().selectObstacle(null);
+    expect(useUiStore.getState().selectedObstacleId).toBeNull();
+  });
+
+  it('arming a door or window tool clears every room selection', () => {
+    useUiStore.getState().selectOpening('d1');
+    useUiStore.getState().setRoomTool('window');
+    expect(useUiStore.getState()).toMatchObject({ roomTool: 'window', selectedOpeningId: null });
+    useUiStore.getState().selectObstacle('b1');
+    useUiStore.getState().setRoomTool('door');
+    expect(useUiStore.getState()).toMatchObject({ roomTool: 'door', selectedObstacleId: null });
+  });
+
+  it('setMode furnish with a tool armed and an obstacle selected resets the tool and both selections', () => {
+    const ui = useUiStore.getState();
+    ui.setMode('room');
+    ui.setRoomTool('door');
+    ui.selectObstacle('b1');
+    useUiStore.getState().setMode('furnish');
+    expect(useUiStore.getState()).toMatchObject({
+      mode: 'furnish', roomTool: 'corner', selectedOpeningId: null, selectedObstacleId: null,
+    });
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectOpening('d1');
+    useUiStore.getState().setMode('furnish');
+    expect(useUiStore.getState().selectedOpeningId).toBeNull();
+  });
+
+  it('setMode room keeps the tool and the selections', () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().setRoomTool('window');
+    useUiStore.getState().setMode('room');
+    expect(useUiStore.getState().roomTool).toBe('window');
+    useUiStore.getState().selectObstacle('b1');
+    useUiStore.getState().setMode('room');
+    expect(useUiStore.getState().selectedObstacleId).toBe('b1');
+  });
+
+  it('reset restores the tool and clears both selections', () => {
+    useUiStore.getState().setRoomTool('door');
+    useUiStore.getState().reset();
+    useUiStore.getState().selectOpening('d1');
+    useUiStore.getState().setRoomTool('window');
+    useUiStore.getState().selectObstacle('b1');
+    useUiStore.getState().reset();
+    expect(useUiStore.getState()).toMatchObject({ roomTool: 'corner', selectedOpeningId: null, selectedObstacleId: null });
   });
 });
 
@@ -1246,5 +1341,264 @@ describe('issue selectors', () => {
     expect(result.current).toEqual({ 'seed-bed': 'Blocks a door' });
     act(() => usePlanStore.getState().removeOpening('d1'));
     expect(result.current).toEqual({});
+  });
+});
+
+describe('door, window and obstacle actions', () => {
+  const NEW_ID = '00000000-0000-4000-8000-000000000003';
+  /** A 32 in door 20 in along the top wall (c1, from (0, 0) to (144, 0)): it spans x 20–52. */
+  const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+  /** A window on the right wall (c2, from (144, 0) to (144, 168)). */
+  const W1: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 100, width: 36, sill: 24, height: 48 };
+  const BOX: Obstacle = { id: 'b1', shape: 'box', label: 'Box', x: 40, y: 120, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 };
+  const COLUMN: Obstacle = { id: 'col', shape: 'cylinder', label: 'Column', x: 100, y: 60, rotation: 0, width: 12, depth: 12, height: 96, elevation: 0 };
+
+  function withPlan(fields: Partial<PlanDocument>): void {
+    usePlanStore.getState().reset({ ...createInitialDocument(), ...fields });
+  }
+
+  function openingById(id: string): Door | WindowOpening {
+    return req(usePlanStore.getState().openings.find((o) => o.id === id), `opening ${id}`);
+  }
+
+  function obstacleById(id: string): Obstacle {
+    return req(usePlanStore.getState().obstacles.find((o) => o.id === id), `obstacle ${id}`);
+  }
+
+  /** Runs `edit` and asserts both stores are the very same state objects afterwards. */
+  function expectNothingChanges(edit: () => void): void {
+    const plan = usePlanStore.getState();
+    const ui = useUiStore.getState();
+    edit();
+    expect(usePlanStore.getState()).toBe(plan);
+    expect(useUiStore.getState()).toBe(ui);
+  }
+
+  beforeEach(() => {
+    useUiStore.getState().setMode('room');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('placeOpeningOnWall with the door tool places a door centred on the click, selects it and disarms', () => {
+    const uuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    useUiStore.getState().setRoomTool('door');
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    placeOpeningOnWall('c1', { x: 72, y: 5 });
+    expect(uuid).toHaveBeenCalledTimes(1);
+    expect(usePlanStore.getState().openings).toEqual([
+      { id: NEW_ID, kind: 'door', wallId: 'c1', offset: 56, width: 32, height: 80, hinge: 'start', swing: 'in' },
+    ]);
+    expect(useUiStore.getState()).toMatchObject({ selectedOpeningId: NEW_ID, roomTool: 'corner', roomProblem: null });
+  });
+
+  it('placeOpeningOnWall with the window tool places a window', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    useUiStore.getState().setRoomTool('window');
+    placeOpeningOnWall('c2', { x: 140, y: 84 });
+    expect(usePlanStore.getState().openings).toEqual([
+      { id: NEW_ID, kind: 'window', wallId: 'c2', offset: 66, width: 36, sill: 36, height: 48 },
+    ]);
+    expect(useUiStore.getState()).toMatchObject({ selectedOpeningId: NEW_ID, roomTool: 'corner' });
+  });
+
+  it('placeOpeningOnWall on a wall 10 in long is refused: no opening, the tool stays armed, the reason is shown', () => {
+    // A corner at (10, 0) leaves the wall from c1 10 in long.
+    usePlanStore.getState().applyOutline(insertCorner(usePlanStore.getState().room.outline, 'c1', { x: 10, y: 0 }, 'n1'));
+    useUiStore.getState().setRoomTool('door');
+    placeOpeningOnWall('c1', { x: 5, y: 0 });
+    expect(usePlanStore.getState().openings).toEqual([]);
+    expect(useUiStore.getState()).toMatchObject({ roomTool: 'door', selectedOpeningId: null });
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['opening-off-wall']);
+  });
+
+  it('placeOpeningOnWall with the corner tool, or on an unknown wall, changes nothing', () => {
+    const uuid = vi.spyOn(crypto, 'randomUUID');
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    expectNothingChanges(() => placeOpeningOnWall('c1', { x: 72, y: 5 }));
+    useUiStore.getState().setRoomTool('door');
+    expectNothingChanges(() => placeOpeningOnWall('nope', { x: 72, y: 5 }));
+    expect(uuid).not.toHaveBeenCalled();
+  });
+
+  it('slideSelectedOpening slides by the step; at the wall end the offset stays and no problem is set', () => {
+    withPlan({ openings: [D1] });
+    useUiStore.getState().selectOpening('d1');
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    slideSelectedOpening(1);
+    expect(openingById('d1').offset).toBe(21);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    slideSelectedOpening(500);
+    expect(openingById('d1').offset).toBe(112);
+    slideSelectedOpening(1);
+    expect(openingById('d1').offset).toBe(112);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    slideSelectedOpening(-500);
+    expect(openingById('d1').offset).toBe(0);
+  });
+
+  it('slideOpeningTo moves the opening to the rounded offset; an overlap is refused with its text', () => {
+    withPlan({ openings: [D1, { ...W1, wallId: 'c1', offset: 80 }] });
+    slideOpeningTo('d1', 30.4);
+    expect(openingById('d1').offset).toBe(30);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    slideOpeningTo('d1', 70);
+    expect(openingById('d1').offset).toBe(30);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['opening-overlap']);
+  });
+
+  it('opening actions with nothing selected, or an unknown id, change nothing, the room problem included', () => {
+    withPlan({ openings: [D1] });
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    expectNothingChanges(() => {
+      slideSelectedOpening(1);
+      updateSelectedOpening({ swing: 'out' });
+      slideOpeningTo('nope', 30);
+    });
+    useUiStore.getState().selectOpening('nope');
+    expectNothingChanges(() => {
+      slideSelectedOpening(1);
+      updateSelectedOpening({ swing: 'out' });
+    });
+  });
+
+  it('updateSelectedOpening changes the selected door; a size that is not allowed is refused with its text', () => {
+    withPlan({ openings: [D1] });
+    useUiStore.getState().selectOpening('d1');
+    updateSelectedOpening({ swing: 'out' });
+    expect(openingById('d1')).toEqual({ ...D1, swing: 'out' });
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    updateSelectedOpening({ width: 5 });
+    expect(openingById('d1').width).toBe(32);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['opening-size']);
+    updateSelectedOpening({ hinge: 'end' });
+    expect(openingById('d1')).toEqual({ ...D1, swing: 'out', hinge: 'end' });
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('addObstacleAtCentre adds a box at the seed room centre and selects it', () => {
+    const uuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    addObstacleAtCentre('box');
+    expect(uuid).toHaveBeenCalledTimes(1);
+    expect(usePlanStore.getState().obstacles).toEqual([
+      { id: NEW_ID, shape: 'box', label: 'Box', x: 72, y: 84, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 },
+    ]);
+    expect(useUiStore.getState()).toMatchObject({ selectedObstacleId: NEW_ID, roomProblem: null });
+  });
+
+  it('addObstacleAtCentre adds a column as tall as the room', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    addObstacleAtCentre('cylinder');
+    expect(obstacleById(NEW_ID)).toMatchObject({ shape: 'cylinder', label: 'Column', x: 72, y: 84, width: 12, depth: 12, height: 96 });
+    expect(useUiStore.getState().selectedObstacleId).toBe(NEW_ID);
+  });
+
+  it('addObstacleAtCentre with 64 obstacles is refused with its text and selects nothing', () => {
+    expect(CONFIG.maxObstacles).toBe(64);
+    withPlan({ obstacles: Array.from({ length: 64 }, (_, i) => ({ ...BOX, id: `b${i}` })) });
+    const before = usePlanStore.getState().obstacles;
+    useUiStore.getState().selectObstacle('b3');
+    addObstacleAtCentre('box');
+    expect(usePlanStore.getState().obstacles).toBe(before);
+    expect(useUiStore.getState().selectedObstacleId).toBe('b3');
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['too-many-obstacles']);
+  });
+
+  it('nudge, rotate and update the selected obstacle', () => {
+    withPlan({ obstacles: [BOX] });
+    useUiStore.getState().selectObstacle('b1');
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    nudgeSelectedObstacle(1, 0);
+    expect(obstacleById('b1')).toMatchObject({ x: 41, y: 120 });
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    rotateSelectedObstacle(15);
+    expect(obstacleById('b1').rotation).toBe(15);
+    rotateSelectedObstacle(350);
+    expect(obstacleById('b1').rotation).toBe(5);
+    updateSelectedObstacle({ elevation: 40 });
+    expect(obstacleById('b1')).toEqual({ ...BOX, x: 41, rotation: 5, elevation: 40 });
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('updateSelectedObstacle with a size that is not allowed is refused with its text', () => {
+    withPlan({ obstacles: [BOX] });
+    useUiStore.getState().selectObstacle('b1');
+    updateSelectedObstacle({ width: 0 });
+    expect(obstacleById('b1')).toEqual(BOX);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['obstacle-size']);
+  });
+
+  it('rotating a column is allowed', () => {
+    withPlan({ obstacles: [COLUMN] });
+    useUiStore.getState().selectObstacle('col');
+    rotateSelectedObstacle(15);
+    expect(obstacleById('col')).toEqual({ ...COLUMN, rotation: 15 });
+  });
+
+  it('dragObstacleTo moves the obstacle onto the grid and clears the room problem', () => {
+    withPlan({ obstacles: [BOX] });
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    dragObstacleTo('b1', 30.4, 50.6);
+    expect(obstacleById('b1')).toMatchObject({ x: 30, y: 51 });
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('obstacle actions with nothing selected, or an unknown id, change nothing, the room problem included', () => {
+    withPlan({ obstacles: [BOX] });
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    const run = (): void => {
+      nudgeSelectedObstacle(1, 0);
+      rotateSelectedObstacle(15);
+      updateSelectedObstacle({ elevation: 40 });
+      dragObstacleTo('nope', 30, 50);
+    };
+    expectNothingChanges(run);
+    useUiStore.getState().selectObstacle('nope');
+    expectNothingChanges(run);
+  });
+
+  it('removeSelectedRoomThing removes the selected opening and clears its selection', () => {
+    withPlan({ openings: [D1, W1] });
+    useUiStore.getState().selectOpening('d1');
+    removeSelectedRoomThing();
+    expect(usePlanStore.getState().openings).toEqual([W1]);
+    expect(useUiStore.getState().selectedOpeningId).toBeNull();
+  });
+
+  it('removeSelectedRoomThing removes the selected obstacle and clears its selection', () => {
+    withPlan({ obstacles: [BOX, COLUMN] });
+    useUiStore.getState().selectObstacle('b1');
+    removeSelectedRoomThing();
+    expect(usePlanStore.getState().obstacles).toEqual([COLUMN]);
+    expect(useUiStore.getState().selectedObstacleId).toBeNull();
+  });
+
+  it('removeSelectedRoomThing removes the selected corner and clears its selection', () => {
+    useUiStore.getState().selectCorner('c2');
+    removeSelectedRoomThing();
+    expect(usePlanStore.getState().room.outline.map((c) => c.id)).toEqual(['c1', 'c3', 'c4']);
+    expect(useUiStore.getState().selectedCornerId).toBeNull();
+  });
+
+  it('removeSelectedRoomThing with nothing selected, or an unknown id selected, changes nothing', () => {
+    withPlan({ openings: [D1], obstacles: [BOX] });
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    expectNothingChanges(removeSelectedRoomThing);
+    useUiStore.getState().selectOpening('nope');
+    expectNothingChanges(removeSelectedRoomThing);
+    useUiStore.getState().selectObstacle('nope');
+    expectNothingChanges(removeSelectedRoomThing);
+  });
+
+  it('removeSelectedRoomThing on a corner beside a door is refused with its text and keeps the selection', () => {
+    withPlan({ openings: [D1] });
+    useUiStore.getState().selectCorner('c2');
+    removeSelectedRoomThing();
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+    expect(useUiStore.getState().selectedCornerId).toBe('c2');
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['corner-has-openings']);
   });
 });

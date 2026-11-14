@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { CONFIG } from '../config';
-import type { CameraState, EditMode, LayoutMode, ProductPreview, RenderStyle, StageTab } from '../domain/types';
+import type { CameraState, EditMode, LayoutMode, ProductPreview, RenderStyle, RoomTool, StageTab } from '../domain/types';
 import type { LookupErrorCode } from '../services/productLookup';
 
 /**
@@ -10,7 +10,12 @@ import type { LookupErrorCode } from '../services/productLookup';
 export interface UiState {
   selectedId: string | null;
   mode: EditMode;
+  /** At most one of the selected corner, door or window, and obstacle is set at a time. */
   selectedCornerId: string | null;
+  selectedOpeningId: string | null;
+  selectedObstacleId: string | null;
+  /** The room editor's tool: 'corner', or a door or window tool armed to place one on a wall. */
+  roomTool: RoomTool;
   /** Why the last room edit was refused, shown while editing the room. */
   roomProblem: string | null;
   /** A general message for the visitor, such as a storage problem. */
@@ -43,10 +48,18 @@ export interface UiState {
   markWebglUnavailable(): void;
   /**
    * Switches edit mode. Entering 'room' clears the item selection; entering 'furnish' clears
-   * the selected corner and the room problem. Applies the clears even if the mode is unchanged.
+   * the selected corner, opening and obstacle and the room problem, and sets the tool back to
+   * 'corner'. Applies the clears even if the mode is unchanged.
    */
   setMode(m: EditMode): void;
+  /** Selects a corner, clearing the selected opening and obstacle; null clears only the corner. */
   selectCorner(id: string | null): void;
+  /** Selects a door or window, clearing the selected corner and obstacle; null clears only the opening. */
+  selectOpening(id: string | null): void;
+  /** Selects an obstacle, clearing the selected corner and opening; null clears only the obstacle. */
+  selectObstacle(id: string | null): void;
+  /** Sets the room tool; arming a door or window tool also clears every room selection. */
+  setRoomTool(t: RoomTool): void;
   setRoomProblem(text: string | null): void;
   setNotice(text: string | null): void;
   setSaveBlocked(b: boolean): void;
@@ -58,6 +71,9 @@ type UiData = Pick<
   | 'selectedId'
   | 'mode'
   | 'selectedCornerId'
+  | 'selectedOpeningId'
+  | 'selectedObstacleId'
+  | 'roomTool'
   | 'roomProblem'
   | 'notice'
   | 'saveBlocked'
@@ -75,6 +91,9 @@ function initialUi(): UiData {
     selectedId: null,
     mode: 'furnish',
     selectedCornerId: null,
+    selectedOpeningId: null,
+    selectedObstacleId: null,
+    roomTool: 'corner',
     roomProblem: null,
     notice: null,
     saveBlocked: false,
@@ -87,6 +106,9 @@ function initialUi(): UiData {
     lookup: { status: 'idle' },
   };
 }
+
+/** Clears the selected corner, opening and obstacle; a non-null selection overrides its own field. */
+const NO_ROOM_SELECTION = { selectedCornerId: null, selectedOpeningId: null, selectedObstacleId: null } as const;
 
 export const useUiStore = create<UiState>()((set) => ({
   ...initialUi(),
@@ -107,8 +129,18 @@ export const useUiStore = create<UiState>()((set) => ({
     ),
   markWebglUnavailable: () => set({ webglAvailable: false, renderStyle: 'blueprint' }),
   setMode: (mode) =>
-    set(mode === 'room' ? { mode, selectedId: null } : { mode, selectedCornerId: null, roomProblem: null }),
-  selectCorner: (selectedCornerId) => set({ selectedCornerId }),
+    set(
+      mode === 'room'
+        ? { mode, selectedId: null }
+        : { mode, ...NO_ROOM_SELECTION, roomTool: 'corner', roomProblem: null },
+    ),
+  selectCorner: (selectedCornerId) =>
+    set(selectedCornerId === null ? { selectedCornerId } : { ...NO_ROOM_SELECTION, selectedCornerId }),
+  selectOpening: (selectedOpeningId) =>
+    set(selectedOpeningId === null ? { selectedOpeningId } : { ...NO_ROOM_SELECTION, selectedOpeningId }),
+  selectObstacle: (selectedObstacleId) =>
+    set(selectedObstacleId === null ? { selectedObstacleId } : { ...NO_ROOM_SELECTION, selectedObstacleId }),
+  setRoomTool: (roomTool) => set(roomTool === 'corner' ? { roomTool } : { roomTool, ...NO_ROOM_SELECTION }),
   setRoomProblem: (roomProblem) => set({ roomProblem }),
   setNotice: (notice) => set({ notice }),
   setSaveBlocked: (saveBlocked) => set({ saveBlocked }),
