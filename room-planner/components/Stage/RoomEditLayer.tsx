@@ -1,5 +1,5 @@
 import type React from 'react';
-import { createContext, useContext, type JSX } from 'react';
+import { createContext, useContext, useEffect, useRef, type JSX } from 'react';
 import { CONFIG } from '../../config';
 import { wallsOf, type Wall } from '../../domain/outline';
 import type { Corner } from '../../domain/types';
@@ -31,6 +31,11 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
   const selectedCornerId = useUiStore((s) => s.selectedCornerId);
   const selectCorner = useUiStore((s) => s.selectCorner);
   const freezeLayout = useContext(FreezePlanLayoutContext);
+  // Ends the corner drag under way, if any. startDrag's window listeners outlive this layer when
+  // room mode ends mid-drag, so unmounting ends the drag here: the Alt listener goes and the
+  // layout is released, and the drag's later moves are ignored.
+  const endDragRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDragRef.current?.(), []);
 
   const onCornerDown = (corner: Corner, e: React.PointerEvent): void => {
     selectCorner(corner.id);
@@ -44,13 +49,24 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
     };
     window.addEventListener('pointermove', trackAlt, true);
     freezeLayout(layout);
+    let ended = false;
+    const endDrag = (): void => {
+      if (ended) return;
+      ended = true;
+      window.removeEventListener('pointermove', trackAlt, true);
+      freezeLayout(null);
+      if (endDragRef.current === endDrag) endDragRef.current = null;
+    };
+    endDragRef.current = endDrag;
     startDrag(
       e,
-      (dx, dy) => dragCornerTo(corner.id, { x: start.x + dx / scale, y: start.y + dy / scale }, { ...opts }),
-      () => {
-        window.removeEventListener('pointermove', trackAlt, true);
-        freezeLayout(null);
+      (dx, dy) => {
+        // Once room mode has ended, the rest of the gesture edits nothing, even back in room mode.
+        if (!ended && useUiStore.getState().mode !== 'room') endDrag();
+        if (ended) return;
+        dragCornerTo(corner.id, { x: start.x + dx / scale, y: start.y + dy / scale }, { ...opts });
       },
+      endDrag,
     );
   };
 

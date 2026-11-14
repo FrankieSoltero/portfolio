@@ -49,11 +49,17 @@ export function fmtFurnDims(dims: { w: number; d: number; h: number }, units: Un
   return `${parts.join(' × ')} ${furnUnitLabel(units)}`;
 }
 
-/** Parses a room input (feet or metres) to inches; null if not finite or outside room limits. */
-export function parseRoomInput(raw: string, units: Units): number | null {
+/** Parses a length typed in the room units (feet or metres) to inches; null if not finite. No range check. */
+export function parseLengthInput(raw: string, units: Units): number | null {
   const n = parseFloat(raw);
   const v = units === 'm' ? n / M_PER_INCH : n * INCH_PER_FT;
-  return Number.isFinite(v) && v >= CONFIG.roomMin && v <= CONFIG.roomMax ? v : null;
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Parses a room input (feet or metres) to inches; null if not finite or outside room limits. */
+export function parseRoomInput(raw: string, units: Units): number | null {
+  const v = parseLengthInput(raw, units);
+  return v !== null && v >= CONFIG.roomMin && v <= CONFIG.roomMax ? v : null;
 }
 
 /** Parses a furniture input (inches or centimetres) to inches; null unless 0 < v <= previewDimMax. */

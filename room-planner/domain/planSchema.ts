@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CONFIG } from '../config';
 import { normaliseOutline, validateOutline } from './outline';
 import { round2 } from './polygon';
 import { normaliseAngle } from './shape';
@@ -17,13 +18,17 @@ export type ParseResult = { ok: true; doc: PlanDocument } | { ok: false; newer: 
 /** The version this planner writes; an integer above it is a plan from a newer planner. */
 const CURRENT_VERSION = 2;
 
-/** Limits of the stored format (Task 16 "Exact values"); fixed by the format, not tunable. */
+/**
+ * Limits of the stored format (Task 16 "Exact values"). The room size and corner count limits are
+ * the planner's own (CONFIG), so a plan it can draw is never refused on load; the rest are fixed by
+ * the format, not tunable.
+ */
 const LIMITS = {
-  roomMin: 36,
-  roomMax: 720,
+  roomMin: CONFIG.roomMin,
+  roomMax: CONFIG.roomMax,
   coordMax: 1440,
   cornersMin: 3,
-  cornersMax: 64,
+  cornersMax: CONFIG.maxCorners,
   itemsMax: 200,
   nameMax: 200,
   hostMax: 255,

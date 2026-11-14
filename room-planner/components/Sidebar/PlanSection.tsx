@@ -1,4 +1,4 @@
-import type { JSX } from 'react';
+import { type JSX, useRef } from 'react';
 import type { PlanStore } from '../../services/planStorage';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
@@ -31,6 +31,17 @@ async function resetPlan(planStore: PlanStore): Promise<void> {
 
 /** Sidebar section 04: where the plan is kept, and a confirmed way to start over. */
 export function PlanSection({ planStore }: { planStore: PlanStore }): JSX.Element {
+  // True while a reset's clear() has not settled: confirming again then does nothing.
+  const resetting = useRef(false);
+
+  function onConfirmReset(): void {
+    if (resetting.current) return;
+    resetting.current = true;
+    void resetPlan(planStore).finally(() => {
+      resetting.current = false;
+    });
+  }
+
   return (
     <section className="sidebar-section plan-section">
       <h6 className="sidebar-heading">
@@ -42,7 +53,7 @@ export function PlanSection({ planStore }: { planStore: PlanStore }): JSX.Elemen
         className="plan-section-reset"
         label="Reset plan"
         confirmLabel="Erase everything and start over"
-        onConfirm={() => resetPlan(planStore)}
+        onConfirm={onConfirmReset}
       />
     </section>
   );

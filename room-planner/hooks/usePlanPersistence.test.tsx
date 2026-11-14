@@ -1,5 +1,5 @@
 import { act, render, renderHook } from '@testing-library/react';
-import { StrictMode, type JSX } from 'react';
+import { Activity, StrictMode, type JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
@@ -296,6 +296,131 @@ describe('usePlanPersistence: unmount', () => {
   });
 });
 
+describe('usePlanPersistence: page hide', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Makes document.visibilityState read `state` and dispatches visibilitychange. */
+  function visibility(state: DocumentVisibilityState): void {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(state);
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  }
+
+  function pageHide(): void {
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+  }
+
+  it('pagehide flushes a pending save at once with the current document, and the timer does not save again', async () => {
+    const store = createFakePlanStore();
+    await mountReady(store);
+    nudgeBed();
+    advance(100);
+    expect(store.saveCalls).toHaveLength(0);
+    pageHide();
+    expect(store.saveCalls).toHaveLength(1);
+    expect(store.saveCalls[0]).toEqual(currentDoc());
+    advance(1000);
+    await settle();
+    expect(store.saveCalls).toHaveLength(1);
+  });
+
+  it('visibilitychange to hidden flushes a pending save at once, and the timer does not save again', async () => {
+    const store = createFakePlanStore();
+    await mountReady(store);
+    nudgeBed();
+    advance(100);
+    visibility('hidden');
+    expect(store.saveCalls).toHaveLength(1);
+    expect(store.saveCalls[0]).toEqual(currentDoc());
+    advance(1000);
+    await settle();
+    expect(store.saveCalls).toHaveLength(1);
+  });
+
+  it('visibilitychange to visible does not save; the pending save still happens on its timer', async () => {
+    const store = createFakePlanStore();
+    await mountReady(store);
+    nudgeBed();
+    advance(100);
+    visibility('visible');
+    expect(store.saveCalls).toHaveLength(0);
+    advance(CONFIG.saveDebounceMs - 100);
+    expect(store.saveCalls).toHaveLength(1);
+  });
+
+  it('saves nothing when nothing is pending', async () => {
+    const store = createFakePlanStore();
+    await mountReady(store);
+    pageHide();
+    visibility('hidden');
+    nudgeBed();
+    advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toHaveLength(1);
+    pageHide();
+    visibility('hidden');
+    expect(store.saveCalls).toHaveLength(1);
+  });
+
+  it('saves nothing while saving is blocked', async () => {
+    const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'newer' } } });
+    await mountReady(store);
+    nudgeBed();
+    advance(100);
+    pageHide();
+    visibility('hidden');
+    advance(1000);
+    await settle();
+    expect(store.saveCalls).toHaveLength(0);
+  });
+
+  it('under StrictMode one pagehide makes exactly one save', async () => {
+    const store = createFakePlanStore();
+    const { result } = renderHook(() => usePlanPersistence(store), { wrapper: StrictMode });
+    await settle();
+    expect(result.current.ready).toBe(true);
+    nudgeBed();
+    advance(100);
+    pageHide();
+    expect(store.saveCalls).toHaveLength(1);
+  });
+
+  it('removes its listeners on unmount; later events save nothing', async () => {
+    const added: [EventTarget, string, EventListenerOrEventListenerObject | null][] = [];
+    const removed: [EventTarget, string, EventListenerOrEventListenerObject | null][] = [];
+    for (const target of [window, document] as EventTarget[]) {
+      const add = target.addEventListener.bind(target);
+      const remove = target.removeEventListener.bind(target);
+      vi.spyOn(target, 'addEventListener').mockImplementation((type, fn, opts) => {
+        if (type === 'pagehide' || type === 'visibilitychange') added.push([target, type, fn]);
+        add(type, fn, opts);
+      });
+      vi.spyOn(target, 'removeEventListener').mockImplementation((type, fn, opts) => {
+        removed.push([target, type, fn]);
+        remove(type, fn, opts);
+      });
+    }
+    const store = createFakePlanStore();
+    const { unmount } = await mountReady(store);
+    expect(added.map(([, type]) => type).sort()).toEqual(['pagehide', 'visibilitychange']);
+    nudgeBed();
+    advance(100);
+    unmount();
+    expect(store.saveCalls).toHaveLength(1);
+    for (const entry of added) expect(removed).toContainEqual(entry);
+    nudgeBed();
+    pageHide();
+    visibility('hidden');
+    advance(1000);
+    await settle();
+    expect(store.saveCalls).toHaveLength(1);
+  });
+});
+
 describe('usePlanPersistence: StrictMode', () => {
   it('becomes ready with exactly one active subscription: one change, one save', async () => {
     const store: FakePlanStore = createFakePlanStore();
@@ -307,6 +432,67 @@ describe('usePlanPersistence: StrictMode', () => {
     expect(store.saveCalls).toHaveLength(1);
     advance(1000);
     expect(store.saveCalls).toHaveLength(1);
+  });
+
+  it('a later re-run of the effect with the same store does not apply the load result again', async () => {
+    // Activity hidden → visible runs the effect's cleanup and then the effect again while keeping
+    // the component's state and refs, as Fast Refresh does: the same store, the same cached load.
+    const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'loaded', doc: SAVED } } });
+    const seen: { ready: boolean }[] = [];
+    function Probe(): null {
+      seen.push(usePlanPersistence(store));
+      return null;
+    }
+    const view = render(
+      <Activity mode="visible">
+        <Probe />
+      </Activity>,
+    );
+    await settle();
+    expect(seen.at(-1)?.ready).toBe(true);
+    expect(currentDoc()).toEqual(SAVED);
+    // Edit the document on screen, and set UI state a second apply would overwrite or reset.
+    act(() => usePlanStore.getState().moveItemBy('saved-box', 5, 0));
+    const edited = currentDoc();
+    expect(edited).not.toEqual(SAVED);
+    act(() => useUiStore.getState().setNotice('Kept'));
+    advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toHaveLength(1);
+
+    let planWrites = 0;
+    let uiWrites = 0;
+    const stopPlan = usePlanStore.subscribe(() => planWrites++);
+    const stopUi = useUiStore.subscribe(() => uiWrites++);
+    view.rerender(
+      <Activity mode="hidden">
+        <Probe />
+      </Activity>,
+    );
+    await settle();
+    view.rerender(
+      <Activity mode="visible">
+        <Probe />
+      </Activity>,
+    );
+    await settle();
+    stopPlan();
+    stopUi();
+    expect(store.loadCalls).toBe(1);
+    expect(planWrites).toBe(0);
+    expect(uiWrites).toBe(0);
+    expect(currentDoc()).toEqual(edited);
+    expect(useUiStore.getState().notice).toBe('Kept');
+    expect(seen.at(-1)?.ready).toBe(true);
+    advance(1000);
+    await settle();
+    expect(store.saveCalls).toHaveLength(1);
+    // Still subscribed for autosave, exactly once: one change, one save of the edited document.
+    act(() => usePlanStore.getState().moveItemBy('saved-box', 1, 0));
+    advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toHaveLength(2);
+    expect(store.saveCalls[1]).toEqual(currentDoc());
+    advance(1000);
+    expect(store.saveCalls).toHaveLength(2);
   });
 
   it('loads once, so a browser plan discarded as unreadable on load still shows the invalid notice', async () => {

@@ -62,13 +62,18 @@ function applyLoad(result: LoadResult): void {
  * - Nothing is saved while the UI store's `saveBlocked` is true (read at save time).
  * - A failed or rejected save, and a rejected load, show the storage notice.
  * - On unmount a pending save is made at once, the timer is cleared and the subscription removed.
+ * - Closing or reloading the tab does not unmount React, so while subscribed a pending save is also
+ *   made at once on `pagehide` and when the page becomes hidden (`visibilitychange`).
  * - The load promise is kept for the component's lifetime, so StrictMode's second effect run reuses
  *   it instead of loading again (a store may discard an unreadable plan on the first load, and a
  *   second load would then report it as empty). A load that settles after cleanup is ignored.
+ * - A load result is applied at most once per store: a later re-run of the effect with the same
+ *   store (Fast Refresh, an Activity shown again) only subscribes and reports ready, so the live
+ *   document is not replaced by the one loaded at mount.
  */
 export function usePlanPersistence(store: PlanStore): { ready: boolean } {
   const [ready, setReady] = useState(false);
-  const loading = useRef<{ store: PlanStore; result: Promise<LoadResult> } | null>(null);
+  const loading = useRef<{ store: PlanStore; result: Promise<LoadResult>; applied: boolean } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -86,27 +91,46 @@ export function usePlanPersistence(store: PlanStore): { ready: boolean } {
       );
     }
 
-    if (loading.current?.store !== store) loading.current = { store, result: store.load() };
-    loading.current.result
+    /** Makes a pending save now, if there is one. */
+    function flush(): void {
+      if (timer === null) return;
+      clearTimeout(timer);
+      save();
+    }
+
+    function onVisibilityChange(): void {
+      if (document.visibilityState === 'hidden') flush();
+    }
+
+    if (loading.current?.store !== store) loading.current = { store, result: store.load(), applied: false };
+    const load = loading.current;
+    load.result
       .catch((): LoadResult => ({ status: 'unavailable' }))
       .then((result) => {
         if (!active) return;
-        applyLoad(result);
-        unsubscribe = usePlanStore.subscribe((next, prev) => {
+        if (!load.applied) {
+          load.applied = true;
+          applyLoad(result);
+        }
+        const stopDocument = usePlanStore.subscribe((next, prev) => {
           if (!documentChanged(next, prev)) return;
           if (timer !== null) clearTimeout(timer);
           timer = setTimeout(save, CONFIG.saveDebounceMs);
         });
+        window.addEventListener('pagehide', flush);
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        unsubscribe = () => {
+          stopDocument();
+          window.removeEventListener('pagehide', flush);
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
         setReady(true);
       });
 
     return () => {
       active = false;
       unsubscribe?.();
-      if (timer !== null) {
-        clearTimeout(timer);
-        save();
-      }
+      flush();
     };
   }, [store]);
 

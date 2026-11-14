@@ -633,6 +633,58 @@ describe('PlanView in room mode', () => {
     expect(px(corner2(), 'left')).toBeCloseTo(toPane({ x: 200, y: 0 }, refit).x, 3);
     expectPointsClose(wallPoints(), moved.map((p) => toPane(p, refit)));
   });
+
+  it('a corner drag still under way when room mode ends edits nothing more and releases the layout', () => {
+    const added: [string, EventListenerOrEventListenerObject | null, unknown][] = [];
+    const removed: [string, EventListenerOrEventListenerObject | null][] = [];
+    const add = window.addEventListener.bind(window);
+    const remove = window.removeEventListener.bind(window);
+    vi.spyOn(window, 'addEventListener').mockImplementation((type, fn, opts) => {
+      added.push([type, fn, opts]);
+      add(type, fn, opts);
+    });
+    vi.spyOn(window, 'removeEventListener').mockImplementation((type, fn, opts) => {
+      removed.push([type, fn]);
+      remove(type, fn, opts);
+    });
+    try {
+      useUiStore.getState().setMode('room');
+      render(<PlanView pane={MAIN} />);
+      const before = seedLayout();
+      const corner2 = (): HTMLElement => screen.getByRole('button', { name: 'Corner 2' });
+      // Drag c2 from (144, 0) to (200, 0), without angle snapping, then leave room mode mid-drag.
+      fireEvent.pointerDown(corner2(), { clientX: 100, clientY: 100 });
+      fireEvent.pointerMove(window, { clientX: 100 + 56 * SCALE, clientY: 100, altKey: true });
+      const moved = usePlanStore.getState().room;
+      expect(moved.outline[1]).toEqual({ id: 'c2', x: 200, y: 0 });
+      act(() => useUiStore.getState().setMode('furnish'));
+      // The Alt listener (the capture-phase pointermove listener) is gone before the pointer is released.
+      const alt = added.find(([type, , opts]) => type === 'pointermove' && opts === true);
+      if (!alt) throw new Error('no Alt listener was added');
+      expect(removed).toContainEqual([alt[0], alt[1]]);
+      // The layout is no longer frozen: the furniture is placed by the re-fitted layout.
+      const refit = computePlanLayout(roomBounds(moved), MAIN);
+      expect(refit.scale).not.toBeCloseTo(before.scale, 3);
+      expect(px(itemEl('seed-bed'), 'left')).toBeCloseTo(refit.ox + 40 * refit.scale, 3);
+      // A valid target and a refused one (walls would cross): neither edits the outline or sets a problem.
+      fireEvent.pointerMove(window, { clientX: 100 + 16 * SCALE, clientY: 100 - 10 * SCALE, altKey: true });
+      expect(usePlanStore.getState().room).toBe(moved);
+      fireEvent.pointerMove(window, { clientX: 100 - 194 * SCALE, clientY: 100 + 84 * SCALE, altKey: true });
+      expect(usePlanStore.getState().room).toBe(moved);
+      expect(useUiStore.getState().roomProblem).toBeNull();
+      expect(() => fireEvent.pointerUp(window)).not.toThrow();
+      expect(usePlanStore.getState().room).toBe(moved);
+      // Back in room mode the handles use the re-fitted layout, and a new drag works.
+      act(() => useUiStore.getState().setMode('room'));
+      expect(px(corner2(), 'left')).toBeCloseTo(toPane({ x: 200, y: 0 }, refit).x, 3);
+      fireEvent.pointerDown(corner2(), { clientX: 100, clientY: 100 });
+      fireEvent.pointerMove(window, { clientX: 100 + 10 * refit.scale, clientY: 100, altKey: true });
+      expect(usePlanStore.getState().room.outline[1]).toEqual({ id: 'c2', x: 210, y: 0 });
+      fireEvent.pointerUp(window);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 });
 
 describe('InsetFrame', () => {

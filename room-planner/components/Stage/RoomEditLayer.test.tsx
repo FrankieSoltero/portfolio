@@ -10,7 +10,7 @@ import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import type { PaneRect } from '../../view/panes';
 import { computePlanLayout, type PlanLayout, toPane } from '../../view/planLayout';
-import { RoomEditLayer } from './RoomEditLayer';
+import { FreezePlanLayoutContext, RoomEditLayer } from './RoomEditLayer';
 
 // The actions run for real; the spies record how the layer calls them.
 vi.mock('../../state/actions', async (importOriginal) => {
@@ -160,6 +160,56 @@ describe('RoomEditLayer corner drag', () => {
     expect(corner('c2')).toEqual({ id: 'c2', x: 160, y: -10 });
     expect(useUiStore.getState().roomProblem).toBeNull();
     fireEvent.pointerUp(window);
+  });
+
+  it('once the mode is no longer room, further moves of the drag edit nothing and set no problem', () => {
+    renderLayer();
+    const s = layout.scale;
+    fireEvent.pointerDown(handle(2), { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 100 + 6 * s, clientY: 100, altKey: true });
+    const moved = usePlanStore.getState().room;
+    expect(corner('c2')).toEqual({ id: 'c2', x: 150, y: 0 });
+    useUiStore.getState().setMode('furnish');
+    // A valid target, then one the walls would cross.
+    fireEvent.pointerMove(window, { clientX: 100 + 16 * s, clientY: 100 - 10 * s, altKey: true });
+    fireEvent.pointerMove(window, { clientX: 100 - 194 * s, clientY: 100 + 84 * s, altKey: true });
+    expect(usePlanStore.getState().room).toBe(moved);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    // Back in room mode before the pointer is released: that drag stays over.
+    useUiStore.getState().setMode('room');
+    fireEvent.pointerMove(window, { clientX: 100 + 16 * s, clientY: 100 - 10 * s, altKey: true });
+    expect(usePlanStore.getState().room).toBe(moved);
+    fireEvent.pointerUp(window);
+  });
+
+  it('unmounting mid-drag removes the Alt listener and releases the layout freeze', () => {
+    const freeze = vi.fn();
+    const added: [string, EventListenerOrEventListenerObject | null, unknown][] = [];
+    const removed: [string, EventListenerOrEventListenerObject | null][] = [];
+    const add = window.addEventListener.bind(window);
+    const remove = window.removeEventListener.bind(window);
+    vi.spyOn(window, 'addEventListener').mockImplementation((type, fn, opts) => {
+      added.push([type, fn, opts]);
+      add(type, fn, opts);
+    });
+    vi.spyOn(window, 'removeEventListener').mockImplementation((type, fn, opts) => {
+      removed.push([type, fn]);
+      remove(type, fn, opts);
+    });
+    const { unmount } = render(
+      <FreezePlanLayoutContext value={freeze}>
+        <RoomEditLayer layout={layout} />
+      </FreezePlanLayoutContext>,
+    );
+    fireEvent.pointerDown(handle(2), { clientX: 100, clientY: 100 });
+    expect(freeze).toHaveBeenLastCalledWith(layout);
+    unmount();
+    expect(freeze).toHaveBeenLastCalledWith(null);
+    const alt = added.find(([type, , opts]) => type === 'pointermove' && opts === true);
+    if (!alt) throw new Error('no Alt listener was added');
+    expect(removed).toContainEqual([alt[0], alt[1]]);
+    fireEvent.pointerUp(window);
+    expect(freeze).toHaveBeenLastCalledWith(null);
   });
 
   it.each(['pointerUp', 'pointerCancel'] as const)('%s ends the drag and removes every window listener it added', (end) => {

@@ -121,6 +121,47 @@ describe('PlanSection', () => {
     expect(useUiStore.getState().notice).toBe(STORAGE_NOTICE);
   });
 
+  it('confirming again while a reset is in flight does nothing; once it settles a new reset works', async () => {
+    const store = createFakePlanStore();
+    const clear = holdClear(store);
+    render(<PlanSection planStore={store} />);
+    dirtyTheStores();
+    let planResets = 0;
+    let uiResets = 0;
+    const planReset = usePlanStore.getState().reset;
+    const uiReset = useUiStore.getState().reset;
+    usePlanStore.setState({ reset: (doc) => (planResets++, planReset(doc)) });
+    useUiStore.setState({ reset: () => (uiResets++, uiReset()) });
+    try {
+      await confirmReset();
+      await confirmReset();
+      expect(store.clearCalls).toBe(1);
+      await act(async () => {
+        clear.resolve();
+      });
+      expect(planResets).toBe(1);
+      expect(uiResets).toBe(1);
+      expectSeededPlanAndFreshUi();
+
+      // A new reset after the first has settled runs normally.
+      store.clear = () => {
+        store.clearCalls++;
+        return Promise.resolve();
+      };
+      dirtyTheStores();
+      await act(async () => {
+        await confirmReset();
+      });
+      expect(store.clearCalls).toBe(2);
+      expect(planResets).toBe(2);
+      expect(uiResets).toBe(2);
+      expectSeededPlanAndFreshUi();
+    } finally {
+      usePlanStore.setState({ reset: planReset });
+      useUiStore.setState({ reset: uiReset });
+    }
+  });
+
   it('reset in a newer-version session: clears the key and lifts saveBlocked', async () => {
     const store = createFakePlanStore();
     render(<PlanSection planStore={store} />);

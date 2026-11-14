@@ -1,8 +1,7 @@
 import { type ChangeEvent, type JSX, useId, useState } from 'react';
 import { CONFIG } from '../../config';
 import { OUTLINE_PROBLEM_TEXT, type OutlineResult, setWallLength, type Wall, wallsOf } from '../../domain/outline';
-import type { Units } from '../../domain/types';
-import { roomInputStep, roomInputStr, roomUnitLabel } from '../../domain/units';
+import { parseLengthInput, roomInputStep, roomInputStr, roomUnitLabel } from '../../domain/units';
 import { addCornerOnWall } from '../../state/actions';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
@@ -13,20 +12,6 @@ const DRAFT_TOLERANCE_IN = 0.01;
 
 /** Absorbs unit-conversion noise at the upper limit (18.288 m is exactly 720 in). */
 const LIMIT_SLACK_IN = 1e-9;
-
-const M_PER_INCH = 0.0254;
-const INCH_PER_FT = 12;
-
-/**
- * Parses a wall length typed in the room units (feet or metres) to inches, or null when the text
- * is not a number. Unlike parseRoomInput it applies no range: the caller refuses lengths outside
- * [CONFIG.wallMin, CONFIG.roomMax] with a reason.
- */
-function parseWallInput(raw: string, units: Units): number | null {
-  const n = parseFloat(raw);
-  const inches = units === 'm' ? n / M_PER_INCH : n * INCH_PER_FT;
-  return Number.isFinite(inches) ? inches : null;
-}
 
 /**
  * Sets wall `wallId` of the current outline to `inches` and records the outcome: an accepted
@@ -58,7 +43,7 @@ function WallRow({ wall, roomMode }: { wall: Wall; roomMode: boolean }) {
 
   // Adjust state during render (not in an effect) so the input never shows a stale draft.
   if (seen.units !== units || seen.stored !== stored) {
-    const parsed = parseWallInput(draft, units);
+    const parsed = parseLengthInput(draft, units);
     const draftShowsStored = parsed !== null && Math.abs(parsed - stored) <= DRAFT_TOLERANCE_IN;
     if (seen.units !== units || !(focused && draftShowsStored)) setDraft(roomInputStr(stored, units));
     setSeen({ units, stored });
@@ -67,7 +52,7 @@ function WallRow({ wall, roomMode }: { wall: Wall; roomMode: boolean }) {
   function onChange(e: ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value;
     setDraft(raw);
-    const inches = parseWallInput(raw, units);
+    const inches = parseLengthInput(raw, units);
     if (inches !== null) applyWallLength(wall.id, inches);
   }
 

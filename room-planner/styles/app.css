@@ -111,9 +111,11 @@
   color: var(--color-accent-900);
 }
 
+/* Wraps onto a second row on narrow screens so no control overflows the bar. */
 .selection-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 

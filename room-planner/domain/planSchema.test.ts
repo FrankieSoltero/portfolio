@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { CONFIG } from '../config';
 import { createInitialDocument } from './catalog';
 import { parsePlan, type ParseResult } from './planSchema';
 import type { Corner, Item, Kind, ModelTier, PlanDocument } from './types';
@@ -636,6 +637,43 @@ describe('parsePlan — hostile sweep', () => {
     expect(result).toEqual({ ok: false, newer: false, reason: expect.stringMatching(REASON_FORMAT) });
     expect(result?.ok === false && result.reason.length).toBeLessThanOrEqual(80);
     expect(({} as Obj).isAdmin).toBeUndefined();
+  });
+});
+
+describe('parsePlan — limits shared with CONFIG', () => {
+  it('room height and v1 room sizes: CONFIG.roomMin and CONFIG.roomMax accepted; 0.01 beyond refused', () => {
+    expect(accepted(set(v2Seed(), ['room', 'height'], CONFIG.roomMin)).room.height).toBe(CONFIG.roomMin);
+    expect(accepted(set(v2Seed(), ['room', 'height'], CONFIG.roomMax)).room.height).toBe(CONFIG.roomMax);
+    expect(parsePlan(set(v2Seed(), ['room', 'height'], CONFIG.roomMin - 0.01))).toEqual(refusal('room.height: too_small'));
+    expect(parsePlan(set(v2Seed(), ['room', 'height'], CONFIG.roomMax + 0.01))).toEqual(refusal('room.height: too_big'));
+    const empty = set(v1Seed(), ['items'], []);
+    expect(parsePlan(set(empty, ['room', 'w'], CONFIG.roomMax)).ok).toBe(true);
+    expect(parsePlan(set(empty, ['room', 'w'], CONFIG.roomMax + 0.01))).toEqual(refusal('room.w: too_big'));
+  });
+
+  it('room.outline: CONFIG.maxCorners corners accepted; one more refused', () => {
+    expect(accepted(withOutline(regular(CONFIG.maxCorners, 300, 360, 360))).room.outline).toHaveLength(CONFIG.maxCorners);
+    expect(parsePlan(withOutline(regular(CONFIG.maxCorners + 1, 300, 360, 360)))).toEqual(refusal('room.outline: too_big'));
+  });
+
+  it('follows CONFIG when its room size and corner limits change', async () => {
+    vi.resetModules();
+    vi.doMock('../config', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../config')>();
+      return { CONFIG: { ...actual.CONFIG, roomMin: 48, roomMax: 600, maxCorners: 10 } };
+    });
+    try {
+      const { parsePlan: parseWith } = await import('./planSchema');
+      expect(parseWith(set(v2Seed(), ['room', 'height'], 600)).ok).toBe(true);
+      expect(parseWith(set(v2Seed(), ['room', 'height'], 600.01))).toEqual(refusal('room.height: too_big'));
+      expect(parseWith(set(v2Seed(), ['room', 'height'], 48)).ok).toBe(true);
+      expect(parseWith(set(v2Seed(), ['room', 'height'], 47.99))).toEqual(refusal('room.height: too_small'));
+      expect(parseWith(withOutline(regular(10, 200, 300, 300))).ok).toBe(true);
+      expect(parseWith(withOutline(regular(11, 200, 300, 300)))).toEqual(refusal('room.outline: too_big'));
+    } finally {
+      vi.doUnmock('../config');
+      vi.resetModules();
+    }
   });
 });
 

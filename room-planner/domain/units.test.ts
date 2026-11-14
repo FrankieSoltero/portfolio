@@ -8,6 +8,7 @@ import {
   furnUnitLabel,
   gridStepInches,
   parseFurnInput,
+  parseLengthInput,
   parseRoomInput,
   roomInputStep,
   roomInputStr,
@@ -88,6 +89,27 @@ describe('parseRoomInput', () => {
   it('accepts values exactly at the room limits', () => {
     expect(parseRoomInput('3', 'ft')).toBe(36);
     expect(parseRoomInput('60', 'ft')).toBe(720);
+  });
+});
+
+describe('parseLengthInput', () => {
+  it('converts feet and metres to inches', () => {
+    expect(parseLengthInput('10', 'ft')).toBe(120);
+    const metric = parseLengthInput('3.66', 'm');
+    expect(metric).not.toBeNull();
+    expect(metric).toBeCloseTo(144.094, 3);
+  });
+
+  it('returns null for text that is not a number', () => {
+    expect(parseLengthInput('', 'ft')).toBeNull();
+    expect(parseLengthInput('abc', 'ft')).toBeNull();
+    expect(parseLengthInput('', 'm')).toBeNull();
+    expect(parseLengthInput('abc', 'm')).toBeNull();
+  });
+
+  it('applies no range check: lengths below the room minimum and above its maximum convert', () => {
+    expect(parseLengthInput('0.5', 'ft')).toBe(6);
+    expect(parseLengthInput('61', 'ft')).toBe(732);
   });
 });
 
