@@ -106,14 +106,18 @@ describe('parseFurnInput', () => {
 });
 
 describe('fmtArea', () => {
-  const room = { w: 144, l: 168, h: 96 };
+  const areaSqIn = 144 * 168;
 
   it('formats floor area in square feet', () => {
-    expect(fmtArea(room, 'ft')).toBe('168 sq ft');
+    expect(fmtArea(areaSqIn, 'ft')).toBe('168 sq ft');
+  });
+
+  it('formats another area from a square-inch value', () => {
+    expect(fmtArea(18144, 'ft')).toBe('126 sq ft');
   });
 
   it('formats floor area in square metres', () => {
-    expect(fmtArea(room, 'm')).toBe('15.6 m²');
+    expect(fmtArea(areaSqIn, 'm')).toBe('15.6 m²');
   });
 });
 

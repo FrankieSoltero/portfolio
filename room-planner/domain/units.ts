@@ -4,7 +4,7 @@
  * 321–322, 328–329, 700 and 707.
  */
 import { CONFIG } from '../config';
-import type { Room, Units } from './types';
+import type { Units } from './types';
 
 const CM_PER_INCH = 2.54;
 const M_PER_INCH = 0.0254;
@@ -63,12 +63,11 @@ export function parseFurnInput(raw: string, units: Units): number | null {
   return Number.isFinite(v) && v > 0 && v <= CONFIG.previewDimMax ? v : null;
 }
 
-/** Floor area: `168 sq ft` or `15.6 m²`. */
-export function fmtArea(room: Room, units: Units): string {
-  const areaIn = room.w * room.l;
+/** Floor area from a square-inch value: `168 sq ft` or `15.6 m²`. */
+export function fmtArea(areaSqIn: number, units: Units): string {
   return units === 'm'
-    ? `${(areaIn * SQ_M_PER_SQ_INCH).toFixed(1)} m²`
-    : `${Math.round(areaIn / SQ_INCH_PER_SQ_FT)} sq ft`;
+    ? `${(areaSqIn * SQ_M_PER_SQ_INCH).toFixed(1)} m²`
+    : `${Math.round(areaSqIn / SQ_INCH_PER_SQ_FT)} sq ft`;
 }
 
 /** Price in US dollars, or `No price` when unknown. */

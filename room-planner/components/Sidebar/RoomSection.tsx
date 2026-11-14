@@ -1,5 +1,7 @@
 import { type ChangeEvent, useId, useState } from 'react';
 import { fmtArea, parseRoomInput, roomInputStep, roomInputStr, roomUnitLabel } from '../../domain/units';
+import { polygonArea } from '../../domain/polygon';
+import { roomOutline } from '../../domain/shape';
 import type { RoomAxis } from '../../domain/types';
 import { usePlanStore } from '../../state/planStore';
 import './sidebar.css';
@@ -77,7 +79,7 @@ export function RoomSection() {
         ))}
       </div>
       <div className="note">
-        Floor area {fmtArea(room, units)}.
+        Floor area {fmtArea(polygonArea(roomOutline(room)), units)}.
       </div>
     </section>
   );
