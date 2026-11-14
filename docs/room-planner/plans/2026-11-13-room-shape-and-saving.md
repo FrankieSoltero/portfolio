@@ -170,6 +170,27 @@ these files, each for the stated change only:
 In every one of these files an `expect(` line may change only as the table states;
 the report lists each changed assertion.
 
+## Amendment 6 (2026-11-14, controller ruling during Task 12)
+
+1. **Snapping rule for moves (replaces "centre snapped to `snap`").** Snapping the
+   centre would stop a piece with an odd width or depth from ever sitting flush
+   against a wall, which slice A allowed. `moveItem` instead snaps the minimum corner
+   of the footprint's axis-aligned bounding box to the grid: with `hx`, `hy` the
+   half-extents of that bounding box, the centre becomes
+   `(round((x − hx)/snap)·snap + hx, round((y − hy)/snap)·snap + hy)`, then is clamped
+   into the bounds. For quarter turns this is exactly slice A's behaviour. `addItem`
+   places through the same rule. Task 12's rows change accordingly:
+   `moveItemTo('seed-bed', 80.4, 50.6)` gives centre `(80, 50.5)`; the "Add item" row's
+   `(72, 84)` holds for a preview whose width and depth are even.
+2. **Task 12's file list is extended** with three files, each for one line:
+   `room-planner/components/SelectionBar.tsx` (`onClick={() => rotateSelected()}`, as
+   `rotateSelected` now takes an optional angle),
+   `room-planner/components/Sidebar/Sidebar.test.tsx` (the desk is moved to its old
+   placement's centre, `(53, 27.5)`), and `room-planner/three/SceneRenderer.test.ts`
+   (`{ ...i, x: 33, y: 57.5 }`). No `expect(` line changes in the two test files.
+3. In `PlanView.test.tsx`, `setRoomDim('w', 90)` becomes
+   `applyOutline(setRectangleSize(room.outline, { w: 90 }))`.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
