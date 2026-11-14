@@ -1,0 +1,68 @@
+/* Stage shell: the measured stage root, the two pane containers and the 3D pane's
+   render-style control. Tokens only; no hex colours. From prototype lines 134–196 and
+   673–675. Pane positions, sizes and z-indexes are set inline from the PaneRect. */
+
+.stage {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* A pane's box is exactly its PaneRect: the views inside fill it with `inset: 0` and size
+   their drawing from the same rect. Lines are therefore drawn by an overlay (below) rather
+   than a border, so they never shrink the area the views fill. */
+.pane {
+  position: absolute;
+}
+
+/* Inset pane: 1px text-colour frame, page background and a medium shadow. The frame sits
+   above the view (z 8) and below the InsetFrame decoration (z 9). */
+.pane-inset {
+  background: var(--color-bg);
+  box-shadow: var(--shadow-md);
+}
+.pane-inset::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--color-text);
+  pointer-events: none;
+  z-index: 8;
+}
+
+/* Side-by-side layout: 1px divider along the left edge of the 3D pane. */
+.pane-divider::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--color-divider);
+  pointer-events: none;
+  z-index: 8;
+}
+
+/* Render-style control, top-left of the main 3D pane. */
+.render-style {
+  position: absolute;
+  left: var(--space-4);
+  top: var(--space-4);
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.render-style .seg {
+  background: var(--color-bg);
+}
+
+/* Shown under the control when WebGL is unavailable. */
+.webgl-note {
+  margin: 0;
+  max-width: 260px;
+  padding: var(--space-1) var(--space-2);
+  font-size: 12px;
+  background: var(--color-bg);
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}

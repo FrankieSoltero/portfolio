@@ -1,0 +1,86 @@
+/* App-level layout. Use Industry classes and var(--*) tokens only; no hex colours here. */
+#root {
+  min-height: 100vh;
+}
+
+/* Shell: header row over the body (prototype lines 16 and 25). The header's bottom border
+   is `.app-header`, defined in src/components/Sidebar/sidebar.css. */
+.app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  min-height: 620px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* Main column: top bar, stage, selection bar (prototype line 116). */
+.app-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Top bar (prototype lines 117–132). */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.top-bar-tabs { margin-right: auto; }
+
+.tag-conflict {
+  background: var(--color-accent-900);
+  color: var(--color-bg);
+}
+
+/* Selection bar (prototype lines 198–216). */
+.selection-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  min-height: 56px;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.selection-info {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-right: auto;
+}
+
+.selection-name {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 17px;
+}
+
+.selection-dims,
+.selection-hint { font-size: 13px; }
+
+.selection-note {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-accent-900);
+}
+
+.selection-actions {
+  display: flex;
+  gap: var(--space-2);
+}

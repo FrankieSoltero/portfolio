@@ -1,0 +1,166 @@
+/* Stage panes: the 2D plan view and the inset frame. Tokens only; no hex colours.
+   Exact styles from prototype lines 136–173 and 679–699. Positions and sizes that depend
+   on the room and the pane are set inline by the components. */
+
+/* ── Plan view ────────────────────────────────────────────────────────────── */
+.plan-view {
+  position: absolute;
+  inset: 0;
+}
+
+/* Dimension lines: 1px line, 9px end ticks, centred label chip. */
+.plan-dim {
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+}
+.plan-dim-w { height: 0; border-top: 1px solid var(--color-text); }
+.plan-dim-l { width: 0; border-left: 1px solid var(--color-text); }
+.plan-dim-tick { position: absolute; }
+.plan-dim-w > .plan-dim-tick { top: -5px; height: 9px; border-left: 1px solid var(--color-text); }
+.plan-dim-w > .plan-dim-tick:first-child { left: 0; }
+.plan-dim-w > .plan-dim-tick:nth-child(2) { right: 0; }
+.plan-dim-l > .plan-dim-tick { left: -5px; width: 9px; border-top: 1px solid var(--color-text); }
+.plan-dim-l > .plan-dim-tick:first-child { top: 0; }
+.plan-dim-l > .plan-dim-tick:nth-child(2) { bottom: 0; }
+.plan-dim-label {
+  background: var(--color-bg);
+  padding: 0 8px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.plan-dim-l > .plan-dim-label { transform: rotate(-90deg); }
+
+/* Room: 2px text border, neutral fill, grid lines at text colour 9%. The grid step is the
+   inline background-size. Two classes so this wins over `.blueprint`'s divider border. */
+.blueprint.plan-room {
+  position: absolute;
+  border: 2px solid var(--color-text);
+  background-color: var(--color-neutral-100);
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--color-text) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-text) 9%, transparent) 1px, transparent 1px);
+}
+
+/* Furniture boxes. Later rules win: conflict hatch over rug fill, selected border over
+   conflict border (the hatch stays on a selected conflicting item, as in the prototype). */
+.plan-item {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--color-text);
+  background: var(--color-bg);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  display: grid;
+  place-items: center;
+}
+.plan-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.plan-item.is-rug {
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-bg));
+}
+.plan-item.is-conflict {
+  border: 1.5px dashed var(--color-text);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-bg) 0 5px,
+    color-mix(in srgb, var(--color-text) 16%, var(--color-bg)) 5px 6px
+  );
+}
+.plan-item.is-selected {
+  border: 2px solid var(--color-accent);
+}
+.plan-part {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+  pointer-events: none;
+}
+.plan-item-label {
+  position: relative;
+  text-align: center;
+  line-height: 1.15;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
+  pointer-events: none;
+  max-width: 100%;
+}
+.plan-item-name {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 13px;
+}
+.plan-item-dims {
+  font-size: 10px;
+  color: var(--color-neutral-700);
+}
+
+/* Clearance lines: dashed accent-700 hairline with a distance chip. */
+.plan-clearance {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.plan-clearance.is-h { height: 0; border-top: 1px dashed var(--color-accent-700); }
+.plan-clearance.is-v { width: 0; border-left: 1px dashed var(--color-accent-700); }
+.plan-clearance-chip {
+  background: var(--color-accent-700);
+  color: var(--color-bg);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  white-space: nowrap;
+}
+
+/* Room resize handles, centred on the right and bottom walls. */
+.plan-handle {
+  position: absolute;
+  box-sizing: border-box;
+  z-index: 6;
+  background: var(--color-bg);
+  border: 1.5px solid var(--color-accent);
+  touch-action: none;
+}
+.plan-handle:hover { background: var(--color-accent-200); }
+.plan-handle.is-w { width: 12px; height: 32px; cursor: ew-resize; }
+.plan-handle.is-l { width: 32px; height: 12px; cursor: ns-resize; }
+
+/* ── Inset frame ──────────────────────────────────────────────────────────── */
+/* Fills the inset pane so its corner marks sit on the pane's corners. Only the button
+   takes pointer input; everything else passes through to the view beneath. */
+.blueprint.inset-frame {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  pointer-events: none;
+  z-index: 9;
+}
+.inset-label {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+  pointer-events: none;
+}
+.inset-swap {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  font-size: 12px;
+  padding: 3px 8px;
+  background: var(--color-bg);
+  pointer-events: auto;
+}

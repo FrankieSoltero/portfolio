@@ -1,0 +1,33 @@
+/* Sidebar section 02, add furniture from a link (prototype lines 43–91). */
+
+.lookup-row { display: flex; gap: var(--space-3); }
+.lookup-row > .input { flex: 1; min-width: 0; }
+
+/* Error line and the missing-dimensions note share the prototype's 12px accent-900 style. */
+.lookup-warning { font-size: 12px; color: var(--color-accent-900); }
+
+.lookup-samples { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.lookup-samples-prompt { font-size: 12px; flex-basis: 100%; }
+.lookup-samples > .btn { font-size: 13px; }
+
+.lookup-preview { gap: var(--space-3); }
+.lookup-preview-head { display: flex; gap: var(--space-3); align-items: flex-start; }
+.lookup-preview-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lookup-host { color: var(--color-accent-700); }
+.lookup-model { align-self: flex-start; margin-top: 4px; color: var(--color-accent-700); }
+
+/* Stand-in for the product photo: 64px square with a 45° hairline hatch. */
+.lookup-photo {
+  flex: none; width: 64px; height: 64px;
+  border: 1px solid var(--color-divider);
+  display: grid; place-items: center;
+  font: 10px ui-monospace, Menlo, monospace;
+  color: var(--color-neutral-700);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--color-text) 8%, transparent) 6px 7px
+  );
+}
+
+.lookup-actions { display: flex; gap: var(--space-3); align-items: center; }

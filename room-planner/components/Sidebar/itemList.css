@@ -1,0 +1,32 @@
+/* Sidebar section 03, "In this room" (prototype lines 93–113). */
+
+.item-list-section { gap: var(--space-2); }
+
+.item-list-empty { font-size: 13px; }
+
+.item-list { display: flex; flex-direction: column; }
+
+.item-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px;
+  text-align: left; font: inherit; color: inherit; cursor: pointer;
+  border: none; border-bottom: 1px solid var(--color-divider);
+  padding: var(--space-2) var(--space-2);
+  background: transparent;
+}
+.item-row:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.item-row.item-row-selected { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+
+.item-row-name { font-family: var(--font-heading); font-weight: 600; font-size: 15px; }
+.item-row-price { font-size: 13px; }
+.item-row-dims { font-size: 12px; }
+
+.item-row-conflict {
+  grid-column: 1 / -1; justify-self: start;
+  background: var(--color-accent-900); color: var(--color-bg);
+}
+
+.item-list-total {
+  display: flex; justify-content: space-between;
+  padding: var(--space-2); font-size: 13px;
+}
+.item-list-total-value { font-weight: 700; }
