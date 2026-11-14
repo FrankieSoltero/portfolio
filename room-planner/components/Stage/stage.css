@@ -160,6 +160,53 @@
   white-space: nowrap;
 }
 
+/* ── Room editing ─────────────────────────────────────────────────────────── */
+/* In room mode the furniture is inert: dimmed, and pointer input passes through to the plan. */
+.plan-item[inert] {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* A wall's hit band: its inline left/top/width/height put it along the wall from its start
+   corner, turned about that corner. Over the furniture, under the corner handles. */
+.room-wall-hit {
+  position: absolute;
+  z-index: 5;
+  transform-origin: 0 50%;
+  cursor: copy;
+  touch-action: none;
+}
+.room-wall-hit:hover {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* Corner handles, centred on their inline left/top. */
+.room-corner {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--color-text);
+  border-radius: 50%;
+  background: var(--color-bg);
+  cursor: move;
+  touch-action: none;
+}
+.room-corner:hover {
+  border-color: var(--color-accent);
+}
+.room-corner[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+.room-corner:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: 3px;
+}
+
 /* ── Inset frame ──────────────────────────────────────────────────────────── */
 /* Fills the inset pane so its corner marks sit on the pane's corners. Only the button
    takes pointer input; everything else passes through to the view beneath. */

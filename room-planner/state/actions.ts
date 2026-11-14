@@ -1,3 +1,12 @@
+import {
+  insertCorner,
+  moveCorner,
+  OUTLINE_PROBLEM_TEXT,
+  type OutlineResult,
+  removeCorner,
+  snapCornerTarget,
+} from '../domain/outline';
+import type { Point } from '../domain/types';
 import { usePlanStore } from './planStore';
 import { useUiStore } from './uiStore';
 
@@ -35,4 +44,61 @@ export function nudgeSelected(dx: number, dy: number): void {
   const id = useUiStore.getState().selectedId;
   if (id === null) return;
   usePlanStore.getState().moveItemBy(id, dx, dy);
+}
+
+/**
+ * Stores an outline edit through applyOutline and records the outcome for the room editor: a
+ * refusal sets the room problem to its text, an accepted edit clears it. Returns true when accepted.
+ */
+function applyRoomEdit(result: OutlineResult): boolean {
+  const accepted = usePlanStore.getState().applyOutline(result);
+  useUiStore.getState().setRoomProblem(result.ok ? null : OUTLINE_PROBLEM_TEXT[result.problem]);
+  return accepted;
+}
+
+function hasCorner(id: string): boolean {
+  return usePlanStore.getState().room.outline.some((c) => c.id === id);
+}
+
+/**
+ * Moves corner `id` towards `target` (inches), snapped by snapCornerTarget (angle snapping when
+ * `opts.angleSnap`, else the corner grid). An unknown corner changes nothing, the room problem included.
+ */
+export function dragCornerTo(id: string, target: Point, opts: { angleSnap: boolean; toleranceIn: number }): void {
+  if (!hasCorner(id)) return;
+  const { outline } = usePlanStore.getState().room;
+  applyRoomEdit(moveCorner(outline, id, snapCornerTarget(outline, id, target, opts)));
+}
+
+/**
+ * Splits wall `wallId` with a new corner near `at` (inches) and selects it; an unknown wall
+ * changes nothing. A refused split leaves the selection as it was.
+ */
+export function addCornerOnWall(wallId: string, at: Point): void {
+  if (!hasCorner(wallId)) return;
+  const id = crypto.randomUUID();
+  if (applyRoomEdit(insertCorner(usePlanStore.getState().room.outline, wallId, at, id))) {
+    useUiStore.getState().selectCorner(id);
+  }
+}
+
+/** Removes the selected corner and clears the corner selection; no-op when no corner is selected. */
+export function removeSelectedCorner(): void {
+  const id = useUiStore.getState().selectedCornerId;
+  if (id === null || !hasCorner(id)) return;
+  if (applyRoomEdit(removeCorner(usePlanStore.getState().room.outline, id))) {
+    useUiStore.getState().selectCorner(null);
+  }
+}
+
+/**
+ * Moves the selected corner by exactly (dx, dy) inches, with no angle or grid snapping; no-op when
+ * no known corner is selected.
+ */
+export function nudgeSelectedCorner(dx: number, dy: number): void {
+  const id = useUiStore.getState().selectedCornerId;
+  const { outline } = usePlanStore.getState().room;
+  const corner = outline.find((c) => c.id === id);
+  if (corner === undefined) return;
+  applyRoomEdit(moveCorner(outline, corner.id, { x: corner.x + dx, y: corner.y + dy }));
 }

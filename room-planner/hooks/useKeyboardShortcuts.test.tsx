@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
-import type { Item } from '../domain/types';
+import type { Corner, Item } from '../domain/types';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { startDrag } from './startDrag';
@@ -166,6 +166,131 @@ describe('useKeyboardShortcuts', () => {
     const ev = press(document.body, 'ArrowDown');
     expect(bed()).toMatchObject({ x: 40, y: 20 });
     expect(ev.defaultPrevented).toBe(false);
+  });
+});
+
+describe('useKeyboardShortcuts in room mode', () => {
+  function corner(id: string): Corner | undefined {
+    return usePlanStore.getState().room.outline.find((c) => c.id === id);
+  }
+
+  beforeEach(() => {
+    renderHook(() => useKeyboardShortcuts());
+    useUiStore.getState().setMode('room');
+  });
+
+  it.each(['Delete', 'Backspace'])('%s removes the selected corner and clears the corner selection', (key) => {
+    useUiStore.getState().selectCorner('c2');
+    press(document.body, key);
+    expect(usePlanStore.getState().room.outline.map((c) => c.id)).toEqual(['c1', 'c3', 'c4']);
+    expect(useUiStore.getState().selectedCornerId).toBeNull();
+    expect(usePlanStore.getState().items).toHaveLength(2);
+  });
+
+  it('Delete on a triangle is refused with the reason', () => {
+    useUiStore.getState().selectCorner('c2');
+    press(document.body, 'Delete');
+    useUiStore.getState().selectCorner('c3');
+    const before = usePlanStore.getState().room;
+    press(document.body, 'Delete');
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().selectedCornerId).toBe('c3');
+    expect(useUiStore.getState().roomProblem).toBe('A room needs at least 3 corners.');
+  });
+
+  it.each([
+    ['input', 'text'],
+    ['input', 'number'],
+    ['textarea', undefined],
+    ['select', undefined],
+  ] as const)('Backspace with focus in %s %s is ignored', (tag, type) => {
+    useUiStore.getState().selectCorner('c2');
+    press(focused(tag, type), 'Backspace');
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+    expect(useUiStore.getState().selectedCornerId).toBe('c2');
+  });
+
+  it.each([
+    ['ArrowRight', 145, 0],
+    ['ArrowLeft', 143, 0],
+    ['ArrowDown', 144, 1],
+    ['ArrowUp', 144, -1],
+  ])('%s nudges the selected corner by one step and prevents default', (key, x, y) => {
+    useUiStore.getState().selectCorner('c2');
+    const ev = press(document.body, key);
+    expect(corner('c2')).toEqual({ id: 'c2', x, y });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(bed()).toMatchObject({ x: 72, y: 42.5 });
+  });
+
+  it('Shift+arrows nudge the selected corner by 12 in', () => {
+    useUiStore.getState().selectCorner('c2');
+    press(document.body, 'ArrowRight', { shiftKey: true });
+    press(document.body, 'ArrowUp', { shiftKey: true });
+    expect(corner('c2')).toEqual({ id: 'c2', x: 156, y: -12 });
+  });
+
+  it('an arrow is not angle-snapped: a corner off the grid moves by exactly the step', () => {
+    const outline = usePlanStore.getState().room.outline.map((c) => (c.id === 'c2' ? { ...c, x: 150, y: 0.25 } : c));
+    usePlanStore.getState().applyOutline({ ok: true, outline });
+    useUiStore.getState().selectCorner('c2');
+    press(document.body, 'ArrowDown');
+    expect(corner('c2')).toEqual({ id: 'c2', x: 150, y: 1.25 });
+  });
+
+  it.each(['text', 'number', 'radio'])('arrows with focus in a %s input are ignored', (type) => {
+    useUiStore.getState().selectCorner('c2');
+    const ev = press(focused('input', type), 'ArrowRight');
+    expect(corner('c2')).toEqual({ id: 'c2', x: 144, y: 0 });
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('Escape clears the corner selection', () => {
+    useUiStore.getState().selectCorner('c2');
+    press(document.body, 'Escape');
+    expect(useUiStore.getState().selectedCornerId).toBeNull();
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+  });
+
+  it.each(['r', 'R'])('%s does nothing in room mode', (key) => {
+    useUiStore.getState().selectCorner('c2');
+    useUiStore.getState().select(BED);
+    const before = usePlanStore.getState();
+    press(document.body, key);
+    expect(usePlanStore.getState().room).toBe(before.room);
+    expect(usePlanStore.getState().items).toBe(before.items);
+  });
+
+  it('item shortcuts do not act on a selected item in room mode', () => {
+    useUiStore.getState().select(BED);
+    const before = usePlanStore.getState();
+    for (const key of ['Delete', 'Backspace', 'ArrowRight']) press(document.body, key);
+    expect(usePlanStore.getState().items).toBe(before.items);
+    expect(usePlanStore.getState().room).toBe(before.room);
+  });
+
+  it.each(['Delete', 'Escape', 'ArrowRight'])('%s with no corner selected changes nothing', (key) => {
+    const before = usePlanStore.getState().room;
+    const ev = press(document.body, key);
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it.each([{ metaKey: true }, { ctrlKey: true }, { altKey: true }])('modifier %o is ignored', (mod) => {
+    useUiStore.getState().selectCorner('c2');
+    press(document.body, 'Backspace', mod);
+    const ev = press(document.body, 'ArrowRight', mod);
+    expect(corner('c2')).toEqual({ id: 'c2', x: 144, y: 0 });
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('in furnish mode a stray corner selection is ignored and arrows move the selected item', () => {
+    useUiStore.getState().setMode('furnish');
+    useUiStore.getState().selectCorner('c2');
+    useUiStore.getState().select(BED);
+    press(document.body, 'ArrowLeft');
+    expect(corner('c2')).toEqual({ id: 'c2', x: 144, y: 0 });
+    expect(bed()).toMatchObject({ x: 71, y: 42.5 });
   });
 });
 

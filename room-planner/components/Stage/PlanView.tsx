@@ -1,5 +1,5 @@
 import type React from 'react';
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
 import { PARTS } from '../../domain/catalog';
 import { OUTSIDE_THE_ROOM } from '../../domain/conflicts';
@@ -16,9 +16,11 @@ import {
   computePlanLayout,
   labelBox,
   planItemBox,
+  type PlanLayout,
   toPane,
 } from '../../view/planLayout';
 import { BlueprintCorners } from '../ui/BlueprintCorners';
+import { FreezePlanLayoutContext, RoomEditLayer } from './RoomEditLayer';
 import './stage.css';
 
 /** Item labels show the name and dimensions only when their box is larger than this, in px. */
@@ -47,9 +49,9 @@ function isAxisAlignedRectangle(pts: readonly Point[]): boolean {
 
 /**
  * The interactive 2D plan: dimension lines, the room outline, furniture boxes, clearance lines
- * for the selected item. Fills its parent; every position is
- * computed from `pane` and the shape accessors (outline, bounds, footprints), so it does not
- * measure the DOM. Ported from prototype lines 136–173 and 679–699.
+ * for the selected item, and in room mode the room editor over dimmed, inert furniture. Fills its
+ * parent; every position is computed from `pane` and the shape accessors (outline, bounds,
+ * footprints), so it does not measure the DOM. Ported from prototype lines 136–173 and 679–699.
  */
 export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
   const room = usePlanStore((s) => s.room);
@@ -58,11 +60,15 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
   const moveItemTo = usePlanStore((s) => s.moveItemTo);
   const selectedId = useUiStore((s) => s.selectedId);
   const select = useUiStore((s) => s.select);
+  const roomMode = useUiStore((s) => s.mode === 'room');
+  const selectCorner = useUiStore((s) => s.selectCorner);
   const conflicts = useConflicts();
+  // Set by the room editor for the length of a corner drag, so the room does not re-fit mid-drag.
+  const [frozenLayout, setFrozenLayout] = useState<PlanLayout | null>(null);
 
   const outline = roomOutline(room);
   const bounds = roomBounds(room);
-  const layout = computePlanLayout(bounds, pane);
+  const layout = frozenLayout ?? computePlanLayout(bounds, pane);
   const { scale, ox, oy } = layout;
   const boundsTopLeft = toPane({ x: bounds.minX, y: bounds.minY }, layout);
   const boundsW = bounds.w * scale;
@@ -75,11 +81,14 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
 
   const selected = items.find((i) => i.id === selectedId);
   const clearances =
-    selected && CONFIG.showClearances && conflicts[selected.id] !== OUTSIDE_THE_ROOM
+    selected && !roomMode && CONFIG.showClearances && conflicts[selected.id] !== OUTSIDE_THE_ROOM
       ? computeClearances(itemFootprint(selected), outline, layout, units)
       : [];
 
+  // In room mode furniture is inert: its handlers do nothing, and a pointer down passes on to the
+  // plan background as it does in a browser, where inert elements take no pointer input.
   const onItemDown = (item: Item, e: React.PointerEvent): void => {
+    if (roomMode) return;
     const { x: x0, y: y0 } = item;
     select(item.id);
     startDrag(e, (dx, dy) => moveItemTo(item.id, x0 + dx / scale, y0 + dy / scale));
@@ -88,13 +97,13 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
   // Only Enter and Space are handled here. Every other key (arrows, R, Delete, Escape) must
   // reach the window-level shortcuts, which act on the selected item, so nothing is stopped.
   const onItemKey = (item: Item, e: React.KeyboardEvent): void => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (roomMode || (e.key !== 'Enter' && e.key !== ' ')) return;
     e.preventDefault();
     select(item.id);
   };
 
   return (
-    <div className="plan-view" onPointerDown={() => select(null)}>
+    <div className="plan-view" onPointerDown={() => (roomMode ? selectCorner(null) : select(null))}>
       <div
         className="plan-dim plan-dim-w"
         style={{ left: boundsTopLeft.x, top: boundsTopLeft.y - dimOffset, width: boundsW }}
@@ -156,10 +165,15 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
               transform: `rotate(${box.rotateDeg}deg)`,
               zIndex: isSelected ? Z_SELECTED : item.kind === 'rug' ? Z_RUG : Z_ITEM,
             }}
-            tabIndex={0}
+            tabIndex={roomMode ? -1 : 0}
+            // Room mode dims the furniture and takes it out of the tab order and the accessibility tree.
+            inert={roomMode}
+            aria-hidden={roomMode || undefined}
             onPointerDown={(e) => onItemDown(item, e)}
             // Assistive technology activates a button with a synthetic click; selecting is idempotent.
-            onClick={() => select(item.id)}
+            onClick={() => {
+              if (!roomMode) select(item.id);
+            }}
             onKeyDown={(e) => onItemKey(item, e)}
           >
             {parts.length > 1 &&
@@ -215,6 +229,11 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
           </div>
         );
       })}
+      {roomMode && (
+        <FreezePlanLayoutContext value={setFrozenLayout}>
+          <RoomEditLayer layout={layout} />
+        </FreezePlanLayoutContext>
+      )}
     </div>
   );
 }

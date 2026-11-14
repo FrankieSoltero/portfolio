@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
 import { findConflicts } from '../domain/conflicts';
@@ -7,7 +7,16 @@ import { setRectangleSize, startingShape } from '../domain/outline';
 import { boundsOf, pointInPolygon } from '../domain/polygon';
 import { footprintCorners, itemFootprint } from '../domain/shape';
 import type { Corner, Item, PlanDocument, ProductPreview } from '../domain/types';
-import { nudgeSelected, placePreview, removeSelected, rotateSelected } from './actions';
+import {
+  addCornerOnWall,
+  dragCornerTo,
+  nudgeSelected,
+  nudgeSelectedCorner,
+  placePreview,
+  removeSelected,
+  removeSelectedCorner,
+  rotateSelected,
+} from './actions';
 import { usePlanStore } from './planStore';
 import { totalPrice, useConflicts, useSelectedItem } from './selectors';
 import { type UiState, useUiStore } from './uiStore';
@@ -559,6 +568,152 @@ describe('actions', () => {
     const before = usePlanStore.getState();
     nudgeSelected(5, 5);
     expect(usePlanStore.getState().items).toBe(before.items);
+  });
+});
+
+describe('room edit actions', () => {
+  const NEW_ID = '00000000-0000-4000-8000-000000000001';
+  const NO_SNAP = { angleSnap: false, toleranceIn: 2 };
+
+  function outline(): Corner[] {
+    return usePlanStore.getState().room.outline;
+  }
+
+  function corner(id: string): Corner | undefined {
+    return outline().find((c) => c.id === id);
+  }
+
+  /** The seed room with corner c2 removed: the triangle c1 (0, 0), c3 (144, 168), c4 (0, 168). */
+  function triangle(): void {
+    usePlanStore.getState().applyOutline({ ok: true, outline: outline().filter((c) => c.id !== 'c2') });
+  }
+
+  beforeEach(() => {
+    useUiStore.getState().setMode('room');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('dragCornerTo moves the corner to the grid-snapped target and clears the room problem', () => {
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    dragCornerTo('c2', { x: 150.4, y: 0.5 }, NO_SNAP);
+    expect(corner('c2')).toEqual({ id: 'c2', x: 150, y: 1 });
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('dragCornerTo with angle snapping puts a wall near a 15° direction on it', () => {
+    // The wall from c1 (0, 0) is 0.5 in off horizontal at the target: inside the 2 in tolerance.
+    dragCornerTo('c2', { x: 150.4, y: 0.5 }, { angleSnap: true, toleranceIn: 2 });
+    expect(corner('c2')).toEqual({ id: 'c2', x: 150.4, y: 0 });
+  });
+
+  it('dragCornerTo refused keeps the outline and reports the problem; a valid target clears it', () => {
+    const before = usePlanStore.getState().room;
+    dragCornerTo('c2', { x: -50, y: 84 }, NO_SNAP);
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().roomProblem).toBe('Walls cannot cross.');
+    dragCornerTo('c2', { x: 160, y: -10 }, NO_SNAP);
+    expect(corner('c2')).toEqual({ id: 'c2', x: 160, y: -10 });
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('dragCornerTo with an unknown corner changes nothing, the room problem included', () => {
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    const before = usePlanStore.getState().room;
+    dragCornerTo('nope', { x: 10, y: 10 }, NO_SNAP);
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().roomProblem).toBe('Walls cannot cross.');
+  });
+
+  it('addCornerOnWall splits the wall at the snapped point and selects the new corner', () => {
+    const uuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    addCornerOnWall('c1', { x: 72.3, y: 4 });
+    expect(uuid).toHaveBeenCalledTimes(1);
+    expect(outline().map((c) => c.id)).toEqual(['c1', NEW_ID, 'c2', 'c3', 'c4']);
+    expect(corner(NEW_ID)).toEqual({ id: NEW_ID, x: 72, y: 0 });
+    expect(useUiStore.getState().selectedCornerId).toBe(NEW_ID);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('addCornerOnWall within 6 in of a wall end is refused with the reason', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    useUiStore.getState().selectCorner('c3');
+    const before = usePlanStore.getState().room;
+    addCornerOnWall('c1', { x: 3, y: 0 });
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().selectedCornerId).toBe('c3');
+    expect(useUiStore.getState().roomProblem).toBe('That wall would be too short.');
+  });
+
+  it('addCornerOnWall on an unknown wall changes nothing', () => {
+    useUiStore.getState().selectCorner('c3');
+    const before = usePlanStore.getState().room;
+    addCornerOnWall('nope', { x: 72, y: 0 });
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().selectedCornerId).toBe('c3');
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('removeSelectedCorner removes the selected corner and clears the selection', () => {
+    useUiStore.getState().selectCorner('c2');
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    removeSelectedCorner();
+    expect(outline().map((c) => c.id)).toEqual(['c1', 'c3', 'c4']);
+    expect(useUiStore.getState().selectedCornerId).toBeNull();
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('removeSelectedCorner on a triangle is refused and keeps the selection', () => {
+    triangle();
+    useUiStore.getState().selectCorner('c3');
+    const before = usePlanStore.getState().room;
+    removeSelectedCorner();
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().selectedCornerId).toBe('c3');
+    expect(useUiStore.getState().roomProblem).toBe('A room needs at least 3 corners.');
+  });
+
+  it('removeSelectedCorner does nothing when no corner is selected', () => {
+    const before = usePlanStore.getState().room;
+    removeSelectedCorner();
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('nudgeSelectedCorner moves the selected corner by exactly the step, with no snapping', () => {
+    // Off the 1 in corner grid, so a grid or angle snap would show.
+    usePlanStore.getState().applyOutline({
+      ok: true,
+      outline: outline().map((c) => (c.id === 'c2' ? { ...c, x: 144.5, y: 0.25 } : c)),
+    });
+    useUiStore.getState().selectCorner('c2');
+    nudgeSelectedCorner(1, 0);
+    expect(corner('c2')).toEqual({ id: 'c2', x: 145.5, y: 0.25 });
+    nudgeSelectedCorner(0, -12);
+    expect(corner('c2')).toEqual({ id: 'c2', x: 145.5, y: -11.75 });
+    expect(useUiStore.getState().selectedCornerId).toBe('c2');
+  });
+
+  it('nudgeSelectedCorner refused keeps the outline and reports the problem', () => {
+    triangle();
+    useUiStore.getState().selectCorner('c3');
+    const before = usePlanStore.getState().room;
+    // c3 (144, 168) moved 141 in left to (3, 168) leaves the c3–c4 wall 3 in long.
+    nudgeSelectedCorner(-141, 0);
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().roomProblem).toBe('That wall would be too short.');
+  });
+
+  it('nudgeSelectedCorner does nothing when no corner or an unknown corner is selected', () => {
+    const before = usePlanStore.getState().room;
+    nudgeSelectedCorner(1, 0);
+    useUiStore.getState().selectCorner('nope');
+    nudgeSelectedCorner(1, 0);
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().roomProblem).toBeNull();
   });
 });
 

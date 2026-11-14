@@ -537,6 +537,104 @@ describe('PlanView', () => {
   });
 });
 
+describe('PlanView in room mode', () => {
+  const BED_NAME = 'Low platform bed, queen';
+
+  function cornerHandles(): HTMLElement[] {
+    return screen.queryAllByRole('button', { name: /^Corner \d+$/ });
+  }
+
+  it('renders the room edit layer only in room mode', () => {
+    const { unmount } = render(<PlanView pane={MAIN} />);
+    expect(cornerHandles()).toHaveLength(0);
+    expect(document.querySelectorAll('.room-wall-hit')).toHaveLength(0);
+    unmount();
+    useUiStore.getState().setMode('room');
+    render(<PlanView pane={MAIN} />);
+    expect(cornerHandles()).toHaveLength(4);
+    expect(document.querySelectorAll('.room-wall-hit')).toHaveLength(4);
+  });
+
+  it('switching back to furnish mode removes the layer', () => {
+    useUiStore.getState().setMode('room');
+    render(<PlanView pane={MAIN} />);
+    expect(cornerHandles()).toHaveLength(4);
+    act(() => useUiStore.getState().setMode('furnish'));
+    expect(cornerHandles()).toHaveLength(0);
+  });
+
+  it('furniture is inert, hidden from assistive technology and out of the tab order', () => {
+    useUiStore.getState().setMode('room');
+    render(<PlanView pane={MAIN} />);
+    for (const el of document.querySelectorAll('[data-item-id]')) {
+      expect(el).toHaveAttribute('inert');
+      expect(el).toHaveAttribute('aria-hidden', 'true');
+      expect(el).toHaveAttribute('tabindex', '-1');
+    }
+    expect(screen.queryByRole('button', { name: BED_NAME })).toBeNull();
+  });
+
+  it('furniture in furnish mode is not inert', () => {
+    render(<PlanView pane={MAIN} />);
+    for (const el of document.querySelectorAll('[data-item-id]')) {
+      expect(el).not.toHaveAttribute('inert');
+      expect(el).not.toHaveAttribute('aria-hidden');
+    }
+  });
+
+  it('pointer and key events on furniture do nothing', () => {
+    useUiStore.getState().setMode('room');
+    render(<PlanView pane={MAIN} />);
+    const before = usePlanStore.getState().items;
+    const bed = itemEl('seed-bed');
+    fireEvent.pointerDown(bed, { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 160, clientY: 160 });
+    fireEvent.pointerUp(window);
+    fireEvent.click(bed);
+    fireEvent.keyDown(bed, { key: 'Enter' });
+    expect(useUiStore.getState().selectedId).toBeNull();
+    expect(usePlanStore.getState().items).toBe(before);
+  });
+
+  it('draws no clearance lines, even with an item selected', () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().select('seed-bed');
+    render(<PlanView pane={MAIN} />);
+    expect(document.querySelectorAll('.plan-clearance')).toHaveLength(0);
+  });
+
+  it('pointer down on the empty plan clears the corner selection', () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectCorner('c2');
+    const { container } = render(<PlanView pane={MAIN} />);
+    const root = container.firstElementChild;
+    if (!root) throw new Error('no root');
+    fireEvent.pointerDown(root);
+    expect(useUiStore.getState().selectedCornerId).toBeNull();
+  });
+
+  it('keeps the layout frozen while a corner is dragged and re-fits the room on pointer up', () => {
+    useUiStore.getState().setMode('room');
+    render(<PlanView pane={MAIN} />);
+    const before = seedLayout();
+    const corner2 = (): HTMLElement => screen.getByRole('button', { name: 'Corner 2' });
+    // Drag c2 from (144, 0) to (200, 0), without angle snapping: the bounding box grows to 200 in.
+    fireEvent.pointerDown(corner2(), { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 100 + 56 * SCALE, clientY: 100, altKey: true });
+    const moved = usePlanStore.getState().room.outline;
+    expect(moved[1]).toEqual({ id: 'c2', x: 200, y: 0 });
+    const refit = computePlanLayout(roomBounds(usePlanStore.getState().room), MAIN);
+    expect(refit.scale).not.toBeCloseTo(before.scale, 3);
+    // Mid-drag the handle, the walls and the furniture still use the layout from pointer down.
+    expect(px(corner2(), 'left')).toBeCloseTo(toPane({ x: 200, y: 0 }, before).x, 3);
+    expectPointsClose(wallPoints(), moved.map((p) => toPane(p, before)));
+    expect(px(itemEl('seed-bed'), 'left')).toBeCloseTo(before.ox + 40 * before.scale, 3);
+    fireEvent.pointerUp(window);
+    expect(px(corner2(), 'left')).toBeCloseTo(toPane({ x: 200, y: 0 }, refit).x, 3);
+    expectPointsClose(wallPoints(), moved.map((p) => toPane(p, refit)));
+  });
+});
+
 describe('InsetFrame', () => {
   it('renders the label, corner marks and a Swap button that calls onSwap once without the parent pointerdown', async () => {
     const onSwap = vi.fn();

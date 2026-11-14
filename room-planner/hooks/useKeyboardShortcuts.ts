@@ -1,6 +1,12 @@
 import { useEffect } from 'react';
 import { CONFIG } from '../config';
-import { nudgeSelected, removeSelected, rotateSelected } from '../state/actions';
+import {
+  nudgeSelected,
+  nudgeSelectedCorner,
+  removeSelected,
+  removeSelectedCorner,
+  rotateSelected,
+} from '../state/actions';
 import { useUiStore } from '../state/uiStore';
 
 const ARROWS: Readonly<Record<string, readonly [number, number]>> = {
@@ -17,8 +23,30 @@ function inFormField(target: EventTarget | null, includeRadio: boolean): boolean
   return false;
 }
 
+/** Room mode: Delete/Backspace remove, arrows nudge and Escape deselects the selected corner; R does nothing. */
+function onRoomKeyDown(e: KeyboardEvent): void {
+  if (useUiStore.getState().selectedCornerId === null) return;
+
+  const arrow = ARROWS[e.key];
+  if (arrow) {
+    if (inFormField(e.target, true)) return;
+    e.preventDefault();
+    const step = e.shiftKey ? CONFIG.nudgeStepLarge : CONFIG.nudgeStep;
+    nudgeSelectedCorner(arrow[0] * step, arrow[1] * step);
+    return;
+  }
+
+  if (inFormField(e.target, false)) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') removeSelectedCorner();
+  else if (e.key === 'Escape') useUiStore.getState().selectCorner(null);
+}
+
 function onKeyDown(e: KeyboardEvent): void {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (useUiStore.getState().mode === 'room') {
+    onRoomKeyDown(e);
+    return;
+  }
   if (useUiStore.getState().selectedId === null) return;
 
   const arrow = ARROWS[e.key];
@@ -38,7 +66,10 @@ function onKeyDown(e: KeyboardEvent): void {
   else if (e.key === 'Escape') useUiStore.getState().select(null);
 }
 
-/** Workspace shortcuts on the selected item: R rotate, Delete/Backspace remove, Escape deselect, arrows nudge. */
+/**
+ * Workspace shortcuts. Furnish mode acts on the selected item: R rotate, Delete/Backspace remove,
+ * Escape deselect, arrows nudge. Room mode acts on the selected corner (see onRoomKeyDown).
+ */
 export function useKeyboardShortcuts(): void {
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown);
