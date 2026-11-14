@@ -190,6 +190,12 @@ outline, rounded down to 0.01 with a tolerance for floating-point noise. The sam
 tolerant rounding-down is used wherever a width or an upper offset bound is derived
 from a wall's length, so a wall exactly 12 in long takes a 12 in opening.
 
+Refined on the same day after the first fix: the clamp absorbs rounding noise only. It
+applies when the unrounded offset is within 0.01 in of `[0, L − width]`; an offset
+farther outside is left as it is, so the opening is refused as `opening-off-wall`
+(an edit that would squeeze an opening off its wall is refused, never turned into a
+slide).
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
