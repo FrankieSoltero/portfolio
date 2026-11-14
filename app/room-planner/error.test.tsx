@@ -48,6 +48,7 @@ beforeEach(() => {
 
 afterEach(() => {
   consoleError.mockRestore();
+  vi.unstubAllGlobals();
 });
 
 describe('room-planner error screen', () => {
@@ -68,12 +69,18 @@ describe('room-planner error screen', () => {
     expect(alert).toContainElement(button);
   });
 
-  it('calls reset once when Try again is clicked', async () => {
+  it('reloads the page once when Try again is clicked, and does not call reset', async () => {
+    // React.lazy caches a rejected chunk import, so reset() would re-throw the same error; only a
+    // full reload re-requests the chunk. jsdom cannot navigate and its location.reload is
+    // non-writable, so the whole location is stubbed for this test (restored in afterEach).
+    const reload = vi.fn();
+    vi.stubGlobal('location', { reload });
     const reset = vi.fn();
     render(<RoomPlannerError error={new Error('boom')} reset={reset} />);
-    expect(reset).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(reset).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(reset).not.toHaveBeenCalled();
   });
 
   it('keeps the error message out of the page and sends the error to console.error once', () => {

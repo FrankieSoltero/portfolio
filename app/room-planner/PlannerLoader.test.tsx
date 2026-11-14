@@ -13,6 +13,11 @@ vi.mock('@/room-planner/PlannerRoot', () => ({
   default: (): JSX.Element => <div data-testid="planner-root-stand-in" />,
 }));
 
+// Next's build aliases `next/dynamic` to `next/dist/api/app-dynamic` for App Router code
+// (next/dist/build/create-compiler-aliases.js); Vitest would otherwise load the Pages Router
+// runtime. Point it at the implementation that ships so these tests exercise that code.
+vi.mock('next/dynamic', () => import('next/dist/api/app-dynamic'));
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LOADER_SOURCE = readFileSync(join(HERE, 'PlannerLoader.tsx'), 'utf8');
 const PAGE_SOURCE = readFileSync(join(HERE, 'page.tsx'), 'utf8');
@@ -96,8 +101,11 @@ describe('room-planner page', () => {
     expect(metadata).toEqual({
       title: 'Room Planner',
       description: 'Lay out a room to scale, place furniture, and check the fit in 3D.',
-      alternates: { canonical: '/room-planner' },
       icons: { icon: 'data:,' },
     });
+  });
+
+  it('sets no canonical link (the site URL can fall back to a per-deployment address)', () => {
+    expect(metadata).not.toHaveProperty('alternates');
   });
 });
