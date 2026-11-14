@@ -126,3 +126,68 @@
   filling a slot paints *over* the slot's inset `box-shadow`, breaking the divider —
   hence a real border for the divider. Column is painted in the quest's `spriteBg`
   so the art reads as a panel, not a tile on stripes.
+
+## 2026-11-13 — Dependency audit before the Room Planner move
+
+### Counts (`npm audit --omit=dev`)
+| Severity | Before | After |
+|----------|-------:|------:|
+| critical | 1 (`next`) | 0 |
+| high | 6 (`js-yaml`, `nanoid`, `postcss`, `sharp`, `source-map-js`, `zod`) | 1 (`zod`) |
+| moderate | 0 | 0 |
+| low | 4 (`katex`, `rehype-katex`, `remark-math`, `micromark-extension-math`) | 4 (same) |
+
+### Packages updated
+- `npm audit fix` (no `--force`), lockfile only, all within existing semver ranges:
+  `next` 15.5.20 → 15.5.29, `js-yaml` 3.15.0 → 3.15.2, `nanoid` 3.3.15 → 3.3.20,
+  `source-map-js` 1.2.1 → 1.2.2, `sharp` 0.34.5 → 0.35.5 (with its `@img/*`
+  platform packages; libvips 1.2.4 → 1.3.4), `@emnapi/runtime` 1.11.1 → 1.11.3.
+- **Override:** `package.json` gains `"overrides": { "next": { "postcss": "8.5.33" } }`,
+  so `postcss` under `next` goes 8.4.31 → 8.5.33 (outside the advisory range `<=8.5.22`).
+  Why: `next@15.5.29`, the newest 15.x, pins `postcss` to exactly `8.4.31`, so
+  `npm audit fix` cannot move it; npm's only offered fix is Next 16 (a major).
+  **Remove this override when Next is upgraded to 16.**
+- Left as-is at this step (fixes are semver-major): `zod` 3.x (fix is 4.x; upgraded in the next
+  step, see "zod upgrade" below) and `katex` 0.16.x
+  (fix is 0.19.x, which also flags `rehype-katex` and `remark-math`).
+
+### Verification
+- `npm run build` exit 0; routes `/papers`, `/papers/[slug]`, `/papers/feed.xml`,
+  `/sitemap.xml` still present.
+- `/papers` and `/papers/grokking` HTML served before and after are identical once
+  `/_next/static/…` paths and the build id are normalised away.
+
+### zod upgrade (clears the last high finding)
+- `zod` 3.25.76 → 4.6.7 (`package.json` range `^3.25.67` → `^4.6.7`), clearing
+  GHSA-mrhx-c7xc-m3w5 (affects `zod` below 4.6.6). Audit now: 0 critical, 0 high,
+  0 moderate, 4 low.
+- `lib/papers.ts`: no code change needed. Every API it uses (`z.object`, `z.string`,
+  `.min`, `.regex(re, message)`, `.optional`, `.url`, `z.enum`, `z.array`, `z.infer`,
+  `safeParse`, `error.issues`) still exists in zod 4; `.url()` is only deprecated.
+- Checked with a probe of 26 frontmatter cases run on both versions: the same cases
+  are accepted and rejected, at the same field paths. Our own messages (`date must be
+  YYYY-MM-DD`, `slug must be lowercase kebab-case`) are unchanged; zod's built-in
+  messages are worded differently (e.g. `Required` is now `Invalid input: expected
+  string, received undefined`). One data difference: zod 4's `.url()` trims
+  surrounding spaces from the value it returns (`" https://x "` → `"https://x"`);
+  no current paper has a padded URL.
+- Build with `date: "2026/01/01"` in `content/papers/grokking.mdx` fails with the same
+  text on both versions: `Invalid frontmatter in content/papers/grokking.mdx:` /
+  `  - date: date must be YYYY-MM-DD`.
+
+### Remaining low findings (left on purpose)
+All four come from one advisory, GHSA-238p-pmpm-9mq7 (KaTeX: existing prototype
+pollution can bypass trust restrictions, `katex` >=0.11.0 <0.18.2).
+
+| Package | Installed | Advisory | npm's offered fix |
+|---------|-----------|----------|-------------------|
+| `katex` | 0.16.47 | GHSA-238p-pmpm-9mq7 | `katex` 0.19.1 |
+| `rehype-katex` | 7.0.1 | via `katex` | `rehype-katex` 1.2.0 |
+| `remark-math` | 6.0.0 | via `micromark-extension-math` | `remark-math` 3.0.1 |
+| `micromark-extension-math` | 3.1.0 | via `katex` | `remark-math` 3.0.1 |
+
+Why they stay: each fix is a breaking change to the papers math rendering — npm flags
+all three as semver-major (`katex` 0.16 → 0.19, and the `rehype-katex` / `remark-math`
+"fixes" are downgrades to old major versions with different plugin APIs). The advisory
+needs prototype pollution that already exists; KaTeX here renders only the repo's own
+MDX content, not user input.

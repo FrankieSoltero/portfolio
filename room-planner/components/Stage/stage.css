@@ -1,0 +1,412 @@
+/* Stage panes: the 2D plan view and the inset frame. Tokens only; no hex colours.
+   Exact styles from prototype lines 136–173 and 679–699. Positions and sizes that depend
+   on the room and the pane are set inline by the components. */
+
+/* ── Plan view ────────────────────────────────────────────────────────────── */
+.plan-view {
+  position: absolute;
+  inset: 0;
+}
+
+/* Dimension lines: 1px line, 9px end ticks, centred label chip. */
+.plan-dim {
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+}
+.plan-dim-w { height: 0; border-top: 1px solid var(--color-text); }
+.plan-dim-l { width: 0; border-left: 1px solid var(--color-text); }
+.plan-dim-tick { position: absolute; }
+.plan-dim-w > .plan-dim-tick { top: -5px; height: 9px; border-left: 1px solid var(--color-text); }
+.plan-dim-w > .plan-dim-tick:first-child { left: 0; }
+.plan-dim-w > .plan-dim-tick:nth-child(2) { right: 0; }
+.plan-dim-l > .plan-dim-tick { left: -5px; width: 9px; border-top: 1px solid var(--color-text); }
+.plan-dim-l > .plan-dim-tick:first-child { top: 0; }
+.plan-dim-l > .plan-dim-tick:nth-child(2) { bottom: 0; }
+.plan-dim-label {
+  background: var(--color-bg);
+  padding: 0 8px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.plan-dim-l > .plan-dim-label { transform: rotate(-90deg); }
+
+/* Room: neutral fill, grid lines at text colour 9%, filling the pane and clipped to the outline
+   by an inline clip-path. The grid step and its origin are the inline background-size and
+   background-position. */
+.plan-room {
+  position: absolute;
+  inset: 0;
+  background-color: var(--color-neutral-100);
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--color-text) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-text) 9%, transparent) 1px, transparent 1px);
+}
+
+/* Walls: the outline stroked 2px in the text colour, over the room and under the furniture. */
+.plan-outline {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.plan-outline-wall {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-width: 2;
+  stroke-linejoin: miter;
+}
+
+/* Carries the corner marks on the bounding box of a rectangular room. Two classes so this
+   wins over `.blueprint`'s relative position and divider border. */
+.blueprint.plan-outline-frame {
+  position: absolute;
+  border: 0;
+  pointer-events: none;
+}
+
+/* Door gaps, windows and obstacles: drawn over the walls and under the furniture, with no z-index
+   (document order puts them below the items' z-index 1 to 4). Drawing only: no pointer input,
+   except obstacles in room mode (.plan-obstacle.is-editable, under Room editing). */
+.plan-features {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+/* Door leaves and swing arcs: over the furniture (z-index 5, above the items' 1 to 4), so a piece
+   standing in a door's swing does not hide it. No pointer input for anything in it (pointer-events
+   is inherited), so furniture under an arc is still pressed and dragged as before. */
+.plan-features-over {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+/* The door's gap paints over the 2px wall in the plan background colour, so the wall reads open. */
+.plan-door-gap {
+  stroke: var(--color-bg);
+  stroke-width: 4;
+  stroke-linecap: butt;
+}
+.plan-door-leaf {
+  stroke: var(--color-text);
+  stroke-width: 1.5;
+  stroke-linecap: square;
+}
+.plan-door-arc {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-width: 1;
+}
+/* A window: a band across the wall in the background colour, 6 px wide and centred on the wall
+   line, with a thin line along each edge and one along the centre (three parallel lines). */
+.plan-window-band {
+  stroke: var(--color-bg);
+  stroke-width: 6;
+  stroke-linecap: butt;
+}
+.plan-window {
+  stroke: var(--color-text);
+  stroke-width: 1;
+  stroke-linecap: butt;
+}
+.plan-door-leaf.is-conflict,
+.plan-door-arc.is-conflict,
+.plan-window.is-conflict {
+  stroke-dasharray: 4 3;
+}
+
+/* A fixed obstacle: a neutral diagonal hatch, so it reads as part of the room and not as
+   furniture. A column is round; its label is clipped to the box. */
+.plan-obstacle {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--color-neutral-700);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--color-neutral-200) 0 4px,
+    var(--color-neutral-500) 4px 5px
+  );
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+.plan-obstacle.is-round {
+  border-radius: 50%;
+}
+.plan-obstacle.is-conflict {
+  border: 1.5px dashed var(--color-text);
+}
+.plan-obstacle-label {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1.3;
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
+}
+
+/* Furniture boxes. Later rules win: conflict hatch over rug fill, selected border over
+   conflict border (the hatch stays on a selected conflicting item, as in the prototype). */
+.plan-item {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--color-text);
+  background: var(--color-bg);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  display: grid;
+  place-items: center;
+}
+.plan-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.plan-item.is-rug {
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-bg));
+}
+.plan-item.is-conflict {
+  border: 1.5px dashed var(--color-text);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-bg) 0 5px,
+    color-mix(in srgb, var(--color-text) 16%, var(--color-bg)) 5px 6px
+  );
+}
+/* A warning (covers a window) is an amber ring just outside the box; a box-shadow, so the
+   focus outline (2px further out) still shows on a warned item. */
+.plan-item.is-warning {
+  box-shadow: 0 0 0 2px var(--color-warning);
+}
+.plan-item.is-selected {
+  border: 2px solid var(--color-accent);
+}
+.plan-part {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+  pointer-events: none;
+}
+/* The label's box as the footprint appears on screen, centred on the item; its size and the
+   rotation that keeps the text upright are inline. */
+.plan-outline-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.plan-item-label {
+  position: relative;
+  text-align: center;
+  line-height: 1.15;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
+  pointer-events: none;
+  max-width: 100%;
+}
+.plan-item-name {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 13px;
+}
+.plan-item-dims {
+  font-size: 10px;
+  color: var(--color-neutral-700);
+}
+
+/* Clearance lines: dashed accent-700 hairline with a distance chip. Each starts at its inline
+   left/top and is turned about that point; the chip turns back to stay upright. */
+.plan-clearance {
+  position: absolute;
+  z-index: 7;
+  height: 0;
+  border-top: 1px dashed var(--color-accent-700);
+  transform-origin: 0 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.plan-clearance-chip {
+  background: var(--color-accent-700);
+  color: var(--color-bg);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  white-space: nowrap;
+}
+
+/* ── Room editing ─────────────────────────────────────────────────────────── */
+/* Stacking in room mode, bottom to top: the editor's backdrop (no z-index), the inert furniture
+   (1 to 4), editable obstacles (5), door leaves and swing arcs (.plan-features-over, 5, later in
+   document order, so over the obstacles; no pointer input), wall bands (6), door and window
+   handles (7) and corner handles (8), all under the inset frame (9). In furnish mode the leaves and
+   arcs (5) are over the furniture and under the clearance lines (7); clearance lines are not drawn
+   in room mode. */
+
+/* In room mode the furniture is inert: dimmed, and pointer input passes through to the plan. */
+.plan-item[inert] {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* The editor fills the plan view and takes no pointer input itself; its parts opt back in. It has
+   no z-index, so its parts stack with the obstacles in the plan view. */
+.room-edit-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* Transparent, over the whole plan: a pointer down on the empty plan clears the room selection. */
+.room-edit-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+}
+
+/* An obstacle in room mode is a button: over the furniture, under the wall bands, so a wall band
+   wins where an obstacle touches its wall. The selected border wins over the conflict border. */
+.plan-obstacle.is-editable {
+  z-index: 5;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.plan-obstacle.is-editable:hover {
+  border-color: var(--color-accent);
+}
+.plan-obstacle.is-selected {
+  border: 2px solid var(--color-accent);
+}
+.plan-obstacle.is-editable:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: 2px;
+}
+
+/* A wall's hit band: its inline left/top/width/height put it along the wall from its start
+   corner, turned about that corner. Over the obstacles, under the door, window and corner handles. */
+.room-wall-hit {
+  position: absolute;
+  z-index: 6;
+  transform-origin: 0 50%;
+  cursor: copy;
+  touch-action: none;
+  pointer-events: auto;
+}
+.room-wall-hit:hover {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+/* With a door or window tool armed, a wall click places it. */
+.room-edit-layer.is-placing .room-wall-hit {
+  cursor: crosshair;
+}
+
+/* Door and window handles, centred on their inline left/top (the middle of the opening): a
+   24 px square, over the wall bands and under the corner handles. Dragging slides the opening. */
+.room-opening {
+  position: absolute;
+  z-index: 7;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--color-text);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-bg) 80%, transparent);
+  cursor: grab;
+  touch-action: none;
+  pointer-events: auto;
+}
+.room-opening:hover {
+  border-color: var(--color-accent);
+}
+.room-opening[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 40%, var(--color-bg));
+}
+.room-opening:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: 3px;
+}
+
+/* Corner handles, centred on their inline left/top. */
+.room-corner {
+  position: absolute;
+  z-index: 8;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--color-text);
+  border-radius: 50%;
+  background: var(--color-bg);
+  cursor: move;
+  touch-action: none;
+  pointer-events: auto;
+}
+.room-corner:hover {
+  border-color: var(--color-accent);
+}
+.room-corner[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+.room-corner:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: 3px;
+}
+
+/* ── Inset frame ──────────────────────────────────────────────────────────── */
+/* Fills the inset pane so its corner marks sit on the pane's corners. Only the button
+   takes pointer input; everything else passes through to the view beneath. */
+.blueprint.inset-frame {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  pointer-events: none;
+  z-index: 9;
+}
+.inset-label {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+  pointer-events: none;
+}
+.inset-swap {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  font-size: 12px;
+  padding: 3px 8px;
+  background: var(--color-bg);
+  pointer-events: auto;
+}

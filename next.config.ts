@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Linting runs through `npm run lint`; the flat ESLint config has no Next plugin,
+  // so `next build` skips its own lint step.
+  eslint: { ignoreDuringBuilds: true },
   async rewrites() {
     return {
       // The 8-bit character-sheet site is a build-free static page in public/.

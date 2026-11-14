@@ -19,5 +19,8 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 
+# Test coverage reports
+coverage/
+
 # Original scaffold drop (copied into app/, components/, content/, lib/)
 papers-scaffold/

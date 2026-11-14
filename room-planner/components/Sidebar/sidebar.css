@@ -1,0 +1,104 @@
+/* Sidebar layout shared by the room, link and item sections (prototype lines 17–41). */
+
+/* The top bar is outside the sidebar, but its one rule lives here with the units label it styles. */
+.app-header { border-bottom: 1px solid var(--color-divider); }
+
+.sidebar {
+  display: flex; flex-direction: column; gap: var(--space-8);
+  padding: var(--space-6) var(--space-4);
+  border-right: 1px solid var(--color-divider);
+  overflow-y: auto; min-height: 0;
+}
+
+.sidebar-section { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.sidebar-heading { margin: 0; display: flex; gap: 8px; }
+.sidebar-heading-num { color: var(--color-accent-700); }
+
+.field-grid-3 {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);
+}
+
+.input-suffix-wrap { position: relative; }
+.input-suffix-wrap > .input { padding-right: 26px; }
+.input-suffix {
+  position: absolute; right: 8px; top: 9px;
+  font-size: 12px; pointer-events: none;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+
+/* 12px muted helper text; same colour as .text-muted. */
+.note { font-size: 12px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+/* Room section: one row per wall (label, length input, and in room mode an add-corner button). */
+.wall-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.wall-row { display: flex; align-items: center; gap: var(--space-2); }
+.wall-row-label {
+  flex: 0 0 4.5em; font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.wall-row > .input-suffix-wrap { flex: 1 1 auto; min-width: 0; }
+.wall-row-add { flex: none; font-size: 18px; }
+
+/* Why the last room edit was refused. The status region stays mounted (so screen readers announce
+   new text) and, while empty, is taken out of the flow without display: none so it adds no gap. */
+.room-problem { font-size: 12px; color: var(--color-accent-900); }
+.room-problem:empty {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+}
+
+/* Starting shapes: a caption over three equal buttons that fit the 320px sidebar. */
+.shape-buttons { display: flex; flex-direction: column; gap: 5px; }
+.shape-buttons-label {
+  font-size: 12px; color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.shape-buttons-row {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);
+}
+.shape-buttons-row > .btn { padding-inline: var(--space-1); }
+
+/* Plan section: where the plan is kept, then the reset. The note is a <p>, so drop its margin. */
+.plan-section-note { margin: 0; }
+
+/* Inline two-step confirmation. Armed, the long confirm label and Cancel wrap onto two lines in
+   the 320px sidebar instead of overflowing it. */
+.confirm-button { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2); }
+.confirm-button > .btn { max-width: 100%; text-align: center; }
+
+/* Room section, room mode: doors, windows and obstacles. Every row wraps, so the controls stay
+   inside the 320px sidebar. */
+.room-features { display: flex; flex-direction: column; gap: var(--space-3); }
+.room-features-add {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
+}
+.room-features-add > .btn { padding-inline: var(--space-1); }
+/* The armed tool's help. Like .room-problem, it stays mounted and collapses while empty. */
+.room-features-status { font-size: 12px; color: var(--color-accent-900); }
+.room-features-status:empty {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+}
+.room-features-caption {
+  display: block; font-size: 12px; margin-bottom: 5px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.room-features-list { display: flex; flex-direction: column; }
+.room-features-empty { font-size: 13px; }
+.room-features-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  text-align: left; font: inherit; color: inherit; cursor: pointer;
+  border: none; border-bottom: 1px solid var(--color-divider);
+  padding: var(--space-2); background: transparent;
+}
+.room-features-row:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.room-features-row.room-features-row-selected {
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+.room-features-row-name { font-size: 14px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.room-features-row-conflict { background: var(--color-accent-900); color: var(--color-bg); }
+.room-features-fields { display: flex; flex-direction: column; gap: var(--space-3); }
+.room-features-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--space-2);
+}
+.room-features-choice > .seg { display: flex; flex-wrap: wrap; max-width: 100%; }
+.room-features-choice .seg-opt { flex: 1 1 auto; justify-content: center; }
+.room-features-remove { align-self: flex-start; }
