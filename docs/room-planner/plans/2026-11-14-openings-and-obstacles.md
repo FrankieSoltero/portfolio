@@ -213,6 +213,19 @@ mode, which re-specifies that assertion. Task 9's file list also includes
 `PlanView.test.tsx` for that one test: door and window drawings are never focusable;
 obstacles have `tabindex="0"` in room mode and no `tabindex` in furnish mode.
 
+## Amendment 5 (2026-11-14, controller ruling before Task 12)
+
+Task 11 put `wallHoles` and `WallHole` in `room-planner/three/roomMesh.ts`, which
+imports three.js. The Blueprint view is the non-WebGL fallback and is not part of the
+lazily loaded 3D chunk, so it must not import from `room-planner/three/`. Task 12
+therefore first moves `wallHoles`, `WallHole` and the constant they need, unchanged,
+to a new pure module `room-planner/view/wallHoles.ts` (with their tests moved to
+`room-planner/view/wallHoles.test.ts`), and `roomMesh.ts` imports them from there and
+re-exports them. Task 12's file list also includes `room-planner/three/roomMesh.ts`
+and `room-planner/three/roomMesh.test.ts` for that move only. A test asserts that no
+file under `room-planner/view/` or `room-planner/domain/` imports from `three` or
+from `room-planner/three/`.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
