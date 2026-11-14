@@ -404,6 +404,54 @@ describe('rehomeOpenings', () => {
     expect(okOpenings(rehomeOpenings(before, after, [door]))).toEqual([{ ...door, wallId: 't2', offset: 12.05, hinge: 'end' }]);
   });
 
+  it('refuses a reversed opening whose wall became too short, rather than sliding it', () => {
+    // Before: wall t2 → t3 is |(0,100) − (100,0)| = 141.42; the window spans 100…130 on it.
+    // After (t3 dragged to (50,−30), order reversed): wall t3 → t2 is |(100,0) − (50,−30)| = 58.31,
+    // so the raw offset is 58.31 − 100 − 30 = −71.69: it no longer fits.
+    const before = corners('t', [0, 0], [100, 0], [0, 100]);
+    const after: Corner[] = [{ id: 't3', x: 50, y: -30 }, { id: 't2', x: 100, y: 0 }, { id: 't1', x: 0, y: 0 }];
+    const window = win('w', 't2', 100, 30);
+    expect(validateOpenings(before, [window])).toBeNull();
+    expect(rehomeOpenings(before, after, [window])).toEqual({ ok: false, problem: 'opening-off-wall' });
+  });
+
+  it('refuses the same shrink without a reversal', () => {
+    // t3 moved to (50,30): wall t2 → t3 is |(50,30) − (100,0)| = 58.31 < 130, order unchanged.
+    const before = corners('t', [0, 0], [100, 0], [0, 100]);
+    const after = corners('t', [0, 0], [100, 0], [50, 30]);
+    expect(rehomeOpenings(before, after, [win('w', 't2', 100, 30)])).toEqual({ ok: false, problem: 'opening-off-wall' });
+  });
+
+  describe('reversed offset within rounding noise of the wall', () => {
+    // Wall t1 → t2 before is |(40,14)| = 42.38; the door spans 12.06…42.06 on it. After the reversal
+    // wall t2 → t1 is |(40, y)|, and the raw new offset is that length − 12.06 − 30.
+    const before = corners('t', [0, 0], [40, 14], [0, 100]);
+    const after = (y: number): Corner[] => [{ id: 't3', x: 20, y: -50 }, { id: 't2', x: 40, y }, { id: 't1', x: 0, y: 0 }];
+    const door: Door = { ...D1, wallId: 't1', offset: 12.06, width: 30, hinge: 'start' };
+
+    it('accepts a raw offset of −0.0036 (length 42.0564) at 0', () => {
+      expect(okOpenings(rehomeOpenings(before, after(12.99), [door]))).toEqual([{ ...door, wallId: 't2', offset: 0, hinge: 'end' }]);
+    });
+
+    it('clamps a raw offset of −0.0067 (length 42.0533), which rounds to −0.01, to 0', () => {
+      expect(okOpenings(rehomeOpenings(before, after(12.98), [door]))).toEqual([{ ...door, wallId: 't2', offset: 0, hinge: 'end' }]);
+    });
+
+    it('refuses a raw offset of −0.0129 (length 42.0471), beyond the 0.01 of noise', () => {
+      expect(rehomeOpenings(before, after(12.96), [door])).toEqual({ ok: false, problem: 'opening-off-wall' });
+    });
+
+    it('refuses a raw offset of −0.48 (length 41.5791)', () => {
+      expect(rehomeOpenings(before, after(11.35), [door])).toEqual({ ok: false, problem: 'opening-off-wall' });
+    });
+  });
+
+  it('refuses an opening moved past the end of the new wall when a corner is added, rather than sliding it back', () => {
+    // n1 (10,0) is added and c2 moves to (50,0): wall n1 is 40 long, D1's raw offset 20 − 10 = 10 > 40 − 32 + 0.01.
+    const after: Corner[] = [R[0], { id: 'n1', x: 10, y: 0 }, { id: 'c2', x: 50, y: 0 }, R[2], R[3]];
+    expect(rehomeOpenings(R, after, [D1])).toEqual({ ok: false, problem: 'opening-off-wall' });
+  });
+
   it('refuses replacing the outline while there are openings', () => {
     const after = corners('x', [0, 0], [100, 0], [100, 100], [0, 100]);
     expect(rehomeOpenings(R, after, [D1])).toEqual({ ok: false, problem: 'shape-has-openings' });

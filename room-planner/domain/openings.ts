@@ -95,6 +95,21 @@ function clampOffset(offset: number, length: number, width: number): number {
   return Math.max(0, Math.min(offset, floor2(length - width)));
 }
 
+/** How far a re-homed offset may fall outside its wall and still count as rounding noise. */
+const REHOME_NOISE = 0.01;
+
+/**
+ * A re-homed opening's new offset from its raw (unrounded) value on a wall of `length`: rounded to
+ * 0.01, and clamped onto the wall only when the raw value is within REHOME_NOISE of
+ * [0, length − width]. An opening that genuinely no longer fits (or a wall shorter than its width)
+ * keeps the rounded raw value, so validation refuses it rather than sliding it along the wall.
+ */
+function rehomedOffset(raw: number, length: number, width: number): number {
+  const room = length - width;
+  const nearWall = room >= 0 && raw >= -REHOME_NOISE && raw <= room + REHOME_NOISE;
+  return nearWall ? clampOffset(round2(raw), length, width) : round2(raw);
+}
+
 /** True when v is a finite number within [min, max]; the limits are exact up to LIMIT_SLACK. */
 function inLimits(v: number, min: number, max: number): boolean {
   return Number.isFinite(v) && v >= min - LIMIT_SLACK && v <= max + LIMIT_SLACK;
@@ -245,8 +260,8 @@ function sameIds(p: readonly string[], q: readonly string[]): boolean {
 
 /**
  * Each opening moves to the same physical wall in the reversed outline, measured from its new start;
- * the new offset is rounded to 0.01 and clamped into [0, new length − width], so rounding never
- * pushes it past the wall end.
+ * the new offset is set by rehomedOffset, so rounding never pushes it past the wall end and an
+ * opening that no longer fits is refused rather than slid.
  */
 function rehomeReversed(before: readonly Corner[], after: readonly Corner[], openings: readonly Opening[]): OpeningsResult {
   const wallsBefore = wallsOf(before);
@@ -257,7 +272,7 @@ function rehomeReversed(before: readonly Corner[], after: readonly Corner[], ope
     // An opening on an unknown wall stays as it is and is refused by validation.
     if (wall === undefined || length === undefined) return o;
     const wallId = wall.b.id;
-    const offset = clampOffset(round2(length - o.offset - o.width), length, o.width);
+    const offset = rehomedOffset(length - o.offset - o.width, length, o.width);
     return o.kind === 'door'
       ? { ...o, wallId, offset, hinge: o.hinge === 'start' ? 'end' : 'start' }
       : { ...o, wallId, offset };
@@ -267,8 +282,8 @@ function rehomeReversed(before: readonly Corner[], after: readonly Corner[], ope
 
 /**
  * The new corner N at index k of `after` splits wall A → B: openings past it move to wall N, their
- * offset rounded to 0.01 and clamped into [0, |B − N| − width], so rounding never pushes one past
- * the wall end.
+ * offset set by rehomedOffset on the new wall's length |B − N|, so rounding never pushes one past
+ * the wall end and one that no longer fits is refused rather than slid.
  */
 function rehomeAdded(after: readonly Corner[], k: number, openings: readonly Opening[]): OpeningsResult {
   const n = after[k];
@@ -280,7 +295,7 @@ function rehomeAdded(after: readonly Corner[], k: number, openings: readonly Ope
   for (const o of openings) {
     if (o.wallId !== a.id || o.offset + o.width <= t + LIMIT_SLACK) moved.push(o);
     else if (o.offset >= t - LIMIT_SLACK) {
-      moved.push({ ...o, wallId: n.id, offset: clampOffset(round2(o.offset - t), lengthN, o.width) });
+      moved.push({ ...o, wallId: n.id, offset: rehomedOffset(o.offset - t, lengthN, o.width) });
     }
     else return refuse('corner-in-opening');
   }
