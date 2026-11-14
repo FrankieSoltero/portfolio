@@ -113,7 +113,8 @@ function midpoint(a: Point, b: Point): Point {
  * A wall band, with no door or window tool armed: pointer down selects the wall (its band is marked
  * `is-selected`); once the pointer has moved more than `CONFIG.wallDragThresholdPx` the drag slides
  * the wall along its inward normal by the movement across it, for the rest of that drag; a
- * double-click adds a corner at the pointer. With a door or window tool armed, pointer down places
+ * double-click adds a corner at the pointer, unless either of its presses slid the wall or placed an
+ * opening. With a door or window tool armed, pointer down places
  * it and does nothing else. The layer fills the plan view; positions are pane pixels from `layout`,
  * and a wall-click position is measured from the plan view's box.
  * Obstacles are made editable by PlanFeatures and stack between the backdrop and the wall bands.
@@ -130,6 +131,10 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
   const selectWall = useUiStore((s) => s.selectWall);
   const beginDrag = useRoomModeDrag();
   const layerRef = useRef<HTMLDivElement>(null);
+  // Whether each of the last two primary presses on a wall slid it or placed (or tried to place) an
+  // opening. A browser fires dblclick after any two quick presses, so a double-click adds a corner
+  // only when neither of the two presses it is made of did anything else.
+  const wallPressesActedRef = useRef<[boolean, boolean]>([false, false]);
 
   const onCornerDown = (corner: Corner, e: React.PointerEvent<HTMLElement>): void => {
     if (!isPrimaryPress(e)) return;
@@ -172,14 +177,18 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
   const onWallDown = (wall: Wall, e: React.PointerEvent<HTMLElement>): void => {
     // Only the primary button edits; any other press on a wall does nothing at all.
     if (!isPrimaryPress(e)) return;
+    const acted = wallPressesActedRef.current;
+    acted[0] = acted[1];
+    acted[1] = false;
     if (roomTool !== 'corner') {
       e.preventDefault();
+      acted[1] = true;
       placeOpeningOnWall(wall.id, planPointOf(e));
       return;
     }
-    selectWall(wall.id);
     const slide = startWallSlide(wall.id);
     if (slide === null) return;
+    selectWall(wall.id);
     const { scale } = layout;
     const n = slide.normal;
     let sliding = false;
@@ -189,15 +198,17 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
         // Once past the threshold, the wall follows for the rest of the drag, back inside it too.
         if (!sliding && Math.hypot(dx, dy) <= CONFIG.wallDragThresholdPx) return;
         sliding = true;
+        acted[1] = true;
         slideWallTo(slide, (dx * n.x + dy * n.y) / scale);
       },
       { freeze: layout },
     );
   };
 
-  // A double-click adds a corner only when no door or window tool is armed.
+  // A double-click adds a corner only when no door or window tool is armed and neither of its two
+  // presses slid the wall or placed an opening.
   const onWallDoubleClick = (wall: Wall, e: React.MouseEvent<HTMLElement>): void => {
-    if (roomTool !== 'corner') return;
+    if (roomTool !== 'corner' || wallPressesActedRef.current.some(Boolean)) return;
     addCornerOnWall(wall.id, planPointOf(e));
   };
 

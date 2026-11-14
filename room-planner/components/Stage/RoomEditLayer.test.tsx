@@ -964,12 +964,15 @@ describe('RoomEditLayer wall select, drag and double-click', () => {
     expect(usePlanStore.getState().room.outline).toHaveLength(4);
   });
 
-  it('a secondary-button press selects nothing, freezes nothing and moves nothing', () => {
+  it('a secondary-button press selects nothing, freezes nothing, moves nothing and does not reach the plan background', () => {
     const freeze = vi.fn();
+    const onParent = vi.fn();
     render(
-      <FreezePlanLayoutContext value={freeze}>
-        <RoomEditLayer layout={layout} />
-      </FreezePlanLayoutContext>,
+      <div onPointerDown={onParent}>
+        <FreezePlanLayoutContext value={freeze}>
+          <RoomEditLayer layout={layout} />
+        </FreezePlanLayoutContext>
+      </div>,
     );
     const before = usePlanStore.getState().room;
     fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 2 });
@@ -977,6 +980,81 @@ describe('RoomEditLayer wall select, drag and double-click', () => {
     expect(useUiStore.getState().selectedWallId).toBeNull();
     expect(freeze).not.toHaveBeenCalled();
     expect(usePlanStore.getState().room).toBe(before);
+    expect(onParent).not.toHaveBeenCalled();
+  });
+
+  // A browser counts two presses close together as a double-click and fires dblclick after the
+  // second release, whatever happened in between; these replay the full sequence.
+  it('a double-click made of two plain presses adds a corner', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    renderLayer();
+    const p = toPane({ x: 60, y: 0 }, layout);
+    for (let i = 0; i < 2; i++) {
+      fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+      fireEvent.pointerUp(window);
+    }
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y });
+    expect(corner(NEW_ID)).toEqual({ id: NEW_ID, x: 60, y: 0 });
+  });
+
+  it('a click then a press that slides the wall is not a double-click: no corner is added', () => {
+    renderLayer();
+    const s = layout.scale;
+    const p = toPane({ x: 60, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerUp(window);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerMove(window, { clientX: p.x, clientY: p.y + 12 * s });
+    fireEvent.pointerUp(window);
+    const slid = usePlanStore.getState().room;
+    expect(outlineText()).toEqual(['c1 (0,12)', 'c2 (144,12)', 'c3 (144,168)', 'c4 (0,168)']);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y + 12 * s });
+    expect(addCornerOnWall).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().room).toBe(slid);
+  });
+
+  it('a slide then a plain press is not a double-click either', () => {
+    renderLayer();
+    const s = layout.scale;
+    const p = toPane({ x: 60, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerMove(window, { clientX: p.x, clientY: p.y + 12 * s });
+    fireEvent.pointerUp(window);
+    const slid = usePlanStore.getState().room;
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y + 12 * s, button: 0 });
+    fireEvent.pointerUp(window);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y + 12 * s });
+    expect(addCornerOnWall).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().room).toBe(slid);
+  });
+
+  it('a double-click whose first press placed a door adds no corner and shows no problem', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    renderLayer();
+    act(() => useUiStore.getState().setRoomTool('door'));
+    const p = toPane({ x: 72, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerUp(window);
+    expect(useUiStore.getState().roomTool).toBe('corner');
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerUp(window);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y });
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+    expect(usePlanStore.getState().openings).toHaveLength(1);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('a double-click right after the press that placed a door adds no corner and shows no problem', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    renderLayer();
+    act(() => useUiStore.getState().setRoomTool('door'));
+    const p = toPane({ x: 72, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerUp(window);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y });
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+    expect(usePlanStore.getState().openings).toHaveLength(1);
+    expect(useUiStore.getState().roomProblem).toBeNull();
   });
 
   it('marks only the selected wall\'s band is-selected', () => {
