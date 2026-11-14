@@ -5,7 +5,14 @@ import { openingName, openingSpan } from '../../domain/openings';
 import { wallsOf, type Wall } from '../../domain/outline';
 import type { Corner, Opening, Point } from '../../domain/types';
 import { startDrag } from '../../hooks/startDrag';
-import { addCornerOnWall, dragCornerTo, placeOpeningOnWall, slideOpeningTo } from '../../state/actions';
+import {
+  addCornerOnWall,
+  dragCornerTo,
+  placeOpeningOnWall,
+  slideOpeningTo,
+  slideWallTo,
+  startWallSlide,
+} from '../../state/actions';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { type PlanLayout, toPane, toPlan } from '../../view/planLayout';
@@ -29,7 +36,7 @@ export type BeginRoomDrag = (
 ) => void;
 
 /**
- * Room-mode drags of corners, doors, windows and obstacles. The returned function freezes the plan
+ * Room-mode drags of corners, walls, doors, windows and obstacles. The returned function freezes the plan
  * layout at `opts.freeze` and starts a drag that reports the pointer movement to `onMove`; only a
  * primary-button press starts one (callers check `isPrimaryPress` before selecting anything). For any
  * other button it freezes nothing and starts nothing, but calls `opts.onEnd` once, straight away. The drag
@@ -99,12 +106,16 @@ function midpoint(a: Point, b: Point): Point {
 
 /**
  * The on-plan room editor shown in room mode, bottom to top: a transparent backdrop over the whole
- * plan (pointer down clears the room selection), a hit band along every wall (pointer down adds a
- * corner there, or places the armed door or window), a handle on every door and window (pointer
- * down selects and focuses it and slides it along its wall) and a handle on every corner (pointer
- * down selects and focuses it and drags it). Enter or Space on a handle selects it. The layer fills
- * the plan view; positions are pane pixels from `layout`, and the wall-click position is measured
- * from the plan view's box.
+ * plan (pointer down clears the room selection, the selected wall included), a hit band along every
+ * wall, a handle on every door and window (pointer down selects and focuses it and slides it along
+ * its wall) and a handle on every corner (pointer down selects and focuses it and drags it). Enter
+ * or Space on a handle selects it.
+ * A wall band, with no door or window tool armed: pointer down selects the wall (its band is marked
+ * `is-selected`); once the pointer has moved more than `CONFIG.wallDragThresholdPx` the drag slides
+ * the wall along its inward normal by the movement across it, for the rest of that drag; a
+ * double-click adds a corner at the pointer. With a door or window tool armed, pointer down places
+ * it and does nothing else. The layer fills the plan view; positions are pane pixels from `layout`,
+ * and a wall-click position is measured from the plan view's box.
  * Obstacles are made editable by PlanFeatures and stack between the backdrop and the wall bands.
  */
 export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
@@ -112,9 +123,11 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
   const openings = usePlanStore((s) => s.openings);
   const selectedCornerId = useUiStore((s) => s.selectedCornerId);
   const selectedOpeningId = useUiStore((s) => s.selectedOpeningId);
+  const selectedWallId = useUiStore((s) => s.selectedWallId);
   const roomTool = useUiStore((s) => s.roomTool);
   const selectCorner = useUiStore((s) => s.selectCorner);
   const selectOpening = useUiStore((s) => s.selectOpening);
+  const selectWall = useUiStore((s) => s.selectWall);
   const beginDrag = useRoomModeDrag();
   const layerRef = useRef<HTMLDivElement>(null);
 
@@ -148,20 +161,50 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
     beginDrag(e, (dx, dy) => slideOpeningTo(opening.id, start + (dx * u.x + dy * u.y) / scale), { freeze: layout });
   };
 
+  /** The plan point under a pointer event, measured from the plan view's box. */
+  const planPointOf = (e: React.MouseEvent): Point => {
+    const frame = layerRef.current?.parentElement?.getBoundingClientRect();
+    return toPlan({ x: e.clientX - (frame?.left ?? 0), y: e.clientY - (frame?.top ?? 0) }, layout);
+  };
+
+  // With a tool armed the press places it; otherwise it selects the wall and a drag past the
+  // threshold slides it by the movement along its inward normal n.
   const onWallDown = (wall: Wall, e: React.PointerEvent<HTMLElement>): void => {
     // Only the primary button edits; any other press on a wall does nothing at all.
-    e.stopPropagation();
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const frame = layerRef.current?.parentElement?.getBoundingClientRect();
-    const at = toPlan({ x: e.clientX - (frame?.left ?? 0), y: e.clientY - (frame?.top ?? 0) }, layout);
-    if (roomTool === 'corner') addCornerOnWall(wall.id, at);
-    else placeOpeningOnWall(wall.id, at);
+    if (!isPrimaryPress(e)) return;
+    if (roomTool !== 'corner') {
+      e.preventDefault();
+      placeOpeningOnWall(wall.id, planPointOf(e));
+      return;
+    }
+    selectWall(wall.id);
+    const slide = startWallSlide(wall.id);
+    if (slide === null) return;
+    const { scale } = layout;
+    const n = slide.normal;
+    let sliding = false;
+    beginDrag(
+      e,
+      (dx, dy) => {
+        // Once past the threshold, the wall follows for the rest of the drag, back inside it too.
+        if (!sliding && Math.hypot(dx, dy) <= CONFIG.wallDragThresholdPx) return;
+        sliding = true;
+        slideWallTo(slide, (dx * n.x + dy * n.y) / scale);
+      },
+      { freeze: layout },
+    );
+  };
+
+  // A double-click adds a corner only when no door or window tool is armed.
+  const onWallDoubleClick = (wall: Wall, e: React.MouseEvent<HTMLElement>): void => {
+    if (roomTool !== 'corner') return;
+    addCornerOnWall(wall.id, planPointOf(e));
   };
 
   const clearRoomSelection = (): void => {
     const ui = useUiStore.getState();
     ui.selectCorner(null);
+    ui.selectWall(null);
     ui.selectOpening(null);
     ui.selectObstacle(null);
   };
@@ -175,7 +218,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
         return (
           <div
             key={wall.id}
-            className="room-wall-hit"
+            className={wall.id === selectedWallId ? 'room-wall-hit is-selected' : 'room-wall-hit'}
             data-wall-id={wall.id}
             aria-hidden="true"
             style={{
@@ -186,6 +229,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
               transform: `rotate(${deg}deg)`,
             }}
             onPointerDown={(e) => onWallDown(wall, e)}
+            onDoubleClick={(e) => onWallDoubleClick(wall, e)}
           />
         );
       })}

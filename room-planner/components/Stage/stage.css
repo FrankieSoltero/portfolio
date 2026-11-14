@@ -312,12 +312,16 @@
   position: absolute;
   z-index: 6;
   transform-origin: 0 50%;
-  cursor: copy;
+  cursor: grab;
   touch-action: none;
   pointer-events: auto;
 }
 .room-wall-hit:hover {
   background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+/* The selected wall: a stronger tint than hover, after it so it wins while hovered. */
+.room-wall-hit.is-selected {
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
 }
 /* With a door or window tool armed, a wall click places it. */
 .room-edit-layer.is-placing .room-wall-hit {
