@@ -234,6 +234,22 @@ verification (Task 20) runs against the final code, they are fixed in an inserte
 | 6 | The cached load result is applied again when the effect re-runs (Fast Refresh) | a load result is applied at most once per store; a re-run after it was applied subscribes and sets `ready` without applying it again |
 | 7 | Reset can be confirmed again while the first is still clearing storage | a second confirmation while a reset is in flight does nothing |
 
+## Amendment 10 (2026-11-14, controller ruling after Task 20)
+
+Two live-check rows failed because the rows were written wrongly, not because the
+planner misbehaved. Their expectations are corrected:
+
+- **B15.** The row expected the storage key to hold the converted plan straight after
+  loading a version 1 plan. By design (Task 18) a loaded plan is not written back
+  until the document changes. Corrected expectation: after the reload the plan on
+  screen has the bed centred at `(72, 42.5)` at 0° and the desk at `(131, 131.5)` at
+  90° with no notice; the key still holds the version 1 document; after the first
+  document change the key holds a version 2 document with those converted values.
+- **B18.** The row expected every request in the whole session to go to
+  `localhost:3210`, but B21 visits `/`, whose page (`public/index.html`, unchanged by
+  this plan) loads Google Fonts. Corrected expectation: every request made while on
+  `/room-planner` goes to `localhost:3210`, and no request anywhere carries plan data.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
