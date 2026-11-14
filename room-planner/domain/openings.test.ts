@@ -588,6 +588,44 @@ describe('rehomeOpenings across edits of several corners', () => {
     expect(rehomeOpenings(Q, after, [door])).toEqual({ ok: false, problem: 'opening-off-wall' });
   });
 
+  it('refuses an opening whose wall turns away from its old direction when a chain that turns is added', () => {
+    // Wall c1 ran right; after the edit it runs up to x, then right along y = −30, then down to c2.
+    const after = outline(['c1', 0, 0], ['x', 0, -30], ['y', 144, -30], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168]);
+    expect(rehomeOpenings(R, after, [win('w', 'c1', 2, 24)])).toEqual({ ok: false, problem: 'corner-has-openings' });
+  });
+
+  it('leaves an opening on a wall that is not in before for validation to judge, without throwing', () => {
+    const after = outline(['c1', 0, 0], ['n1', 40, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168]);
+    const window = win('w', 'n1', 2, 24);
+    expect(okOpenings(rehomeOpenings(R, after, [window]))).toEqual([window]);
+  });
+
+  describe('one edit that removes a corner and adds another', () => {
+    // U without x1 (wall c1 now runs diagonally to m1), and n (100,168) added on wall c3.
+    const after = outline(
+      ['c1', 0, 0], ['m1', 48, 24], ['x2', 96, 24], ['m2', 96, 0], ['c2', 144, 0], ['c3', 144, 168], ['n', 100, 168], ['c4', 0, 168],
+    );
+
+    it('keeps or moves each opening by its own wall', () => {
+      const [a, b] = [win('a', 'c3', 50), win('b', 'c3', 2)];
+      expect(okOpenings(rehomeOpenings(U, after, [onM1, a, b]))).toEqual([onM1, { ...a, wallId: 'n', offset: 6 }, b]);
+    });
+
+    it('refuses an opening on the wall that lost its corner and turned', () => {
+      expect(rehomeOpenings(U, after, [onC1])).toEqual({ ok: false, problem: 'corner-has-openings' });
+    });
+  });
+
+  it('follows a chain that wraps past the end of the array', () => {
+    // Wall c4 (0,168) → c1 (0,0) gains n1 (0,120), the last corner, and n2 (0,40), the first.
+    const after = outline(['n2', 0, 40], ['c1', 0, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168], ['n1', 0, 120]);
+    const [a, b] = [win('a', 'c4', 60), win('b', 'c4', 140, 24)];
+    expect(okOpenings(rehomeOpenings(R, after, [a, b]))).toEqual([
+      { ...a, wallId: 'n1', offset: 12 },
+      { ...b, wallId: 'n2', offset: 12 },
+    ]);
+  });
+
   it('never mutates its inputs', () => {
     const before = frozen(T.map((c) => ({ ...c })));
     const after = frozen(U.map((c) => ({ ...c })));
