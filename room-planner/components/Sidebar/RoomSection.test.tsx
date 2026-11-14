@@ -42,6 +42,16 @@ function makeLShape(): void {
   usePlanStore.getState().applyOutline({ ok: true, outline: startingShape('l-shape', 144, 168, () => `l${++n}`) });
 }
 
+/**
+ * The Room section's status element for refused edits. In room mode the section also has the
+ * armed-tool status of the doors, windows and obstacles controls, so this picks the room-problem one.
+ */
+function problemStatus(): HTMLElement {
+  const status = screen.getAllByRole('status').find((el) => el.classList.contains('room-problem'));
+  if (status === undefined) throw new Error('missing room-problem status');
+  return status;
+}
+
 /** Simulates the browser reporting `value` for a number input (bypasses jsdom's number sanitising). */
 function typeRaw(el: HTMLInputElement, value: string): void {
   fireEvent.change(el, { target: { value } });
@@ -312,7 +322,7 @@ describe('RoomSection', () => {
     render(<RoomSection />);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Add a corner to wall 1' }));
-    expect(screen.getByRole('status')).toHaveTextContent('That wall would be too short.');
+    expect(problemStatus()).toHaveTextContent('That wall would be too short.');
   });
 
   it('offers Rectangle, L-shape and Notched in a group labelled Start from a shape', () => {
@@ -346,7 +356,7 @@ describe('RoomSection', () => {
     for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(useUiStore.getState().roomProblem).toBeNull();
     expect(useUiStore.getState().selectedCornerId).toBeNull();
-    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    expect(problemStatus()).toBeEmptyDOMElement();
   });
 
   it('keeps the room where it is: a shape chosen after the corners moved starts at the old bounding box', async () => {
@@ -405,7 +415,44 @@ describe('RoomSection', () => {
     render(<RoomSection />);
     await userEvent.setup().click(screen.getByRole('button', { name: 'L-shape' }));
     expect(usePlanStore.getState()).toBe(before);
-    expect(screen.getByRole('status')).toHaveTextContent(/^Remove the doors and windows before starting from a shape\.$/);
+    expect(problemStatus()).toHaveTextContent(/^Remove the doors and windows before starting from a shape\.$/);
     expect(useUiStore.getState().selectedCornerId).toBe('c2');
+  });
+
+  it('shows the doors, windows and obstacles controls after the wall list in room mode only', () => {
+    const { container } = render(<RoomSection />);
+    expect(screen.queryByRole('group', { name: 'Add to the room' })).toBeNull();
+    act(() => useUiStore.getState().setMode('room'));
+    const walls = screen.getByRole('group', { name: 'Wall lengths' });
+    const adds = screen.getByRole('group', { name: 'Add to the room' });
+    expect(walls.compareDocumentPosition(adds) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.querySelector('.room-features')).not.toBeNull();
+  });
+
+  it('shows a refused door width in the Room status element and keeps the typed text', async () => {
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1] });
+    useUiStore.getState().setMode('room');
+    render(<RoomSection />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Door on wall 1' }));
+    const fields = screen.getByRole('group', { name: 'Door on wall 1' });
+    const width = within(fields).getByLabelText('Width') as HTMLInputElement;
+    typeRaw(width, '8');
+    expect(usePlanStore.getState().openings).toEqual([D1]);
+    expect(width.value).toBe('8');
+    expect(problemStatus()).toHaveTextContent(/^That size is not allowed\.$/);
+  });
+
+  it('places a door from the sidebar by keyboard, then refuses a starting shape and shows why', async () => {
+    useUiStore.getState().setMode('room');
+    render(<RoomSection />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Add door' }));
+    screen.getByRole('button', { name: 'Place the door on wall 1' }).focus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Door on wall 1' })).toHaveAttribute('aria-pressed', 'true');
+    const before = usePlanStore.getState().room.outline;
+    await user.click(screen.getByRole('button', { name: 'L-shape' }));
+    expect(usePlanStore.getState().room.outline).toBe(before);
+    expect(problemStatus()).toHaveTextContent(/^Remove the doors and windows before starting from a shape\.$/);
   });
 });

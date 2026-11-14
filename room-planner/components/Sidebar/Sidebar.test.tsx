@@ -2,7 +2,9 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ProductPreview } from '../../domain/types';
+import { createInitialDocument } from '../../domain/catalog';
+import { findPlanIssues } from '../../domain/conflicts';
+import type { ProductPreview, WindowOpening } from '../../domain/types';
 import type { ProductLookup } from '../../services/productLookup';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
@@ -101,6 +103,34 @@ describe('ItemList', () => {
     for (const r of list) expect(r.querySelector('.tag')).toBeNull();
   });
 
+  it('shows Covers a window in an amber warning tag on an item in front of a low window', () => {
+    // The desk stands against the right wall, y 104–159; this window spans y 110–146 with a 24 in sill.
+    const win: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 110, width: 36, sill: 24, height: 48 };
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [win] });
+    render(<ItemList />);
+    const tag = within(row(DESK)).getByText('Covers a window');
+    expect(tag.tagName).toBe('SPAN');
+    expect(tag).toHaveClass('tag');
+    expect(tag).toHaveClass('item-row-warning');
+    expect(tag).not.toHaveClass('item-row-conflict');
+    expect(row(BED).querySelector('.tag')).toBeNull();
+  });
+
+  it('shows only the conflict on an item that has both a conflict and a warning', () => {
+    // A window on the top wall, x 56–92, with a 24 in sill; the desk is moved onto the bed beside it.
+    const win: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c1', offset: 56, width: 36, sill: 24, height: 48 };
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [win] });
+    usePlanStore.getState().moveItemTo('seed-desk', 53, 27.5);
+    const { items, room, openings, obstacles } = usePlanStore.getState();
+    expect(findPlanIssues(items, room, openings, obstacles).warnings['seed-desk']).toBe('Covers a window');
+    render(<ItemList />);
+    const tags = row(DESK).querySelectorAll('.tag');
+    expect(tags).toHaveLength(1);
+    expect(tags[0]).toHaveTextContent(`Overlaps ${BED}`);
+    expect(tags[0]).toHaveClass('item-row-conflict');
+    expect(row(DESK).querySelector('.item-row-warning')).toBeNull();
+  });
+
   it('shows Nothing placed yet. when there are no items', () => {
     act(() => {
       usePlanStore.getState().removeItem('seed-bed');
@@ -159,5 +189,23 @@ describe('Sidebar', () => {
     expect(nums).toEqual(['01', '02', '03', '04']);
     const headings = screen.getAllByRole('heading', { level: 6 }).map((h) => h.textContent);
     expect(headings).toEqual(['01Room', '02Add furniture from a link', '03In this room', '04Plan']);
+  });
+
+  it('still has exactly the four section headings in room mode with a door, a window and an obstacle selected', () => {
+    usePlanStore.getState().reset({
+      ...createInitialDocument(),
+      openings: [
+        { id: 'd1', kind: 'door', wallId: 'c1', offset: 56, width: 32, height: 80, hinge: 'start', swing: 'in' },
+        { id: 'w1', kind: 'window', wallId: 'c2', offset: 20, width: 36, sill: 36, height: 48 },
+      ],
+      obstacles: [{ id: 'b1', shape: 'box', label: 'Box', x: 72, y: 120, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 }],
+    });
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectObstacle('b1');
+    render(<Sidebar lookup={fakeLookup()} planStore={createFakePlanStore()} />);
+    expect(screen.getByRole('group', { name: 'Doors, windows and obstacles' })).toBeInTheDocument();
+    const headings = screen.getAllByRole('heading', { level: 6 }).map((h) => h.textContent);
+    expect(headings).toEqual(['01Room', '02Add furniture from a link', '03In this room', '04Plan']);
+    expect(screen.queryAllByRole('heading')).toHaveLength(4);
   });
 });

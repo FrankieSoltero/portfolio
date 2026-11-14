@@ -1,8 +1,9 @@
 import { type ChangeEvent, type JSX, useId, useState } from 'react';
 import { CONFIG } from '../../config';
 import { LIMIT_SLACK, type OutlineResult, setWallLength, type Wall, wallsOf } from '../../domain/outline';
+import type { RoomTool } from '../../domain/types';
 import { parseLengthInput, roomInputStep, roomInputStr, roomUnitLabel } from '../../domain/units';
-import { addCornerOnWall } from '../../state/actions';
+import { addCornerOnWall, placeOpeningOnWall } from '../../state/actions';
 import { ROOM_PROBLEM_TEXT, usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import './sidebar.css';
@@ -26,11 +27,12 @@ function applyWallLength(wallId: string, inches: number): void {
 }
 
 /**
- * One wall's row: its length input and, in room mode, a button that adds a corner at the wall's
- * midpoint. The input shows exactly what the user typed; the draft is re-seeded when units change,
- * or when the stored length changes, unless the input has focus and its text already parses to it.
+ * One wall's row: its length input and, in room mode, a button at the wall's midpoint that adds a
+ * corner there, or, while a door or window tool is armed, places that opening there (the keyboard
+ * path for placing). The input shows exactly what the user typed; the draft is re-seeded when units
+ * change, or when the stored length changes, unless the input has focus and its text already parses to it.
  */
-function WallRow({ wall, roomMode }: { wall: Wall; roomMode: boolean }) {
+function WallRow({ wall, roomMode, roomTool }: { wall: Wall; roomMode: boolean; roomTool: RoomTool }) {
   const id = useId();
   const units = usePlanStore((s) => s.units);
   const stored = wall.length;
@@ -54,9 +56,7 @@ function WallRow({ wall, roomMode }: { wall: Wall; roomMode: boolean }) {
     if (inches !== null) applyWallLength(wall.id, inches);
   }
 
-  function addCorner() {
-    addCornerOnWall(wall.id, { x: (wall.a.x + wall.b.x) / 2, y: (wall.a.y + wall.b.y) / 2 });
-  }
+  const midpoint = { x: (wall.a.x + wall.b.x) / 2, y: (wall.a.y + wall.b.y) / 2 };
 
   return (
     <div className="wall-row">
@@ -78,13 +78,24 @@ function WallRow({ wall, roomMode }: { wall: Wall; roomMode: boolean }) {
           {roomUnitLabel(units)}
         </span>
       </div>
-      {roomMode && (
+      {roomMode && roomTool === 'corner' && (
         <button
           type="button"
           className="btn btn-secondary btn-icon wall-row-add"
           aria-label={`Add a corner to wall ${wall.index + 1}`}
           title="Add a corner at the middle of this wall"
-          onClick={addCorner}
+          onClick={() => addCornerOnWall(wall.id, midpoint)}
+        >
+          <span aria-hidden="true">+</span>
+        </button>
+      )}
+      {roomMode && roomTool !== 'corner' && (
+        <button
+          type="button"
+          className="btn btn-primary btn-icon wall-row-add"
+          aria-label={`Place the ${roomTool} on wall ${wall.index + 1}`}
+          title={`Place the ${roomTool} at the middle of this wall`}
+          onClick={() => placeOpeningOnWall(wall.id, midpoint)}
         >
           <span aria-hidden="true">+</span>
         </button>
@@ -97,10 +108,11 @@ function WallRow({ wall, roomMode }: { wall: Wall; roomMode: boolean }) {
 export function WallList(): JSX.Element {
   const outline = usePlanStore((s) => s.room.outline);
   const roomMode = useUiStore((s) => s.mode === 'room');
+  const roomTool = useUiStore((s) => s.roomTool);
   return (
     <div className="wall-list" role="group" aria-label="Wall lengths">
       {wallsOf(outline).map((wall) => (
-        <WallRow key={wall.id} wall={wall} roomMode={roomMode} />
+        <WallRow key={wall.id} wall={wall} roomMode={roomMode} roomTool={roomTool} />
       ))}
     </div>
   );

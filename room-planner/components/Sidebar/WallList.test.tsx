@@ -230,6 +230,52 @@ describe('WallList', () => {
     expect(useUiStore.getState().selectedCornerId).toBeNull();
   });
 
+  describe('while a door or window tool is armed', () => {
+    it.each(['door', 'window'] as const)('replaces each Add a corner button with Place the %s on wall n', (tool) => {
+      useUiStore.getState().setMode('room');
+      useUiStore.getState().setRoomTool(tool);
+      render(<WallList />);
+      expect(screen.queryByRole('button', { name: /^Add a corner to wall/ })).toBeNull();
+      for (const n of [1, 2, 3, 4]) {
+        expect(screen.getByRole('button', { name: `Place the ${tool} on wall ${n}` })).toBeInTheDocument();
+      }
+    });
+
+    it('places a door centred on wall 1 from the keyboard and disarms the tool', async () => {
+      useUiStore.getState().setMode('room');
+      useUiStore.getState().setRoomTool('door');
+      render(<WallList />);
+      screen.getByRole('button', { name: 'Place the door on wall 1' }).focus();
+      await userEvent.setup().keyboard('{Enter}');
+      const openings = usePlanStore.getState().openings;
+      expect(openings).toHaveLength(1);
+      expect(openings[0]).toMatchObject({ kind: 'door', wallId: 'c1', offset: 56, width: 32 });
+      expect(useUiStore.getState().roomTool).toBe('corner');
+      expect(useUiStore.getState().selectedOpeningId).toBe(openings[0].id);
+      expect(outline()).toHaveLength(4);
+      expect(screen.getByRole('button', { name: 'Add a corner to wall 1' })).toBeInTheDocument();
+    });
+
+    it('places a window centred on wall 2', async () => {
+      useUiStore.getState().setMode('room');
+      useUiStore.getState().setRoomTool('window');
+      render(<WallList />);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Place the window on wall 2' }));
+      expect(usePlanStore.getState().openings).toEqual([
+        expect.objectContaining({ kind: 'window', wallId: 'c2', offset: 66, width: 36 }),
+      ]);
+    });
+
+    it('goes back to the add-corner buttons when the tool is cancelled', () => {
+      useUiStore.getState().setMode('room');
+      useUiStore.getState().setRoomTool('door');
+      render(<WallList />);
+      act(() => useUiStore.getState().setRoomTool('corner'));
+      expect(screen.queryByRole('button', { name: /^Place the/ })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Add a corner to wall 1' })).toBeInTheDocument();
+    });
+  });
+
   describe('with a door on wall 1', () => {
     /** A 32 in door centred on the top wall c1: it spans x 56–88. */
     const DOOR: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 56, width: 32, height: 80, hinge: 'start', swing: 'in' };

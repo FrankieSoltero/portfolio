@@ -12,13 +12,16 @@ const HINT_2D =
   'Drag a piece on the plan to move it, or nudge it with the arrow keys. Select one to see its clearance to each wall. R turns it 90°, Shift+R turns it 15°, Delete removes. Drag the 3D view to orbit.';
 const HINT_3D = 'Drag to orbit, scroll to zoom. Pick a piece from the list to highlight it.';
 const HINT_ROOM =
-  'Drag a corner to reshape the room. Click a wall to add a corner. Select a corner and press Delete to remove it.';
+  'Drag a corner to reshape the room. Click a wall to add a corner, or pick a door or window to place. Select something and press Delete to remove it.';
 
 /** Angles are stored to 0.01°, so a draft within half of that still shows the stored angle. */
 const ANGLE_DRAFT_TOLERANCE_DEG = 0.005;
 
-/** The typed angle in degrees when it is a number in [0, 360); null for anything else. */
-function parseAngle(raw: string): number | null {
+/**
+ * The typed angle in degrees when it is a number in [0, 360); null for anything else. Shared with
+ * the obstacle Angle field in the sidebar, so both accept the same angles.
+ */
+export function parseAngle(raw: string): number | null {
   if (raw.trim() === '') return null;
   const deg = Number(raw);
   return Number.isFinite(deg) && deg >= 0 && deg < 360 ? deg : null;

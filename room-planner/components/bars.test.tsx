@@ -22,7 +22,7 @@ const HINT_2D =
   'Drag a piece on the plan to move it, or nudge it with the arrow keys. Select one to see its clearance to each wall. R turns it 90°, Shift+R turns it 15°, Delete removes. Drag the 3D view to orbit.';
 const HINT_3D = 'Drag to orbit, scroll to zoom. Pick a piece from the list to highlight it.';
 const HINT_ROOM =
-  'Drag a corner to reshape the room. Click a wall to add a corner. Select a corner and press Delete to remove it.';
+  'Drag a corner to reshape the room. Click a wall to add a corner, or pick a door or window to place. Select something and press Delete to remove it.';
 
 function preview(overrides: Partial<ProductPreview>): ProductPreview {
   return {

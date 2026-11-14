@@ -30,3 +30,9 @@
   padding: var(--space-2); font-size: 13px;
 }
 .item-list-total-value { font-weight: 700; }
+
+/* A warning (furniture in front of a window): amber, and shown only when the item has no conflict. */
+.item-row-warning {
+  grid-column: 1 / -1; justify-self: start;
+  background: var(--color-warning-100); color: var(--color-warning);
+}

@@ -1,14 +1,14 @@
 import type { JSX } from 'react';
 import { fmtFurnDims, fmtMoney } from '../../domain/units';
 import { usePlanStore } from '../../state/planStore';
-import { totalPrice, useConflicts } from '../../state/selectors';
+import { totalPrice, useConflicts, useWarnings } from '../../state/selectors';
 import { useUiStore } from '../../state/uiStore';
 import './sidebar.css';
 import './itemList.css';
 
 /**
  * Sidebar section 03: one selectable row per placed item (name, price, dimensions and any
- * placement conflict), then the total of known prices. Each row is a real button, so it is
+ * placement conflict, or else any warning such as covering a window), then the total of known prices. Each row is a real button, so it is
  * the keyboard route for selecting an item.
  */
 export function ItemList(): JSX.Element {
@@ -17,6 +17,7 @@ export function ItemList(): JSX.Element {
   const selectedId = useUiStore((s) => s.selectedId);
   const select = useUiStore((s) => s.select);
   const conflicts = useConflicts();
+  const warnings = useWarnings();
 
   return (
     <section className="sidebar-section item-list-section">
@@ -29,6 +30,8 @@ export function ItemList(): JSX.Element {
         {items.map((item) => {
           const selected = item.id === selectedId;
           const conflict = conflicts[item.id];
+          // A conflict is the row's only tag; a warning shows only when there is none.
+          const warning = conflict === undefined ? warnings[item.id] : undefined;
           return (
             <button
               key={item.id}
@@ -41,6 +44,7 @@ export function ItemList(): JSX.Element {
               <span className="item-row-price">{fmtMoney(item.price)}</span>
               <span className="text-muted item-row-dims">{fmtFurnDims(item, units)}</span>
               {conflict !== undefined && <span className="tag item-row-conflict">{conflict}</span>}
+              {warning !== undefined && <span className="tag item-row-warning">{warning}</span>}
             </button>
           );
         })}

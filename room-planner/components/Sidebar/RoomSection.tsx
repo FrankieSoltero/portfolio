@@ -11,6 +11,7 @@ import { boundsOf, polygonArea } from '../../domain/polygon';
 import { roomOutline } from '../../domain/shape';
 import { ROOM_PROBLEM_TEXT, usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
+import { RoomFeatures } from './RoomFeatures';
 import { WallList } from './WallList';
 import './sidebar.css';
 
@@ -94,8 +95,9 @@ function applyStartingShape(shape: StartingShape): void {
 
 /**
  * Sidebar section 01: the Edit room / Done switch, the room's width and length while it is a
- * rectangle, its ceiling height, every wall's length, why the last room edit was refused, the
- * starting shapes, and the floor area of its outline.
+ * rectangle, its ceiling height, every wall's length, in room mode the doors, windows and obstacles
+ * (RoomFeatures), why the last room edit was refused, the starting shapes, and the floor area of
+ * its outline.
  */
 export function RoomSection() {
   const units = usePlanStore((s) => s.units);
@@ -139,6 +141,7 @@ export function RoomSection() {
         <RoomDimInput label="Ceiling" stored={room.height} onLength={setRoomHeight} />
       </div>
       <WallList />
+      <RoomFeatures />
       {/* Always mounted so screen readers announce text that appears in it. */}
       <div className="room-problem" role="status">
         {roomProblem}
