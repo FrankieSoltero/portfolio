@@ -16,6 +16,7 @@ import {
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { type PlanLayout, toPane, toPlan } from '../../view/planLayout';
+import { WallLengthLabels } from './WallLengthLabels';
 
 /** Thickness of a wall's pointer hit band, in px, centred on the wall. */
 const WALL_HIT_PX = 16;
@@ -107,11 +108,11 @@ function midpoint(a: Point, b: Point): Point {
 /**
  * The on-plan room editor shown in room mode, bottom to top: a transparent backdrop over the whole
  * plan (pointer down clears the room selection, the selected wall included), a hit band along every
- * wall, a handle on every door and window (pointer down selects and focuses it and slides it along
+ * wall, a length label for every wall (WallLengthLabels), a handle on every door and window (pointer down selects and focuses it and slides it along
  * its wall) and a handle on every corner (pointer down selects and focuses it and drags it). Enter
  * or Space on a handle selects it.
  * A wall band, with no door or window tool armed: pointer down selects the wall (its band is marked
- * `is-selected`); once the pointer has moved more than `CONFIG.wallDragThresholdPx` the drag slides
+ * `is-selected`) and focuses its length label; once the pointer has moved more than `CONFIG.wallDragThresholdPx` the drag slides
  * the wall along its inward normal by the movement across it, for the rest of that drag; a
  * double-click adds a corner at the pointer, unless either of its presses slid the wall or placed an
  * opening. With a door or window tool armed, pointer down places
@@ -172,6 +173,17 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
     return toPlan({ x: e.clientX - (frame?.left ?? 0), y: e.clientY - (frame?.top ?? 0) }, layout);
   };
 
+  /**
+   * Moves keyboard focus to the wall's length label, the control for a pressed wall: the band
+   * itself is not focusable, and the drag's pointer down prevents the default focus change.
+   */
+  const focusWallLabel = (wallId: string): void => {
+    const labels = layerRef.current?.querySelectorAll<HTMLElement>('[data-wall-label-id]') ?? [];
+    for (const el of labels) {
+      if (el.dataset.wallLabelId === wallId) el.focus({ preventScroll: true });
+    }
+  };
+
   // With a tool armed the press places it; otherwise it selects the wall and a drag past the
   // threshold slides it by the movement along its inward normal n.
   const onWallDown = (wall: Wall, e: React.PointerEvent<HTMLElement>): void => {
@@ -189,6 +201,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
     const slide = startWallSlide(wall.id);
     if (slide === null) return;
     selectWall(wall.id);
+    focusWallLabel(wall.id);
     const { scale } = layout;
     const n = slide.normal;
     let sliding = false;
@@ -244,6 +257,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
           />
         );
       })}
+      <WallLengthLabels layout={layout} />
       {openings.map((opening) => {
         const span = openingSpan(outline, opening);
         if (span === null) return null;

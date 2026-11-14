@@ -132,7 +132,7 @@ describe('RoomEditLayer corner handles', () => {
   it('renders one button per corner, named Corner <n>, centred on the corner', () => {
     renderLayer();
     const outline = usePlanStore.getState().room.outline;
-    const buttons = screen.getAllByRole('button');
+    const buttons = [...document.querySelectorAll<HTMLElement>('button.room-corner')];
     expect(buttons.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual([
       'Corner 1', 'Corner 2', 'Corner 3', 'Corner 4',
     ]);
@@ -635,6 +635,55 @@ describe('RoomEditLayer handles take focus on a primary press', () => {
     await user.keyboard('{ArrowRight}');
     expect(storedOpening('d1')?.offset).toBe(D1.offset + 1);
   });
+
+  it('a primary pointer down on a wall band moves keyboard focus to that wall\'s length label', () => {
+    renderLayer();
+    focusElsewhere();
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    expect(document.activeElement).toBe(document.querySelector('[data-wall-label-id="c1"]'));
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+  });
+
+  it('a secondary pointer down on a wall band leaves focus where it was', () => {
+    renderLayer();
+    const other = focusElsewhere();
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 2 });
+    expect(document.activeElement).toBe(other);
+  });
+
+  it('after a press on a wall band, ArrowDown slides the wall 1 in and does not change the radio', async () => {
+    function Shortcuts(): null {
+      useKeyboardShortcuts();
+      return null;
+    }
+    render(
+      <>
+        <Shortcuts />
+        <RoomEditLayer layout={layout} />
+      </>,
+    );
+    // A sidebar-style radio group, its first radio checked and focused.
+    const radios = ['start', 'end'].map((value) => {
+      const r = document.createElement('input');
+      r.type = 'radio';
+      r.name = 'hinge';
+      r.value = value;
+      document.body.append(r);
+      return r;
+    });
+    const [first, second] = radios;
+    if (!first || !second) throw new Error('no radios');
+    first.checked = true;
+    first.focus();
+    expect(document.activeElement).toBe(first);
+    const user = userEvent.setup();
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerUp(window);
+    await user.keyboard('{ArrowDown}');
+    expect(corner('c1')).toEqual({ id: 'c1', x: 0, y: 1 });
+    expect(corner('c2')).toEqual({ id: 'c2', x: 144, y: 1 });
+    expect([first.checked, second.checked]).toEqual([true, false]);
+  });
 });
 
 describe('RoomEditLayer opening drag', () => {
@@ -756,6 +805,20 @@ describe('RoomEditLayer background', () => {
     expect(backdrop().compareDocumentPosition(firstBand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('stacks backdrop, wall bands, length labels, opening handles and corner handles in that document order', () => {
+    loadOpenings([D1]);
+    renderLayer();
+    const layer = document.querySelector('.room-edit-layer');
+    const kinds = [...(layer?.children ?? [])].map((el) => el.className.split(' ')[0]);
+    expect(kinds).toEqual([
+      'room-edit-backdrop',
+      'room-wall-hit', 'room-wall-hit', 'room-wall-hit', 'room-wall-hit',
+      'room-wall-label', 'room-wall-label', 'room-wall-label', 'room-wall-label',
+      'room-opening',
+      'room-corner', 'room-corner', 'room-corner', 'room-corner',
+    ]);
+  });
+
   it.each([
     ['corner', () => useUiStore.getState().selectCorner('c2')],
     ['opening', () => useUiStore.getState().selectOpening('d1')],
@@ -790,6 +853,9 @@ describe('room editor stacking (stage.css)', () => {
     expect(order[0]).toBeGreaterThan(4);
     for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1] ?? Infinity);
     expect(order[order.length - 1]).toBeLessThan(9);
+    // Wall length labels share the wall bands' level and come after them in the document.
+    expect(zIndex('.room-wall-label')).toBe(6);
+    expect(zIndex('.room-wall-hit')).toBe(6);
   });
 
   it('opening handles are at least 24 px across and every new control has a focus-visible outline', () => {
