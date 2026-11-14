@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import { moveItem, rotateItemBy, setItemAngle } from '../domain/geometry';
+import { moveItem, rotateItemBy, setItemAngle, shiftItem } from '../domain/geometry';
 import type { OutlineResult } from '../domain/outline';
 import { interiorPoint } from '../domain/polygon';
 import { roomBounds } from '../domain/shape';
-import type { Item, PlanDocument, ProductPreview, Units } from '../domain/types';
+import type { Corner, Item, PlanDocument, ProductPreview, Units } from '../domain/types';
 
 /**
  * The plan document plus the only operations allowed to change it. All lengths are inches; an
@@ -18,7 +18,8 @@ export interface PlanState extends PlanDocument {
   setRoomHeight(inches: number): void;
   /**
    * Stores `result.outline` and returns true when the edit was accepted; otherwise changes nothing
-   * and returns false. Items are not moved; conflicts report any left outside.
+   * and returns false. Corners equal to the stored ones (same ids, coordinates and order) are
+   * accepted without a write. Items are not moved; conflicts report any left outside.
    */
   applyOutline(result: OutlineResult): boolean;
   /**
@@ -31,6 +32,11 @@ export interface PlanState extends PlanDocument {
    * furniture grid, and kept inside the room bounds. Unknown ids are ignored.
    */
   moveItemTo(id: string, x: number, y: number): void;
+  /**
+   * Moves an item's centre by exactly (dx, dy), with no grid snapping, kept inside the room bounds.
+   * Unknown ids are ignored.
+   */
+  moveItemBy(id: string, dx: number, dy: number): void;
   /** Turns an item `deg` degrees clockwise about its centre. Unknown ids are ignored. */
   rotateItemBy(id: string, deg: number): void;
   /** Turns an item to `deg` degrees clockwise about its centre. Unknown ids are ignored. */
@@ -53,6 +59,11 @@ function changeItem(s: PlanState, id: string, update: (item: Item) => Item): Pla
   return { items: s.items.map((i) => (i.id === id ? next : i)) };
 }
 
+/** True when both outlines have the same corners (ids and coordinates) in the same order. */
+function sameOutline(a: readonly Corner[], b: readonly Corner[]): boolean {
+  return a.length === b.length && a.every((c, i) => c.id === b[i].id && c.x === b[i].x && c.y === b[i].y);
+}
+
 function documentFields(doc: PlanDocument): PlanDocument {
   return { schemaVersion: doc.schemaVersion, units: doc.units, room: doc.room, items: doc.items };
 }
@@ -69,7 +80,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
 
   applyOutline: (result) => {
     if (!result.ok) return false;
-    set((s) => ({ room: { ...s.room, outline: result.outline } }));
+    set((s) => (sameOutline(s.room.outline, result.outline) ? s : { room: { ...s.room, outline: result.outline } }));
     return true;
   },
 
@@ -102,6 +113,13 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
     set((s) =>
       Number.isFinite(x) && Number.isFinite(y)
         ? changeItem(s, id, (item) => moveItem(item, x, y, roomBounds(s.room), CONFIG.furnitureSnap))
+        : s,
+    ),
+
+  moveItemBy: (id, dx, dy) =>
+    set((s) =>
+      Number.isFinite(dx) && Number.isFinite(dy)
+        ? changeItem(s, id, (item) => shiftItem(item, dx, dy, roomBounds(s.room)))
         : s,
     ),
 

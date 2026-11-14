@@ -27,12 +27,12 @@ export function placePreview(): void {
   ui.setLookup({ status: 'idle' });
 }
 
-/** Moves the selected item's centre by (dx, dy) inches, kept inside the room bounds; no-op when nothing is selected. */
+/**
+ * Moves the selected item's centre by exactly (dx, dy) inches, with no grid snapping, kept inside
+ * the room bounds; no-op when nothing is selected.
+ */
 export function nudgeSelected(dx: number, dy: number): void {
   const id = useUiStore.getState().selectedId;
   if (id === null) return;
-  const plan = usePlanStore.getState();
-  const item = plan.items.find((i) => i.id === id);
-  if (!item) return;
-  plan.moveItemTo(id, item.x + dx, item.y + dy);
+  usePlanStore.getState().moveItemBy(id, dx, dy);
 }

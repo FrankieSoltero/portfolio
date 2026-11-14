@@ -14,6 +14,10 @@ function bed(): Item | undefined {
   return usePlanStore.getState().items.find((i) => i.id === BED);
 }
 
+function desk(): Item | undefined {
+  return usePlanStore.getState().items.find((i) => i.id === 'seed-desk');
+}
+
 /** Dispatches a cancelable keydown on `target` (bubbling to window) and returns the event. */
 function press(target: EventTarget, key: string, init: KeyboardEventInit = {}): KeyboardEvent {
   const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
@@ -46,8 +50,9 @@ afterEach(() => {
 
 describe('useKeyboardShortcuts', () => {
   beforeEach(() => {
-    // Lift the bed off the wall so every arrow direction has room to move.
-    usePlanStore.getState().moveItemTo(BED, 40, 20);
+    // Lift the bed off the wall so every arrow direction has room to move: its centre goes from
+    // (72, 42.5) to exactly (40, 20), off the drag grid, so the rows also show a nudge never re-snaps.
+    usePlanStore.getState().moveItemBy(BED, -32, -22.5);
     renderHook(() => useKeyboardShortcuts());
   });
 
@@ -101,15 +106,15 @@ describe('useKeyboardShortcuts', () => {
     press(document.body, 'r', mod);
     press(document.body, 'Backspace', mod);
     const ev = press(document.body, 'ArrowRight', mod);
-    expect(bed()).toMatchObject({ x: 40, y: 20.5, angle: 0 });
+    expect(bed()).toMatchObject({ x: 40, y: 20, angle: 0 });
     expect(ev.defaultPrevented).toBe(false);
   });
 
   it.each([
-    ['ArrowRight', 41, 20.5],
-    ['ArrowLeft', 39, 20.5],
-    ['ArrowDown', 40, 21.5],
-    ['ArrowUp', 40, 19.5],
+    ['ArrowRight', 41, 20],
+    ['ArrowLeft', 39, 20],
+    ['ArrowDown', 40, 21],
+    ['ArrowUp', 40, 19],
   ])('%s nudges the selected item by one step and prevents default', (key, x, y) => {
     expect(CONFIG.nudgeStep).toBe(1);
     useUiStore.getState().select(BED);
@@ -122,19 +127,44 @@ describe('useKeyboardShortcuts', () => {
     expect(CONFIG.nudgeStepLarge).toBe(12);
     useUiStore.getState().select(BED);
     press(document.body, 'ArrowRight', { shiftKey: true });
-    expect(bed()).toMatchObject({ x: 52, y: 20.5 });
+    expect(bed()).toMatchObject({ x: 52, y: 20 });
+  });
+
+  it('R then the arrows move the turned seed desk by exactly one step', () => {
+    useUiStore.getState().select('seed-desk');
+    press(document.body, 'r'); // angle 180: half-extents 27.5, 13, so the box min corner is off the grid
+    press(document.body, 'ArrowRight');
+    expect(desk()).toMatchObject({ x: 132, y: 131.5, angle: 180 });
+    press(document.body, 'ArrowLeft');
+    expect(desk()).toMatchObject({ x: 131, y: 131.5, angle: 180 });
+  });
+
+  it('Shift+arrows move the turned seed desk by exactly 12 in', () => {
+    useUiStore.getState().select('seed-desk');
+    press(document.body, 'r');
+    press(document.body, 'ArrowDown', { shiftKey: true });
+    expect(desk()).toMatchObject({ x: 131, y: 143.5 });
+    press(document.body, 'ArrowLeft', { shiftKey: true });
+    expect(desk()).toMatchObject({ x: 119, y: 143.5 });
+  });
+
+  it('an arrow at the room bounding box edge clamps the centre', () => {
+    useUiStore.getState().select(BED);
+    usePlanStore.getState().moveItemBy(BED, 103.6, 0); // centre x 143.6
+    press(document.body, 'ArrowRight');
+    expect(bed()).toMatchObject({ x: 144, y: 20 });
   });
 
   it.each(['text', 'number', 'radio'])('arrows with focus in a %s input are ignored', (type) => {
     useUiStore.getState().select(BED);
     const ev = press(focused('input', type), 'ArrowRight');
-    expect(bed()).toMatchObject({ x: 40, y: 20.5 });
+    expect(bed()).toMatchObject({ x: 40, y: 20 });
     expect(ev.defaultPrevented).toBe(false);
   });
 
   it('arrows with no selection change nothing and do not prevent default', () => {
     const ev = press(document.body, 'ArrowDown');
-    expect(bed()).toMatchObject({ x: 40, y: 20.5 });
+    expect(bed()).toMatchObject({ x: 40, y: 20 });
     expect(ev.defaultPrevented).toBe(false);
   });
 });

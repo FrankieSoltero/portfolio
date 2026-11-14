@@ -50,6 +50,18 @@ export function moveItem(item: Item, x: number, y: number, bounds: Bounds, snap:
   };
 }
 
+/**
+ * Returns a copy of item with its centre moved by exactly (dx, dy), clamped into the bounds and
+ * stored to 0.01. No grid snapping, so a nudge moves a piece by exactly the step at any angle.
+ */
+export function shiftItem(item: Item, dx: number, dy: number, bounds: Bounds): Item {
+  return {
+    ...item,
+    x: round2(Math.min(Math.max(item.x + dx, bounds.minX), bounds.maxX)),
+    y: round2(Math.min(Math.max(item.y + dy, bounds.minY), bounds.maxY)),
+  };
+}
+
 /** Returns a copy of item turned `deg` degrees clockwise about its centre; the position is unchanged. */
 export function rotateItemBy(item: Item, deg: number): Item {
   return { ...item, angle: storedAngle(item.angle + deg) };

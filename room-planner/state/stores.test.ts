@@ -117,6 +117,27 @@ describe('planStore', () => {
     ]);
   });
 
+  it('applyOutline with the stored corners returns true, keeps the same state and notifies no one', () => {
+    const before = usePlanStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = usePlanStore.subscribe(listener);
+    const applied = usePlanStore.getState().applyOutline({ ok: true, outline: structuredClone(before.room.outline) });
+    unsubscribe();
+    expect(applied).toBe(true);
+    expect(usePlanStore.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('applyOutline stores corners that differ only in an id or in order', () => {
+    const renamed = usePlanStore.getState().room.outline.map((c, i) => (i === 0 ? { ...c, id: 'c9' } : c));
+    usePlanStore.getState().applyOutline({ ok: true, outline: renamed });
+    expect(usePlanStore.getState().room.outline).toBe(renamed);
+    const [first, ...rest] = renamed;
+    const rotated = [...rest, first];
+    usePlanStore.getState().applyOutline({ ok: true, outline: rotated });
+    expect(usePlanStore.getState().room.outline).toBe(rotated);
+  });
+
   it('applyOutline refused changes nothing, notifies no one and returns false', () => {
     const before = usePlanStore.getState();
     const listener = vi.fn();
@@ -247,6 +268,36 @@ describe('planStore', () => {
     expect(usePlanStore.getState()).toBe(before);
   });
 
+  it('moveItemBy moves the centre by exactly (dx, dy), without snapping to the grid', () => {
+    usePlanStore.getState().rotateItemBy('seed-desk', 90); // angle 180: bounding box min corner off the grid
+    usePlanStore.getState().moveItemBy('seed-desk', 1, 0);
+    expect(itemById('seed-desk')).toMatchObject({ x: 132, y: 131.5, angle: 180 });
+    usePlanStore.getState().moveItemBy('seed-desk', -1, 0);
+    expect(itemById('seed-desk')).toMatchObject({ x: 131, y: 131.5 });
+    usePlanStore.getState().moveItemBy('seed-desk', 0, 12);
+    expect(itemById('seed-desk')).toMatchObject({ x: 131, y: 143.5 });
+  });
+
+  it('moveItemBy keeps the centre inside the room bounds', () => {
+    usePlanStore.getState().moveItemBy('seed-bed', 71.6, 0);
+    expect(itemById('seed-bed').x).toBe(143.6);
+    usePlanStore.getState().moveItemBy('seed-bed', 1, 0);
+    expect(itemById('seed-bed').x).toBe(144);
+  });
+
+  it('moveItemBy that changes nothing, or with an unknown id, keeps the same state and notifies no one', () => {
+    usePlanStore.getState().moveItemBy('seed-bed', 100, 0); // centre clamped to x 144
+    const before = usePlanStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = usePlanStore.subscribe(listener);
+    usePlanStore.getState().moveItemBy('seed-bed', 0, 0);
+    usePlanStore.getState().moveItemBy('seed-bed', 5, 0); // already at the bounding box edge
+    usePlanStore.getState().moveItemBy('nope', 5, 5);
+    unsubscribe();
+    expect(usePlanStore.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('ignores a number that is not finite, so no NaN is ever stored', () => {
     const before = usePlanStore.getState();
     const listener = vi.fn();
@@ -256,6 +307,8 @@ describe('planStore', () => {
       usePlanStore.getState().rotateItemBy('seed-desk', bad);
       usePlanStore.getState().moveItemTo('seed-bed', bad, 10);
       usePlanStore.getState().moveItemTo('seed-bed', 10, bad);
+      usePlanStore.getState().moveItemBy('seed-bed', bad, 1);
+      usePlanStore.getState().moveItemBy('seed-bed', 1, bad);
       usePlanStore.getState().setRoomHeight(bad);
     }
     unsubscribe();
@@ -466,6 +519,32 @@ describe('actions', () => {
     expect(itemById('seed-bed')).toMatchObject({ x: 73, y: 42.5 });
     nudgeSelected(0, 12);
     expect(itemById('seed-bed')).toMatchObject({ x: 73, y: 54.5 });
+  });
+
+  it('nudgeSelected moves a turned item by exactly the step, without re-snapping', () => {
+    useUiStore.getState().select('seed-desk');
+    rotateSelected(); // angle 180: half-extents 27.5, 13
+    nudgeSelected(1, 0);
+    expect(itemById('seed-desk')).toMatchObject({ x: 132, y: 131.5, angle: 180 });
+    nudgeSelected(-1, 0);
+    expect(itemById('seed-desk')).toMatchObject({ x: 131, y: 131.5 });
+    nudgeSelected(0, 12);
+    expect(itemById('seed-desk')).toMatchObject({ x: 131, y: 143.5 });
+  });
+
+  it('nudgeSelected sideways keeps the seed bed flush with the back wall', () => {
+    useUiStore.getState().select('seed-bed');
+    nudgeSelected(-1, 0);
+    nudgeSelected(-12, 0);
+    expect(itemById('seed-bed')).toMatchObject({ x: 59, y: 42.5 });
+  });
+
+  it('nudgeSelected at the bounding box edge clamps the centre', () => {
+    useUiStore.getState().select('seed-bed');
+    nudgeSelected(71.6, 0);
+    expect(itemById('seed-bed').x).toBe(143.6);
+    nudgeSelected(1, 0);
+    expect(itemById('seed-bed').x).toBe(144);
   });
 
   it('nudgeSelected keeps the centre inside the room bounds', () => {

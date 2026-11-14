@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialDocument } from './catalog';
-import { moveItem, rotateItemBy, setItemAngle } from './geometry';
+import { moveItem, rotateItemBy, setItemAngle, shiftItem } from './geometry';
 import { boundsOf } from './polygon';
 import { footprintCorners, itemFootprint, roomBounds } from './shape';
 import type { Item } from './types';
@@ -73,6 +73,38 @@ describe('moveItem', () => {
     expect(moved).not.toBe(desk);
     expect(desk).toEqual(before);
     expect(moved).toEqual({ ...before, x: 10, y: 20.5 });
+  });
+});
+
+describe('shiftItem', () => {
+  it('moves the centre by exactly (dx, dy), without snapping to the grid', () => {
+    // The desk turned 180°: half-extents 27.5, 13, so its bounding box min corner is off the grid.
+    const desk: Item = { ...seed('seed-desk'), angle: 180 };
+    expect(shiftItem(desk, 1, 0, BOUNDS)).toMatchObject({ x: 132, y: 131.5, angle: 180 });
+    expect(shiftItem(desk, 0, 12, BOUNDS)).toMatchObject({ x: 131, y: 143.5 });
+    expect(shiftItem(seed('seed-bed'), 0.3, -0.4, BOUNDS)).toMatchObject({ x: 72.3, y: 42.1 });
+  });
+
+  it('clamps the centre into the bounds', () => {
+    const bed: Item = { ...seed('seed-bed'), x: 143.6 };
+    expect(shiftItem(bed, 1, 0, BOUNDS).x).toBe(144);
+    expect(shiftItem(seed('seed-bed'), -500, 500, BOUNDS)).toMatchObject({ x: 0, y: 168 });
+  });
+
+  it('stores coordinates rounded to 0.01 in', () => {
+    const item: Item = { ...seed('seed-bed'), x: 0.1, y: 0.7 };
+    const shifted = shiftItem(item, 0.2, 0.1, BOUNDS);
+    expect(shifted.x).toBe(0.3);
+    expect(shifted.y).toBe(0.8);
+  });
+
+  it('returns a new object and leaves the input unchanged', () => {
+    const desk = seed('seed-desk');
+    const before = structuredClone(desk);
+    const shifted = shiftItem(desk, -1, 1, BOUNDS);
+    expect(shifted).not.toBe(desk);
+    expect(desk).toEqual(before);
+    expect(shifted).toEqual({ ...before, x: 130, y: 132.5 });
   });
 });
 
