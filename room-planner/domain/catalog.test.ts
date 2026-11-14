@@ -69,7 +69,7 @@ describe('catalogue tables', () => {
 describe('CONFIG', () => {
   it('has exactly the listed values', () => {
     expect(CONFIG).toEqual({
-      roomMin: 36, roomMax: 720, roomHandleSnap: 3, furnitureSnap: 1,
+      roomMin: 36, roomMax: 720, furnitureSnap: 1,
       previewDimMax: 240, showClearances: true, lookupDelayMs: 900,
       camera: { yaw: -0.65, pitch: 0.55, zoom: 1 },
       pitchMin: 0.12, pitchMax: 1.45, zoomMin: 0.6, zoomMax: 2.5,
@@ -79,6 +79,7 @@ describe('CONFIG', () => {
       cornerSnap: 1, angleSnapDeg: 15, angleSnapTolerancePx: 8, wallMin: 6, maxCorners: 64,
       maxPixelRatio: 2, nudgeStep: 1, nudgeStepLarge: 12,
       hemiIntensity: 3.0, sunIntensity: 1.7,
+      planStorageKey: 'room-planner:plan:v1', maxStoredChars: 524288, saveDebounceMs: 300,
     });
   });
 });

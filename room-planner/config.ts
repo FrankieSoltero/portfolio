@@ -2,7 +2,6 @@
 export const CONFIG = {
   roomMin: 36,
   roomMax: 720,
-  roomHandleSnap: 3,
   furnitureSnap: 1,
   previewDimMax: 240,
   showClearances: true,
@@ -36,4 +35,9 @@ export const CONFIG = {
   // 0.187 uses physically based light units; final values owner-approved on 2026-11-12.
   hemiIntensity: 3.0,
   sunIntensity: 1.7,
+  // Saving the plan in the browser (Task 17). The key carries its own format generation;
+  // stored text above maxStoredChars is never parsed, and saves are debounced by saveDebounceMs.
+  planStorageKey: 'room-planner:plan:v1',
+  maxStoredChars: 524288,
+  saveDebounceMs: 300,
 } as const;
