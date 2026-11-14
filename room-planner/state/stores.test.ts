@@ -1069,6 +1069,15 @@ describe('plan store: doors, windows and obstacles', () => {
     expect(usePlanStore.getState().obstacles).toEqual([BOX]);
   });
 
+  it('applyObstacles keeps every centre inside the room bounds; an in-room position is stored unchanged', () => {
+    const far = addObstacle([], newObstacle('box', { x: 1e6, y: -1e6 }, 96, 'far'));
+    const result = addObstacle(far.ok ? far.obstacles : [], newObstacle('box', { x: 40, y: 120 }, 96, 'b1'));
+    expect(result.ok).toBe(true);
+    expect(usePlanStore.getState().applyObstacles(result)).toBeNull();
+    expect(obstacleById('far')).toMatchObject({ x: 144, y: 0 });
+    expect(obstacleById('b1')).toEqual(BOX);
+  });
+
   it('applyObstacles refused returns the problem and changes nothing', () => {
     withPlan({ obstacles: [BOX] });
     let problem: unknown;

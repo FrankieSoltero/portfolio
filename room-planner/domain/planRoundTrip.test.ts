@@ -310,10 +310,14 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
     expectExact('a label too long');
     expect(changeObstacle('column-1', { width: 33.335, depth: 2 })).toBeNull();
     expectExact('update a column');
+    expect(placeObstacle('box', { x: 1e6, y: -1e6 }, 'box-far')).toBeNull();
+    expectExact('add a box far outside the room');
+    expect(placeObstacle('cylinder', { x: -1e6, y: 1e6 }, 'column-far')).toBeNull();
+    expectExact('add a column far outside the room');
     s.setRoomHeight(2.45 / 0.0254);
     expect(placeObstacle('cylinder', centre, 'column-2')).toBeNull();
     expectExact('add a column under a 2.45 m ceiling');
-    for (const id of ['box-1', 'column-1', 'column-2']) {
+    for (const id of ['box-1', 'column-1', 'box-far', 'column-far', 'column-2']) {
       usePlanStore.getState().removeObstacle(id);
       expectExact(`remove ${id}`);
     }

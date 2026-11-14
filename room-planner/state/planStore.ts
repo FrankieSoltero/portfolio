@@ -21,7 +21,7 @@ import {
 import { OUTLINE_PROBLEM_TEXT, type OutlineProblem, type OutlineResult } from '../domain/outline';
 import { interiorPoint, round2 } from '../domain/polygon';
 import { roomBounds } from '../domain/shape';
-import type { Corner, Item, Obstacle, PlanDocument, ProductPreview, Units } from '../domain/types';
+import type { Bounds, Corner, Item, Obstacle, PlanDocument, ProductPreview, Units } from '../domain/types';
 import { capProductText } from '../services/productLookup';
 
 /** Why a room edit (its outline, doors and windows, or obstacles) was refused. */
@@ -54,11 +54,14 @@ export interface PlanState extends PlanDocument {
   /**
    * Stores the accepted doors and windows and returns null; a refused `result`, or a list that does
    * not fit the stored outline, changes nothing and returns its problem.
+   * Caller's duty: a new opening id is fresh (crypto.randomUUID()); parsePlan refuses a repeated id.
    */
   applyOpenings(result: OpeningsResult): RoomProblem | null;
   /**
-   * Stores the accepted obstacles, numbers to 0.01, and returns null; a refused `result` changes
-   * nothing and returns its problem. Positions are stored as given, not clamped.
+   * Stores the accepted obstacles and returns null; a refused `result` changes nothing and returns
+   * its problem. Each centre is clamped into the room bounds (as moveObstacleTo and moveObstacleBy
+   * do, so it stays within ±CONFIG.coordMax as the outline does), then every number to 0.01.
+   * Caller's duty: a new obstacle id is fresh (crypto.randomUUID()); parsePlan refuses a repeated id.
    */
   applyObstacles(result: ObstaclesResult): RoomProblem | null;
   /**
@@ -138,12 +141,15 @@ function sameEntries<T extends object>(a: readonly T[], b: readonly T[]): boolea
   );
 }
 
-/** The obstacle as stored: every number to 0.01, the rotation through storedAngle. */
-function storedObstacle(o: Obstacle): Obstacle {
+/**
+ * The obstacle as stored: its centre clamped into `bounds` (the room's bounding box), every number
+ * to 0.01, the rotation through storedAngle.
+ */
+function storedObstacle(o: Obstacle, bounds: Bounds): Obstacle {
   return {
     ...o,
-    x: round2(o.x),
-    y: round2(o.y),
+    x: round2(Math.min(Math.max(o.x, bounds.minX), bounds.maxX)),
+    y: round2(Math.min(Math.max(o.y, bounds.minY), bounds.maxY)),
     rotation: storedAngle(o.rotation),
     width: round2(o.width),
     depth: round2(o.depth),
@@ -205,10 +211,12 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
 
   applyObstacles: (result) => {
     if (!result.ok) return result.problem;
-    const next = result.obstacles.map(storedObstacle);
+    const { room, obstacles } = get();
+    const bounds = roomBounds(room);
+    const next = result.obstacles.map((o) => storedObstacle(o, bounds));
     const problem = validateObstacles(next);
     if (problem !== null) return problem;
-    if (!sameEntries(get().obstacles, next)) set({ obstacles: next });
+    if (!sameEntries(obstacles, next)) set({ obstacles: next });
     return null;
   },
 
