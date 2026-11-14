@@ -191,6 +191,22 @@ the report lists each changed assertion.
 3. In `PlanView.test.tsx`, `setRoomDim('w', 90)` becomes
    `applyOutline(setRectangleSize(room.outline, { w: 90 }))`.
 
+## Amendment 7 (2026-11-14, controller ruling after the Task 12 review)
+
+Amendment 6's snapping re-snaps on every move, so after a rotation that leaves the
+bounding box off the grid, an arrow-key nudge moved a piece by 1.5 in and drifted it
+sideways. Ruling:
+
+1. **Nudges are exact.** The plan store gains `moveItemBy(id: string, dx: number, dy: number): void`:
+   the centre moves by exactly `(dx, dy)`, is clamped into the outline's bounding box,
+   and is rounded to 0.01. No grid snapping. `nudgeSelected` uses it. Non-finite
+   deltas and unknown ids are ignored; a move that changes nothing leaves the state
+   object unchanged.
+2. **Drags snap** as Amendment 6 says (`moveItemTo`). Rotation keeps the centre.
+3. **`applyOutline` does not notify for an identical outline:** when the `ok` result's
+   corners equal the stored ones (same ids and coordinates in the same order) it
+   returns `true` and leaves the state object unchanged.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
