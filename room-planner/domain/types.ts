@@ -33,3 +33,15 @@ export interface Point { x: number; y: number }
 export interface Corner extends Point { id: string }
 /** Axis-aligned bounding box of a set of points; w = maxX − minX, l = maxY − minY. */
 export interface Bounds { minX: number; minY: number; maxX: number; maxY: number; w: number; l: number }
+/** A door in a wall: offset and width run along the wall from its start corner; hinge and swing set how it opens. */
+export interface Door { id: string; kind: 'door'; wallId: string; offset: number; width: number; height: number; hinge: 'start' | 'end'; swing: 'in' | 'out' }
+/** A window in a wall: sill is the height of its bottom edge above the floor. */
+export interface WindowOpening { id: string; kind: 'window'; wallId: string; offset: number; width: number; sill: number; height: number }
+/** Any opening in a wall. */
+export type Opening = Door | WindowOpening;
+/** A fixed obstacle on the floor; x, y are its centre, and a cylinder's diameter is width (its depth equals its width). */
+export interface Obstacle { id: string; shape: 'box' | 'cylinder'; label: string; x: number; y: number; rotation: number; width: number; depth: number; height: number; elevation: number }
+/** Which tool the room editor is using: drawing corners, or placing a door or window. */
+export type RoomTool = 'corner' | 'door' | 'window';
+/** The conflicts and warnings found in a plan, each keyed by item id. */
+export interface PlanIssues { conflicts: Conflicts; warnings: Conflicts }

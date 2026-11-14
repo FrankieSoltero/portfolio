@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { BOOK_COLOURS, LINEN, LOOKS, PARTS, createInitialDocument } from './catalog';
-import type { Kind } from './types';
+import type { Door, Kind, Obstacle, WindowOpening } from './types';
 
 const KINDS: Kind[] = ['sofa', 'chair', 'bed', 'desk', 'table', 'shelf', 'rug', 'box'];
 
@@ -80,6 +80,21 @@ describe('CONFIG', () => {
       maxPixelRatio: 2, nudgeStep: 1, nudgeStepLarge: 12,
       hemiIntensity: 3.0, sunIntensity: 1.7,
       planStorageKey: 'room-planner:plan:v1', maxStoredChars: 524288, saveDebounceMs: 300,
+      maxOpenings: 64, maxObstacles: 64,
+      openingWidthMin: 12, openingWidthMax: 240, openingHeightMin: 12, openingHeightMax: 240,
+      sillMax: 240, obstacleSizeMin: 1, obstacleSizeMax: 240, obstacleHeightMax: 720, obstacleLabelMax: 40,
+      doorClearDepth: 24, windowZoneDepth: 6, arcSegments: 8, cylinderSegments: 16,
     });
+  });
+});
+
+describe('opening and obstacle types', () => {
+  it('accepts valid literals and rejects an unknown opening kind', () => {
+    const door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 10, width: 36, height: 80, hinge: 'start', swing: 'in' } satisfies Door;
+    const win = { id: 'w1', kind: 'window', wallId: 'c1', offset: 10, width: 36, sill: 30, height: 48 } satisfies WindowOpening;
+    const obstacle = { id: 'o1', shape: 'box', label: 'Pillar', x: 10, y: 10, rotation: 0, width: 12, depth: 12, height: 96, elevation: 0 } satisfies Obstacle;
+    // @ts-expect-error 'gate' is not an opening kind
+    const gate = { id: 'g1', kind: 'gate', wallId: 'c1', offset: 10, width: 36, height: 80, hinge: 'start', swing: 'in' } satisfies Door;
+    expect([door.kind, win.kind, obstacle.shape, gate.id]).toEqual(['door', 'window', 'box', 'g1']);
   });
 });
