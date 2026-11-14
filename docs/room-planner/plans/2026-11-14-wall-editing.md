@@ -871,3 +871,8 @@ output.
    files for this only. New text:
    `Drag a wall to move it, or a corner to change an angle. Double-click a wall to add a corner, or pick a door or window to place. Select something and press Delete to remove it.`
    The constant in `bars.test.tsx` takes the same text.
+6. **Task 8 may narrow one existing test to corner buttons.** The test "renders one button
+   per corner, named Corner <n>, centred on the corner" in `RoomEditLayer.test.tsx` collected
+   every button in the layer; the wall labels are buttons too. It now selects
+   `button.room-corner` and keeps its expected list. Found by Task 8's implementer; again a
+   pinned test the plan's "Test changes" missed.
