@@ -502,6 +502,108 @@ describe('rehomeOpenings', () => {
   });
 });
 
+describe('rehomeOpenings across edits of several corners', () => {
+  /** Corners from `[id, x, y]` triples, in the order given. */
+  const outline = (...entries: [string, number, number][]): Corner[] => entries.map(([id, x, y]) => ({ id, x, y }));
+  const T = outline(['c1', 0, 0], ['m1', 48, 0], ['m2', 96, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168]);
+  const U = outline(
+    ['c1', 0, 0], ['x1', 48, 0], ['m1', 48, 24], ['x2', 96, 24], ['m2', 96, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168],
+  );
+  const Q = outline(['q1', 0, 0], ['q2', 100, 0], ['q3', 150, 50], ['q4', 150, 150], ['q5', 0, 150]);
+  const onC1: Door = { ...D1, wallId: 'c1', offset: 8, width: 32 };
+  const onM1: Door = { ...D1, id: 'd2', wallId: 'm1', offset: 8, width: 32 };
+  const onM2 = win('w', 'm2', 6);
+
+  it('keeps every opening when a step is created (two corners added)', () => {
+    expect(okOpenings(rehomeOpenings(T, U, [onC1, onM1, onM2]))).toEqual([onC1, onM1, onM2]);
+  });
+
+  it('keeps every opening when a step is removed (two corners removed)', () => {
+    expect(okOpenings(rehomeOpenings(U, T, [onC1, onM1, onM2]))).toEqual([onC1, onM1, onM2]);
+  });
+
+  it('refuses an opening on a removed step', () => {
+    expect(rehomeOpenings(U, T, [win('w', 'x1', 0, 12)])).toEqual({ ok: false, problem: 'corner-has-openings' });
+  });
+
+  describe('a wall slid until its neighbour is used up', () => {
+    const after = outline(['q1', 0, 50], ['q3', 150, 50], ['q4', 150, 150], ['q5', 0, 150]);
+
+    it('keeps an opening on the slid wall', () => {
+      const door: Door = { ...D1, wallId: 'q1', offset: 10, width: 32 };
+      expect(okOpenings(rehomeOpenings(Q, after, [door]))).toEqual([door]);
+    });
+
+    it('refuses an opening on the used-up wall', () => {
+      expect(rehomeOpenings(Q, after, [win('w', 'q2', 10, 36)])).toEqual({ ok: false, problem: 'corner-has-openings' });
+    });
+  });
+
+  describe('two corners added on one straight wall', () => {
+    const after = outline(['c1', 0, 0], ['n1', 40, 0], ['n2', 100, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168]);
+
+    it('moves each opening onto the new wall it lies on', () => {
+      const [a, b, c] = [win('a', 'c1', 50), win('b', 'c1', 104), win('c', 'c1', 2)];
+      expect(okOpenings(rehomeOpenings(R, after, [a, b, c]))).toEqual([
+        { ...a, wallId: 'n1', offset: 10 },
+        { ...b, wallId: 'n2', offset: 4 },
+        c,
+      ]);
+    });
+
+    it('refuses an opening across an added corner', () => {
+      expect(rehomeOpenings(R, after, [D1])).toEqual({ ok: false, problem: 'corner-in-opening' });
+    });
+  });
+
+  describe('a corner in a straight run removed', () => {
+    const after = T.filter((c) => c.id !== 'm1');
+
+    it('keeps a door on the wall before it, since that wall keeps its direction', () => {
+      expect(okOpenings(rehomeOpenings(T, after, [onC1]))).toEqual([onC1]);
+    });
+
+    it('refuses a door on its own wall', () => {
+      expect(rehomeOpenings(T, after, [onM1])).toEqual({ ok: false, problem: 'corner-has-openings' });
+    });
+  });
+
+  it('refuses a door on a wall whose direction changes when a corner is removed', () => {
+    expect(rehomeOpenings(R, R.filter((c) => c.id !== 'c2'), [D1])).toEqual({ ok: false, problem: 'corner-has-openings' });
+  });
+
+  it('refuses an outline with no ids in common', () => {
+    const after = outline(['z1', 0, 0], ['z2', 144, 0], ['z3', 144, 168], ['z4', 0, 168]);
+    expect(rehomeOpenings(R, after, [D1])).toEqual({ ok: false, problem: 'shape-has-openings' });
+  });
+
+  it('refuses common ids that are out of order', () => {
+    const after = outline(['c1', 0, 0], ['c3', 144, 0], ['c2', 144, 168], ['c4', 0, 168]);
+    expect(rehomeOpenings(R, after, [D1])).toEqual({ ok: false, problem: 'shape-has-openings' });
+  });
+
+  it('refuses a slid wall too short for its door', () => {
+    const after = outline(['q1', 70, 0], ['q2', 100, 0], ['q3', 150, 50], ['q4', 150, 150], ['q5', 70, 150]);
+    const door: Door = { ...D1, wallId: 'q1', offset: 0, width: 32 };
+    expect(rehomeOpenings(Q, after, [door])).toEqual({ ok: false, problem: 'opening-off-wall' });
+  });
+
+  it('never mutates its inputs', () => {
+    const before = frozen(T.map((c) => ({ ...c })));
+    const after = frozen(U.map((c) => ({ ...c })));
+    const added = frozen(outline(['c1', 0, 0], ['n1', 40, 0], ['n2', 100, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168]));
+    const openings = frozen([{ ...onC1 }, { ...onM1 }, { ...onM2 }]);
+    const moving = frozen([win('a', 'c1', 50)]);
+    const copies = structuredClone([before, after, added, openings, moving]);
+
+    okOpenings(rehomeOpenings(before, after, openings));
+    okOpenings(rehomeOpenings(after, before, openings));
+    expect(okOpenings(rehomeOpenings(R, added, moving))).toEqual([{ ...moving[0], wallId: 'n1', offset: 10 }]);
+
+    expect([before, after, added, openings, moving]).toEqual(copies);
+  });
+});
+
 describe('immutability', () => {
   it('never mutates its inputs', () => {
     const outline = frozen(R.map((c) => ({ ...c })));

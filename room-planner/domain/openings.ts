@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { inLimits, LIMIT_SLACK, wallsOf, type Wall } from './outline';
+import { inLimits, LIMIT_SLACK, sameDirection, wallsOf, type Wall } from './outline';
 import { projectOntoSegment, round2 } from './polygon';
 import type { Corner, Door, Opening, Point, WindowOpening } from './types';
 
@@ -288,35 +288,66 @@ function rehomeReversed(before: readonly Corner[], after: readonly Corner[], ope
   return settle(after, moved);
 }
 
+/** The unit vector from `a` to `b`, or (0, 0) when they coincide. */
+function unitBetween(a: Point, b: Point): Point {
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  return length === 0 ? { x: 0, y: 0 } : { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
+}
+
 /**
- * The new corner N at index k of `after` splits wall A → B: openings past it move to wall N, their
- * offset set by rehomedOffset on the new wall's length |B − N|, so rounding never pushes one past
- * the wall end and one that no longer fits is refused rather than slid.
+ * Where opening `o` on wall `w` goes when the outline changes from `before` to `after` and both
+ * share the corner ids in `common` in the same order: the opening itself, moved, or the problem it
+ * causes. `w` must be in `after`. In `after`, the "chain" runs from `w` to the first corner after it
+ * that is in `common`; the corners strictly inside it were added on the wall.
+ * - When corners after `w` were removed, the opening stays only if its wall keeps its direction.
+ * - When corners were added in a straight line, the opening moves onto the new wall it lies on, its
+ *   offset set by rehomedOffset; one across an added corner is refused (corner-in-opening). Only the
+ *   added corners bound a segment here: an opening that already runs past either end of the chain
+ *   goes to the first or last segment, and settle refuses it (opening-off-wall), as for one corner.
+ * - Otherwise (nothing added, or a chain that turns, such as a step) it stays as it is.
  */
-function rehomeAdded(after: readonly Corner[], k: number, openings: readonly Opening[]): OpeningsResult {
-  const n = after[k];
-  const a = after[(k - 1 + after.length) % after.length];
-  const b = after[(k + 1) % after.length];
-  const t = Math.hypot(n.x - a.x, n.y - a.y);
-  const lengthN = Math.hypot(b.x - n.x, b.y - n.y);
-  const moved: Opening[] = [];
-  for (const o of openings) {
-    if (o.wallId !== a.id || o.offset + o.width <= t + LIMIT_SLACK) moved.push(o);
-    else if (o.offset >= t - LIMIT_SLACK) {
-      moved.push({ ...o, wallId: n.id, offset: rehomedOffset(o.offset - t, lengthN, o.width) });
-    }
-    else return refuse('corner-in-opening');
+function rehomeOne(before: readonly Corner[], after: readonly Corner[], common: ReadonlySet<string>, o: Opening): Opening | OpeningProblem {
+  const at = after.findIndex((c) => c.id === o.wallId);
+  const from = before.findIndex((c) => c.id === o.wallId);
+  const chain: Corner[] = [after[at]];
+  for (let k = 1; k <= after.length; k++) {
+    const corner = after[(at + k) % after.length];
+    chain.push(corner);
+    if (common.has(corner.id)) break;
   }
-  return settle(after, moved);
+  const end = chain[chain.length - 1];
+  const next = before[(from + 1) % before.length];
+  if (end.id !== next.id) {
+    const was = unitBetween(before[from], next);
+    if (!sameDirection(was, unitBetween(chain[0], end))) return 'corner-has-openings';
+  }
+  if (chain.length === 2) return o;
+  const first = unitBetween(chain[0], chain[1]);
+  const straight = chain.slice(1).every((c, j) => sameDirection(first, unitBetween(chain[j], c)));
+  if (!straight) return o;
+  const last = chain.length - 2;
+  let t = 0;
+  for (let j = 0; j <= last; j++) {
+    const length = Math.hypot(chain[j + 1].x - chain[j].x, chain[j + 1].y - chain[j].y);
+    const startsHere = j === 0 || o.offset >= t - LIMIT_SLACK;
+    const endsHere = j === last || o.offset + o.width <= t + length + LIMIT_SLACK;
+    if (startsHere && endsHere) {
+      return j === 0 ? o : { ...o, wallId: chain[j].id, offset: rehomedOffset(o.offset - t, length, o.width) };
+    }
+    t += length;
+  }
+  return 'corner-in-opening';
 }
 
 /**
  * Keeps every opening on its physical wall when the outline changes from `before` to `after`,
  * deciding the case by the corner ids: the same ids in the same order keep every opening; the same
- * ids reversed move each opening to the wall's other end and flip a door's hinge; one id added moves
- * the openings past the new corner onto its wall and refuses a corner inside one (corner-in-opening);
- * one id removed is refused while either of its walls has an opening (corner-has-openings); any other
- * change is refused while there are openings (shape-has-openings). The result is validated on `after`.
+ * ids reversed move each opening to the wall's other end and flip a door's hinge. Otherwise the ids
+ * in both outlines must keep their order (else shape-has-openings), and each opening is carried by
+ * rehomeOne: one on a wall that is gone, or on a wall that loses corners and turns, is refused
+ * (corner-has-openings); one on a straight wall that gains corners moves onto the new wall it lies on,
+ * and a corner inside one is refused (corner-in-opening). The first refusal in opening order wins, and
+ * the result is validated on `after`.
  */
 export function rehomeOpenings(before: readonly Corner[], after: readonly Corner[], openings: readonly Opening[]): OpeningsResult {
   if (openings.length === 0) return { ok: true, openings: [] };
@@ -324,20 +355,15 @@ export function rehomeOpenings(before: readonly Corner[], after: readonly Corner
   const now = after.map((c) => c.id);
   if (sameIds(was, now)) return settle(after, openings.slice());
   if (sameIds(was, now.slice().reverse())) return rehomeReversed(before, after, openings);
-  if (now.length === was.length + 1) {
-    const added = now.filter((id) => !was.includes(id));
-    if (added.length === 1 && sameIds(was, now.filter((id) => id !== added[0]))) {
-      return rehomeAdded(after, now.indexOf(added[0]), openings);
-    }
+  const common = new Set(was.filter((id) => now.includes(id)));
+  if (common.size === 0 || !sameIds(was.filter((id) => common.has(id)), now.filter((id) => common.has(id)))) {
+    return refuse('shape-has-openings');
   }
-  if (now.length === was.length - 1) {
-    const removed = was.filter((id) => !now.includes(id));
-    if (removed.length === 1 && sameIds(now, was.filter((id) => id !== removed[0]))) {
-      const i = was.indexOf(removed[0]);
-      const previous = was[(i - 1 + was.length) % was.length];
-      const blocked = openings.some((o) => o.wallId === previous || o.wallId === removed[0]);
-      return blocked ? refuse('corner-has-openings') : settle(after, openings.slice());
-    }
+  const moved: Opening[] = [];
+  for (const o of openings) {
+    const next = now.includes(o.wallId) ? rehomeOne(before, after, common, o) : 'corner-has-openings';
+    if (typeof next === 'string') return refuse(next);
+    moved.push(next);
   }
-  return refuse('shape-has-openings');
+  return settle(after, moved);
 }
