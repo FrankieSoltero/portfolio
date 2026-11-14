@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { rectangleSize, setRectangleSize, startingShape } from '../../domain/outline';
@@ -241,5 +241,126 @@ describe('RoomSection', () => {
     usePlanStore.getState().setUnits('m');
     render(<RoomSection />);
     expect(screen.getByText(/^Floor area/).textContent).toBe('Floor area 15.6 m².');
+  });
+
+  it('adds the room-editing help to the note in room mode', () => {
+    useUiStore.getState().setMode('room');
+    render(<RoomSection />);
+    expect(screen.getByText(/^Floor area/).textContent).toBe(
+      'Floor area 168 sq ft. Drag a corner to reshape the room. Click a wall to add a corner. Hold Alt to turn off angle snapping.',
+    );
+  });
+
+  it('has an Edit room button, not pressed, that switches to room mode', async () => {
+    render(<RoomSection />);
+    const button = screen.getByRole('button', { name: 'Edit room' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.setup().click(button);
+    expect(useUiStore.getState().mode).toBe('room');
+  });
+
+  it('reads Done, pressed, in room mode and switches back to furnish mode', async () => {
+    useUiStore.getState().setMode('room');
+    render(<RoomSection />);
+    expect(screen.queryByRole('button', { name: 'Edit room' })).toBeNull();
+    const button = screen.getByRole('button', { name: 'Done' });
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.setup().click(button);
+    expect(useUiStore.getState().mode).toBe('furnish');
+    expect(screen.getByRole('button', { name: 'Edit room' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('lists the walls with their lengths', () => {
+    render(<RoomSection />);
+    expect(input('Wall 1').value).toBe('12');
+    expect(input('Wall 4').value).toBe('14');
+  });
+
+  it('shows no problem text while roomProblem is null, in a status region', () => {
+    render(<RoomSection />);
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  });
+
+  it('shows roomProblem in the status region', () => {
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    render(<RoomSection />);
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(/^Walls cannot cross\.$/);
+    expect(status).toHaveClass('room-problem');
+    act(() => useUiStore.getState().setRoomProblem(null));
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  });
+
+  it('shows the reason when a typed wall length is refused', () => {
+    render(<RoomSection />);
+    typeRaw(input('Wall 1'), '0.25');
+    expect(screen.getByRole('status')).toHaveTextContent('That wall would be too short.');
+  });
+
+  it('shows the reason when adding a corner from the keyboard is refused', async () => {
+    usePlanStore.getState().applyOutline({
+      ok: true,
+      outline: [{ id: 'n1', x: 0, y: 0 }, { id: 'n2', x: 10, y: 0 }, { id: 'n3', x: 10, y: 100 }, { id: 'n4', x: 0, y: 100 }],
+    });
+    useUiStore.getState().setMode('room');
+    render(<RoomSection />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Add a corner to wall 1' }));
+    expect(screen.getByRole('status')).toHaveTextContent('That wall would be too short.');
+  });
+
+  it('offers Rectangle, L-shape and Notched in a group labelled Start from a shape', () => {
+    render(<RoomSection />);
+    const group = screen.getByRole('group', { name: 'Start from a shape' });
+    expect(group).toHaveClass('shape-buttons');
+    const names = within(group).getAllByRole('button').map((b) => b.textContent);
+    expect(names).toEqual(['Rectangle', 'L-shape', 'Notched']);
+  });
+
+  it.each([
+    ['L-shape', [[0, 0], [60, 0], [60, 48], [120, 48], [120, 96], [0, 96]]],
+    ['Notched', [[0, 0], [45, 0], [45, 12], [75, 12], [75, 0], [120, 0], [120, 96], [0, 96]]],
+    ['Rectangle', [[0, 0], [120, 0], [120, 96], [0, 96]]],
+  ] as const)('replaces the outline with %s sized from the current bounds, with fresh ids', async (name, xy) => {
+    // A 120 × 96 L-shape away from the origin: its bounding box, not its position, sizes the shape.
+    let n = 0;
+    usePlanStore.getState().applyOutline({
+      ok: true,
+      outline: startingShape('l-shape', 120, 96, () => `old${++n}`).map((c) => ({ ...c, x: c.x + 12, y: c.y + 24 })),
+    });
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectCorner('old1');
+    useUiStore.getState().setRoomProblem('Walls cannot cross.');
+    render(<RoomSection />);
+    await userEvent.setup().click(screen.getByRole('button', { name }));
+    const corners = usePlanStore.getState().room.outline;
+    expect(corners.map((c) => [c.x, c.y])).toEqual(xy);
+    const ids = corners.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    expect(useUiStore.getState().selectedCornerId).toBeNull();
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  });
+
+  it('applies a starting shape in furnish mode too', async () => {
+    render(<RoomSection />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'L-shape' }));
+    expect(usePlanStore.getState().room.outline).toHaveLength(6);
+    expect(screen.queryByLabelText('Width')).toBeNull();
+    expect(input('Ceiling').value).toBe('8');
+  });
+
+  it('refuses a starting shape that would not be a valid room and shows why', async () => {
+    // A flat triangle only 4 in deep: a 100 × 4 rectangle would have 4 in walls.
+    usePlanStore.getState().applyOutline({
+      ok: true,
+      outline: [{ id: 't1', x: 0, y: 0 }, { id: 't2', x: 100, y: 0 }, { id: 't3', x: 50, y: 4 }],
+    });
+    const before = usePlanStore.getState().room.outline;
+    render(<RoomSection />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Rectangle' }));
+    expect(usePlanStore.getState().room.outline).toEqual(before);
+    expect(screen.getByRole('status')).toHaveTextContent('That wall would be too short.');
   });
 });

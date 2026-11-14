@@ -29,3 +29,30 @@
 
 /* 12px muted helper text; same colour as .text-muted. */
 .note { font-size: 12px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+/* Room section: one row per wall (label, length input, and in room mode an add-corner button). */
+.wall-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.wall-row { display: flex; align-items: center; gap: var(--space-2); }
+.wall-row-label {
+  flex: 0 0 4.5em; font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.wall-row > .input-suffix-wrap { flex: 1 1 auto; min-width: 0; }
+.wall-row-add { flex: none; font-size: 18px; }
+
+/* Why the last room edit was refused. The status region stays mounted (so screen readers announce
+   new text) and, while empty, is taken out of the flow without display: none so it adds no gap. */
+.room-problem { font-size: 12px; color: var(--color-accent-900); }
+.room-problem:empty {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+}
+
+/* Starting shapes: a caption over three equal buttons that fit the 320px sidebar. */
+.shape-buttons { display: flex; flex-direction: column; gap: 5px; }
+.shape-buttons-label {
+  font-size: 12px; color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.shape-buttons-row {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);
+}
+.shape-buttons-row > .btn { padding-inline: var(--space-1); }
