@@ -827,3 +827,11 @@ output.
 6. A keyboard step that would pass the point where a connecting wall reaches zero length
    stops at that point, so the connecting wall is removed and the wall does not jump past
    it (Task 5).
+
+## Amendments (made while building)
+
+1. **Tasks 1, 8 and 10 may also edit `room-planner/domain/catalog.test.ts`.** Its test
+   "CONFIG has exactly the listed values" compares the whole of `CONFIG`, so every task that
+   adds a `CONFIG` key adds the same key and value to that test's list, and changes nothing
+   else in the file. Found by Task 1's implementer (the plan's file lists missed a pinned
+   test again; same class as slice C's Amendment 3).
