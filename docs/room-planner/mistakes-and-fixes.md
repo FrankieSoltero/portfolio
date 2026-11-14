@@ -644,7 +644,7 @@ Seventeen entries. The first five are plan defects found while building (fixed b
 - **Date:** 2026-11-14
 - **What happened:** Openings keep an offset from their wall's start corner, so sliding the neighbouring wall at that corner carried the door along its wall.
 - **Root cause:** The spec did not say what should happen and the plan did not ask.
-- **Fix:** An opening keeps its place in the room when its wall's start slides along the wall. An edit that would push it past the wall's end is refused. This also changes corner drags along a wall, typed lengths and the rectangle width and length fields (see "Changed behaviour" in `docs/room-planner/README.md`). The whole-branch review then found the first fix made corner drags depend on their path; the rule now applies only to edits that ask for it (plan Amendment 10).
+- **Fix:** An opening keeps its place in the room when its wall's start slides along the wall. An edit that would push it past the wall's end is refused. At first this also changed corner drags along a wall, typed lengths and the rectangle width and length fields (see "Changed behaviour" in `docs/room-planner/README.md`). The whole-branch review then found the first fix made corner drags depend on their path; the rule now applies only to edits that ask for it (plan Amendment 10).
 - **How to avoid:** For every edit that moves a point other things are measured from, the plan must state what those things do.
 
 ### The first label fix still overlapped the overall length dimension in the inset pane, and reached the hit band on diagonal walls (plan Amendment 9)

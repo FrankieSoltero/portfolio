@@ -1,7 +1,7 @@
 # Wall editing: live check
 
 - **Run on:** 2026-11-14 (Task 14 of `docs/room-planner/plans/2026-11-14-wall-editing.md`).
-- **Commit under test (final run):** `c6d5f3b`, branch `wall-editing`. Nothing under
+- **Commit under test (final run):** `228a3d3`, branch `wall-editing`. Nothing under
   `room-planner/` changed after this run.
 - **Browser:** the Playwright test browser (its own profile), viewport 1440×900, one tab.
   The check is one script (kept outside the repo) that drives `page.mouse` and
@@ -22,7 +22,8 @@
 |---|---|---|
 | 1 | `167ceb7` | 18 rows run. W3, W12 and W13 failed (below). W14 was run on the state W13 left and is not counted. |
 | 2 | `fd088fd` (first fix) | All 22 rows pass. The screenshots showed a label on a vertical wall overlapping the overall length dimension in the inset pane (not a failed row). |
-| 3 | `c6d5f3b` (second fix) | All 22 rows pass. This is the run recorded in the table. |
+| 3 | `c6d5f3b` (second fix) | All 22 rows pass. |
+| 4 | `228a3d3` (final-review fix) | All 22 rows pass with the same values as run 3, and the two extra rows X1 and X2 pass. This is the run recorded in the table. |
 
 ### What failed in run 1
 
@@ -39,7 +40,7 @@ Fixes: plan Amendments 8 and 9 (labels placed clear of their wall and turned to 
 it; labels ignore the pointer while a tool is armed; an opening keeps its place in the room
 when its wall's start slides along the wall).
 
-## Rows (run 3, `c6d5f3b`)
+## Rows (run 4, `228a3d3`)
 
 | Row | What was done | What was read | Result |
 |-----|---------------|---------------|--------|
@@ -65,6 +66,8 @@ when its wall's start slides along the wall).
 | W20 | Fresh. Double-clicked the top wall at 48 in and 96 in, dragged the piece 24 in in. Looked at the 3D view, then Blueprint. | Stored `(0,0) (48,0) (48,24) (96,24) (96,0) (144,0) (144,168) (0,168)` (8 corners). In `W20-notch-3d.png` the back wall steps towards the viewer between the two new corners; in `W20-notch-blueprint.png` the same step is drawn in the wall outline. | Pass |
 | W21 | Sidebar: `Both`; typed 5 for 4 ft in wall 3 (the notch's bottom piece). | `(0,0) (42,0) (42,24) (102,24) (102,0) (144,0) (144,168) (0,168)`: 6 in at each end, 8 corners, every wall horizontal or vertical. `W21-notch-wider.png`, and `W21-inset-layout.png` for the labels in the inset pane. | Pass |
 | W22 | Console and requests for the whole run. | 0 console errors, warnings or page errors; every request went to `localhost:3478`. | Pass |
+| X1 | Fresh. Opened the top wall's label and typed 11 for 12 ft, without Enter; then pressed the left wall and dragged it 6 in into the room. | Stored `(6,0) (132,0) (132,168) (6,168)`: the typed length was applied when the field was left (right wall at 132) and the drag then moved the left wall 6 in; the top wall is 126 in. No editor open. (Before the final fix the drag undid the typed length.) | Pass |
+| X2 | Fresh. Placed a door on the top wall (offset 56). With Alt held, dragged `Corner 1` 10 in right, then 20 in down, then back to where it started, in one drag. | Stored outline `(0,0) (144,0) (144,168) (0,168)`; the door is on `c1` at offset 56. (Before the final fix it ended at 46.) | Pass |
 
 ## Not covered by this check
 
