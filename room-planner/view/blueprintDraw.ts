@@ -87,8 +87,8 @@ function line(g: CanvasRenderingContext2D, P: Project, a: Vec3, b: Vec3, alpha: 
 
 /**
  * Sides of `b` whose outward normal points toward `cam`, then its top when the camera is
- * above it. Back and front sides (even edges) take the `sideY` colour, right and left
- * (odd edges) the `sideX` colour.
+ * above it. A side whose outward normal (nx, ny) has |nx| > |ny| faces plan x and takes the
+ * `sideX` colour; every other side takes the `sideY` colour.
  */
 function drawPrism(g: CanvasRenderingContext2D, P: Project, b: Prism, cam: Vec3, input: BlueprintInput): void {
   const T = input.tokens;
@@ -106,11 +106,12 @@ function drawPrism(g: CanvasRenderingContext2D, P: Project, b: Prism, cam: Vec3,
     const a = pts[i];
     const c = pts[(i + 1) % pts.length];
     if (!a || !c) continue;
-    // Outward normal of edge a → c is (c.y − a.y, −(c.x − a.x)) for positive-area corners.
+    // Outward normal of edge a → c is (c.y − a.y, −(c.x − a.x)) for positive-area corners,
+    // so |nx| > |ny| is |c.y − a.y| > |c.x − a.x|.
     const facing = (cam[0] - a.x) * (c.y - a.y) - (cam[1] - a.y) * (c.x - a.x) > 0;
     if (facing) {
       poly(g, P, [[a.x, a.y, z0], [c.x, c.y, z0], [c.x, c.y, z1], [a.x, a.y, z1]],
-        { ...style, fill: i % 2 === 0 ? sideY : sideX });
+        { ...style, fill: Math.abs(c.y - a.y) > Math.abs(c.x - a.x) ? sideX : sideY });
     }
   }
   if (cam[2] > z1) poly(g, P, pts.map((p): Vec3 => [p.x, p.y, z1]), { ...style, fill: top });

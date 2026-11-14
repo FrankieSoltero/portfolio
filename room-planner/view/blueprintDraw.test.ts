@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
 import { boundsOf } from '../domain/polygon';
-import { roomHeight, roomOutline } from '../domain/shape';
+import { footprintCorners, itemFootprint, roomHeight, roomOutline } from '../domain/shape';
+import type { Footprint } from '../domain/shape';
 import type { CameraState, Conflicts, Item, Point, Units } from '../domain/types';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from './camera';
@@ -11,6 +12,12 @@ import { makeProjector } from './blueprintScene';
 import { drawBlueprint } from './blueprintDraw';
 import type { BlueprintInput } from './blueprintDraw';
 import type { PaneRect } from './panes';
+
+// Passthrough, so a test can give an item a footprint angle that is not a quarter turn.
+vi.mock('../domain/shape', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../domain/shape')>();
+  return { ...actual, itemFootprint: vi.fn(actual.itemFootprint) };
+});
 
 /** Distinct, readable stand-ins so every assertion names the token it expects. */
 const T: Tokens = {
@@ -158,6 +165,21 @@ function projectAll(inp: BlueprintInput, pts: readonly Vec3[]): [number, number]
 function expectSamePoints(actual: readonly [number, number][], expected: readonly [number, number][]): void {
   const key = (q: readonly [number, number]) => `${q[0].toFixed(6)},${q[1].toFixed(6)}`;
   expect(actual.map(key).sort()).toEqual(expected.map(key).sort());
+}
+
+function pointKeys(pts: readonly [number, number][]): string[] {
+  return pts.map((q) => `${q[0].toFixed(6)},${q[1].toFixed(6)}`).sort();
+}
+
+function sameKeys(a: readonly [number, number][], b: readonly [number, number][]): boolean {
+  return JSON.stringify(pointKeys(a)) === JSON.stringify(pointKeys(b));
+}
+
+/** The fill colour of the one painted face whose corners are `quad` (in any order). */
+function styleOfFace(faces: readonly Paint[], quad: readonly [number, number][]): unknown {
+  const match = faces.filter((f) => sameKeys(f.coords, quad));
+  expect(match).toHaveLength(1);
+  return match[0]?.style;
 }
 
 /** The same pane points in the same order, to 6 decimal places. */
@@ -389,7 +411,7 @@ describe('drawBlueprint', () => {
     });
   });
 
-  it('colours prism sides by edge: back and front a200, right and left n200, for any quarter turn', () => {
+  it('colours sides facing plan x n200 and sides facing plan y a200, unturned and at a quarter turn', () => {
     const P = (inp: BlueprintInput, pts: readonly Vec3[]) => projectAll(inp, pts);
     // Unturned crate, x 50–94, y 60–90: its left (x = 50) and front (y = 90) face the camera.
     const flat = input({ items: [CRATE] });
@@ -397,19 +419,60 @@ describe('drawBlueprint', () => {
     expect(flatFaces.map((f) => f.style)).toEqual([T.n200, T.a200, T.bg]);
     expectSamePoints(at(flatFaces, 0).coords, P(flat, [[50, 60, 0], [50, 90, 0], [50, 90, 20], [50, 60, 20]]));
     expectSamePoints(at(flatFaces, 1).coords, P(flat, [[50, 90, 0], [94, 90, 0], [94, 90, 20], [50, 90, 20]]));
-    // A quarter turn, x 50–80, y 60–104: plan side y = 104 is now the crate's right (n200)
-    // and plan side x = 50 its front (a200).
+    // A quarter turn, x 50–80, y 60–104: as in slice A, plan side x = 50 is n200 and
+    // plan side y = 104 is a200, although they are now the crate's front and right.
     const turned = input({ items: [{ ...CRATE, rot: 1 }] });
     const turnedFaces = faceFills(draw(turned).paints);
-    expect(turnedFaces.map((f) => f.style)).toEqual([T.n200, T.a200, T.bg]);
-    expectSamePoints(at(turnedFaces, 0).coords, P(turned, [[50, 104, 0], [80, 104, 0], [80, 104, 20], [50, 104, 20]]));
-    expectSamePoints(at(turnedFaces, 1).coords, P(turned, [[50, 60, 0], [50, 104, 0], [50, 104, 20], [50, 60, 20]]));
-    expectSamePoints(at(turnedFaces, 2).coords, P(turned, [[50, 60, 20], [80, 60, 20], [80, 104, 20], [50, 104, 20]]));
+    expect(turnedFaces).toHaveLength(3);
+    expect(styleOfFace(turnedFaces, P(turned, [[50, 60, 0], [50, 104, 0], [50, 104, 20], [50, 60, 20]]))).toBe(T.n200);
+    expect(styleOfFace(turnedFaces, P(turned, [[50, 104, 0], [80, 104, 0], [80, 104, 20], [50, 104, 20]]))).toBe(T.a200);
+    expect(styleOfFace(turnedFaces, P(turned, [[50, 60, 20], [80, 60, 20], [80, 104, 20], [50, 104, 20]]))).toBe(T.bg);
   });
 
-  it('colours a selected prism\'s sides a400 on back and front and a300 on right and left', () => {
-    const faces = faceFills(draw(input({ items: [{ ...CRATE, rot: 1 }], selectedId: 'crate-1' })).paints);
-    expect(faces.map((f) => f.style)).toEqual([T.a300, T.a400, T.a200]);
+  it('colours a selected quarter-turned prism a300 on its plan-x side and a400 on its plan-y side', () => {
+    const inp = input({ items: [{ ...CRATE, rot: 1 }], selectedId: 'crate-1' });
+    const faces = faceFills(draw(inp).paints);
+    expect(faces).toHaveLength(3);
+    expect(styleOfFace(faces, projectAll(inp, [[50, 60, 0], [50, 104, 0], [50, 104, 20], [50, 60, 20]]))).toBe(T.a300);
+    expect(styleOfFace(faces, projectAll(inp, [[50, 104, 0], [80, 104, 0], [80, 104, 20], [50, 104, 20]])))
+      .toBe(T.a400);
+    expect(styleOfFace(faces, projectAll(inp, [[50, 60, 20], [80, 60, 20], [80, 104, 20], [50, 104, 20]])))
+      .toBe(T.a200);
+  });
+
+  // Edge i runs from corner i to corner i + 1 (0 back, 1 right, 2 front, 3 left). Turned
+  // clockwise by θ, the outward normals are back (sin θ, −cos θ), right (cos θ, sin θ),
+  // front (−sin θ, cos θ), left (−cos θ, −sin θ).
+  // 30°: back (0.5, −0.87) and front face mostly plan y → a200; right (0.87, 0.5) and left → n200.
+  // 60°: back (0.87, −0.5) and front face mostly plan x → n200; right (0.5, 0.87) and left → a200.
+  it.each([
+    { angle: 30, colours: [T.a200, T.n200, T.a200, T.n200] },
+    { angle: 60, colours: [T.n200, T.a200, T.n200, T.a200] },
+  ])('colours each side of a prism at $angle° by the plan axis its normal is closer to', async ({ angle, colours }) => {
+    const actual = await vi.importActual<typeof import('../domain/shape')>('../domain/shape');
+    const fp: Footprint = { ...actual.itemFootprint(CRATE), angle };
+    vi.mocked(itemFootprint).mockImplementation(() => fp);
+    try {
+      const corners = footprintCorners(fp);
+      const seen = new Set<number>();
+      for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2, CONFIG.camera.yaw]) {
+        const inp = input({ items: [CRATE], camera: { ...CONFIG.camera, yaw } });
+        const sides = faceFills(draw(inp).paints).filter((f) => f.style !== T.bg);
+        expect(sides.length).toBeGreaterThan(0);
+        for (const f of sides) {
+          const edge = corners.findIndex((a, i) => {
+            const c = at(corners, (i + 1) % 4);
+            return sameKeys(f.coords, projectAll(inp, [[a.x, a.y, 0], [c.x, c.y, 0], [c.x, c.y, 20], [a.x, a.y, 20]]));
+          });
+          expect(edge).toBeGreaterThanOrEqual(0);
+          expect(f.style).toBe(colours[edge]);
+          seen.add(edge);
+        }
+      }
+      expect([...seen].sort()).toEqual([0, 1, 2, 3]);
+    } finally {
+      vi.mocked(itemFootprint).mockImplementation(actual.itemFootprint);
+    }
   });
 
   it('leaves out the top of a prism that reaches above the camera', () => {
