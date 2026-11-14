@@ -901,3 +901,12 @@ output.
    drags along a wall, typed lengths and the rectangle width and length fields.
    (c) The sidebar's visible "A typed length moves" label is hidden from assistive
    technology, because the control already carries that name (Task 13 review).
+9. **Wall labels run along their wall (second live-check fix).** After Amendment 8 the
+   labels cleared their walls, but a label on a vertical wall is about 40 px wide, so in the
+   inset pane it lay over the overall length dimension, and on a diagonal wall a corner of
+   the label still reached into the wall's hit band (review of the first fix). Each label
+   is now turned to its wall's angle (kept upright: between −90° and just under 90°, so
+   vertical walls read bottom to top like the overall length dimension) and centred
+   `CONFIG.wallLabelOffsetPx + CONFIG.wallLabelHalfHeightPx` outside the wall, so every
+   label takes the same 18 px strip beside its wall whatever the wall's angle. Contract:
+   `.soltero/lean-sdd/2026-11-14-wall-editing/task-14-fix2-brief.md`.
