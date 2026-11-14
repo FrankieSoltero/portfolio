@@ -329,9 +329,10 @@
   cursor: crosshair;
 }
 
-/* A wall's length label, centred on its inline left/top (just outside the wall's midpoint). It
-   shares the wall bands' level and follows them in the document, so it is drawn over them. The
-   thin border and text cursor say it can be clicked to type a length. */
+/* A wall's length label at its inline left/top (just outside the wall's midpoint). Its inline
+   transform puts its edge nearest the wall on that point; the centring translate here is the
+   fallback. It shares the wall bands' level and follows them in the document, so it is drawn over
+   them. The thin border and text cursor say it can be clicked to type a length. */
 .room-wall-label {
   position: absolute;
   z-index: 6;
@@ -347,6 +348,10 @@
   background: var(--color-bg);
   cursor: text;
   pointer-events: auto;
+}
+/* With a door or window tool armed, a press near a wall always reaches the wall to place it. */
+.room-edit-layer.is-placing .room-wall-label {
+  pointer-events: none;
 }
 .room-wall-label:hover {
   color: var(--color-accent);

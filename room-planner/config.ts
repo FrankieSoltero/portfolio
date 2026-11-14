@@ -36,8 +36,9 @@ export const CONFIG = {
   // once the pointer has moved wallDragThresholdPx screen pixels.
   sameDirectionSlack: 0.005,
   wallDragThresholdPx: 4,
-  // A wall's length label sits this many screen pixels outside the room from the wall's midpoint.
-  wallLabelOffsetPx: 18,
+  // A wall's length label has its edge nearest the wall this many screen pixels outside the room,
+  // level with the wall's midpoint.
+  wallLabelOffsetPx: 12,
   // Limits a saved plan must keep (planSchema reads them, so edits and loading agree): every
   // outline corner within ±coordMax in, and at most maxItems items.
   coordMax: 1440,

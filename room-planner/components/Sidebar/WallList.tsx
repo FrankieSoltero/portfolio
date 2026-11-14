@@ -107,8 +107,11 @@ export function WallList(): JSX.Element {
   const setLengthAnchor = useUiStore((s) => s.setLengthAnchor);
   return (
     <div className="wall-list" role="group" aria-label="Wall lengths">
-      {/* Visible caption in the Room section's small-label style; the control keeps its own aria-label. */}
-      <span className="shape-buttons-label">A typed length moves</span>
+      {/* Visible caption in the Room section's small-label style, hidden from assistive technology
+          because the control carries the same name in its own aria-label. */}
+      <span className="shape-buttons-label" aria-hidden="true">
+        A typed length moves
+      </span>
       <Segmented
         name="length-anchor"
         aria-label="A typed length moves"

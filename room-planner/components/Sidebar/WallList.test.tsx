@@ -368,6 +368,12 @@ describe('WallList: which end a typed length moves', () => {
     expect(control()).toHaveAttribute('aria-label', 'A typed length moves');
   });
 
+  it('hides the visible label from assistive technology, since the control carries the same name', () => {
+    render(<WallList />);
+    expect(screen.getByText('A typed length moves')).toHaveAttribute('aria-hidden', 'true');
+    expect(control()).toHaveAccessibleName('A typed length moves');
+  });
+
   it('follows lengthAnchor when it changes elsewhere', () => {
     render(<WallList />);
     act(() => useUiStore.getState().setLengthAnchor('both'));

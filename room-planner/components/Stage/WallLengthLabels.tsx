@@ -175,9 +175,19 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
 }
 
 /**
+ * The inline translate that puts a label's edge nearest its wall (inward normal `n`), not its centre,
+ * on its point: `translate(X%, Y%)` with X = −50 − 50·n.x and Y = −50 − 50·n.y. Placed by its near
+ * edge, a label stays clear of its wall's hit band however wide its text is.
+ */
+function nearEdgeTranslate(n: { x: number; y: number }): string {
+  return `translate(${-50 - 50 * n.x}%, ${-50 - 50 * n.y}%)`;
+}
+
+/**
  * A button on the plan for every wall in room mode, showing the wall's length in the current
- * units and named `Wall <n>, <length>`. Each is centred on its wall's midpoint (pane px from
- * `layout`) moved `CONFIG.wallLabelOffsetPx` outside the room, against the wall's inward normal.
+ * units and named `Wall <n>, <length>`. Each has its edge nearest the wall (nearEdgeTranslate) on
+ * its wall's midpoint (pane px from `layout`) moved `CONFIG.wallLabelOffsetPx` outside the room,
+ * against the wall's inward normal; the open editor stays centred on that point.
  * The selected wall's label is pressed. A label that receives focus (by Tab, a click, or a press
  * on its wall's band) selects its wall; a pointer down on it does not reach the plan background.
  * Each carries `data-wall-label-id` so a wall press can focus it. A click (or Enter) on a label
@@ -248,7 +258,7 @@ export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Elemen
             data-wall-label-id={wall.id}
             aria-label={`Wall ${wall.index + 1}, ${text}`}
             aria-pressed={wall.id === selectedWallId}
-            style={{ left, top }}
+            style={{ left, top, transform: nearEdgeTranslate(n) }}
             onPointerDown={stopPress}
             onFocus={() => selectWall(wall.id)}
             onClick={() => {

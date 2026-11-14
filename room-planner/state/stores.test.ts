@@ -1839,13 +1839,13 @@ describe('wall slide and length actions', () => {
     expect(usePlanStore.getState().openings).toEqual([door, win]);
   });
 
-  it('a door that cannot follow blocks the slide', () => {
+  it('a door on the neighbouring wall keeps its place in the room when the slide moves that wall\'s start', () => {
     const door: Door = { id: 'd1', kind: 'door', wallId: 'c2', offset: 100, width: 32, height: 80, hinge: 'start', swing: 'in' };
     withRoom(R, { openings: [door] });
-    const before = usePlanStore.getState().room;
     slideWallTo(req(startWallSlide('c1') ?? undefined, 'a slide'), 60);
-    expect(usePlanStore.getState().room).toBe(before);
-    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['opening-off-wall']);
+    expect(outline()).toEqual([c('c1', 0, 60), c('c2', 144, 60), c('c3', 144, 168), c('c4', 0, 168)]);
+    expect(usePlanStore.getState().openings).toEqual([{ ...door, offset: 40 }]);
+    expect(useUiStore.getState().roomProblem).toBeNull();
   });
 
   it('a slide does not move furniture; an item left outside is reported', () => {
