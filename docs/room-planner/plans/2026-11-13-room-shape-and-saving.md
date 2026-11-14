@@ -153,6 +153,23 @@ gives exactly the slice A colours.
 3. Task 6, clarification: the wall-length and room-size limits are exact (6 in and
    720 in), not widened by `CONFIG.conflictEpsilon`.
 
+## Amendment 5 (2026-11-14, controller ruling after Task 11)
+
+Task 11 left some old-shape references in test files outside Task 12's list, because
+they are overrides or assertions, not literals. Task 12's file list is extended with
+these files, each for the stated change only:
+
+| File | Change allowed in Task 12 |
+|---|---|
+| `room-planner/App.test.tsx`, `room-planner/components/bars.test.tsx` | assertions on `desk().rot` (1, then 2) become assertions on `desk().angle` (90, then 180); `setRoomDim('h', 36)` becomes `setRoomHeight(36)` |
+| `room-planner/three/modelSource.test.ts` | the `['rot', { rot: 2 }]` case becomes `['angle', { angle: 180 }]` |
+| `room-planner/view/blueprintDraw.test.ts` | `{ ...CRATE, rot: 1 }` becomes the same crate turned 90° about the centre it had as a quarter-turned item before (centre = old `x + d/2`, `y + w/2`), so no expected coordinate changes |
+| `room-planner/view/blueprintScene.test.ts` | the imports of `footprint`, `mapPart` and `Rot` go; the cases that compared prisms with `mapPart` are re-expressed with `partCorners` or fixed expected values copied from the passing test; `{ ...i, rot }` becomes `{ ...i, angle }` with `angle = rot × 90` |
+| `room-planner/domain/shape.test.ts` (already listed) | the remaining old-shape literal `{ x: 30, y: 50, w: 60, d: 40, rot }` is replaced as the "Task 2's mapping comparison" row says |
+
+In every one of these files an `expect(` line may change only as the table states;
+the report lists each changed assertion.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
