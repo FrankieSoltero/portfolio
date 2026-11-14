@@ -126,3 +126,32 @@
   filling a slot paints *over* the slot's inset `box-shadow`, breaking the divider —
   hence a real border for the divider. Column is painted in the quest's `spriteBg`
   so the art reads as a panel, not a tile on stripes.
+
+## 2026-11-13 — Dependency audit before the Room Planner move
+
+### Counts (`npm audit --omit=dev`)
+| Severity | Before | After |
+|----------|-------:|------:|
+| critical | 1 (`next`) | 0 |
+| high | 6 (`js-yaml`, `nanoid`, `postcss`, `sharp`, `source-map-js`, `zod`) | 1 (`zod`) |
+| moderate | 0 | 0 |
+| low | 4 (`katex`, `rehype-katex`, `remark-math`, `micromark-extension-math`) | 4 (same) |
+
+### Packages updated
+- `npm audit fix` (no `--force`), lockfile only, all within existing semver ranges:
+  `next` 15.5.20 → 15.5.29, `js-yaml` 3.15.0 → 3.15.2, `nanoid` 3.3.15 → 3.3.20,
+  `source-map-js` 1.2.1 → 1.2.2, `sharp` 0.34.5 → 0.35.5 (with its `@img/*`
+  platform packages; libvips 1.2.4 → 1.3.4), `@emnapi/runtime` 1.11.1 → 1.11.3.
+- **Override:** `package.json` gains `"overrides": { "next": { "postcss": "8.5.33" } }`,
+  so `postcss` under `next` goes 8.4.31 → 8.5.33 (outside the advisory range `<=8.5.22`).
+  Why: `next@15.5.29`, the newest 15.x, pins `postcss` to exactly `8.4.31`, so
+  `npm audit fix` cannot move it; npm's only offered fix is Next 16 (a major).
+  **Remove this override when Next is upgraded to 16.**
+- Left as-is (fixes are semver-major): `zod` 3.x (fix is 4.x) and `katex` 0.16.x
+  (fix is 0.19.x, which also flags `rehype-katex` and `remark-math`).
+
+### Verification
+- `npm run build` exit 0; routes `/papers`, `/papers/[slug]`, `/papers/feed.xml`,
+  `/sitemap.xml` still present.
+- `/papers` and `/papers/grokking` HTML served before and after are identical once
+  `/_next/static/…` paths and the build id are normalised away.
