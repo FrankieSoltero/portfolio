@@ -35,15 +35,41 @@
 }
 .plan-dim-l > .plan-dim-label { transform: rotate(-90deg); }
 
-/* Room: 2px text border, neutral fill, grid lines at text colour 9%. The grid step is the
-   inline background-size. Two classes so this wins over `.blueprint`'s divider border. */
-.blueprint.plan-room {
+/* Room: neutral fill, grid lines at text colour 9%, filling the pane and clipped to the outline
+   by an inline clip-path. The grid step and its origin are the inline background-size and
+   background-position. */
+.plan-room {
   position: absolute;
-  border: 2px solid var(--color-text);
+  inset: 0;
   background-color: var(--color-neutral-100);
   background-image:
     linear-gradient(to right, color-mix(in srgb, var(--color-text) 9%, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, color-mix(in srgb, var(--color-text) 9%, transparent) 1px, transparent 1px);
+}
+
+/* Walls: the outline stroked 2px in the text colour, over the room and under the furniture. */
+.plan-outline {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.plan-outline-wall {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-width: 2;
+  stroke-linejoin: miter;
+}
+
+/* Carries the corner marks on the bounding box of a rectangular room. Two classes so this
+   wins over `.blueprint`'s relative position and divider border. */
+.blueprint.plan-outline-frame {
+  position: absolute;
+  border: 0;
+  pointer-events: none;
 }
 
 /* Furniture boxes. Later rules win: conflict hatch over rug fill, selected border over
@@ -83,6 +109,16 @@
   border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
   pointer-events: none;
 }
+/* The label's box as the footprint appears on screen, centred on the item; its size and the
+   rotation that keeps the text upright are inline. */
+.plan-outline-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
 .plan-item-label {
   position: relative;
   text-align: center;
@@ -102,17 +138,19 @@
   color: var(--color-neutral-700);
 }
 
-/* Clearance lines: dashed accent-700 hairline with a distance chip. */
+/* Clearance lines: dashed accent-700 hairline with a distance chip. Each starts at its inline
+   left/top and is turned about that point; the chip turns back to stay upright. */
 .plan-clearance {
   position: absolute;
   z-index: 7;
+  height: 0;
+  border-top: 1px dashed var(--color-accent-700);
+  transform-origin: 0 0;
   pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.plan-clearance.is-h { height: 0; border-top: 1px dashed var(--color-accent-700); }
-.plan-clearance.is-v { width: 0; border-left: 1px dashed var(--color-accent-700); }
 .plan-clearance-chip {
   background: var(--color-accent-700);
   color: var(--color-bg);
