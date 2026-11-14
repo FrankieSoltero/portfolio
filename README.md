@@ -10,7 +10,9 @@ Three sections, three deliberately different design languages:
   experiment log (IBM Plex, Run Cards), not the 8-bit theme.
 - **`/room-planner`** — a room layout tool: 2D plan and 3D check, React and three.js,
   client-side only. Source in `room-planner/`, mounted by `app/room-planner/`. Has its
-  own design language (Industry), not the 8-bit theme.
+  own design language (Industry), not the 8-bit theme. The room is an outline edited in
+  "Edit room" mode, and furniture rotates to any angle. The plan is saved in the browser
+  under `room-planner:plan:v1`, validated on load and never sent to a server.
 
 ## Run locally
 
@@ -41,8 +43,9 @@ byte-identical with zero build processing.
 - `room-planner/` — the Room Planner source (React + three.js). `PlannerRoot.tsx`
   renders the `.room-planner` wrapper and imports the self-hosted fonts and stylesheets.
   Styles live in `room-planner/styles/` and must stay scoped to `.room-planner`
-  (enforced by `room-planner/styles/scoping.test.ts`). No backend: plans live in memory
-  and reset on refresh; product lookup is a mock (`services/mockProductLookup.ts`).
+  (enforced by `room-planner/styles/scoping.test.ts`). No backend: the plan is saved in
+  the browser under `room-planner:plan:v1`, validated on load and never sent to a server;
+  "Reset plan" erases it. Product lookup is a mock (`services/mockProductLookup.ts`).
 - `app/room-planner/` — the `/room-planner` route: `page.tsx`, `PlannerLoader.tsx`
   (loads the planner client-side only) and `error.tsx` (load-failure screen).
 - `docs/room-planner/` — specs, plans, plan reviews, verification notes, the read-only

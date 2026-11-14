@@ -216,3 +216,191 @@ Entry format:
 - **Root cause:** Task 2 changed a fact that an earlier log entry stated, and only added new text instead of checking the older entry.
 - **Fix:** The Task 1 line now says it was left as-is at that step and points to the zod upgrade subsection.
 - **How to avoid:** When a task changes a fact an earlier log entry states, update that entry in the same commit.
+
+## 2026-11-13 — Room shape and saving
+
+The first 13 entries are plan defects, each caught by an implementer stopping or by a reviewer
+and fixed by a plan amendment. The entries after them are implementers' mistakes, with the
+task named in the title.
+
+### Plan review took four runs
+- **Date:** 2026-11-13
+- **What happened:** The plan failed its review three times on errors in hand-written worked examples and in the order-dependent live-check rows (for example: two boxes "overlapping" at a distance where they do not; a row acting on a bed that an earlier row's fixture had removed). It failed a fourth time on an oversized task.
+- **Root cause:** Examples were written without being recomputed, and rows were edited without re-reading the rows around them.
+- **Fix:** Every numeric example was re-derived by hand. The oversized data-switch task was split in four.
+- **How to avoid:** Compute every example before writing it into a plan, and re-read neighbouring rows after editing one.
+
+### Missed call sites of a changed function (plan Amendment 1)
+- **Date:** 2026-11-13
+- **What happened:** Task 2 changed the signature of `computeCameraPose`. The plan did not list the four test files that call it.
+- **Root cause:** The callers were not searched for when the task was written.
+- **Fix:** Plan Amendment 1 added the four test files to the task.
+- **How to avoid:** Grep for every caller of a function before writing a task that changes its signature.
+
+### Field name clash in `SceneInput` and `BlueprintInput` (plan Amendment 2)
+- **Date:** 2026-11-13
+- **What happened:** The plan named the room's height `height` in `SceneInput` and `BlueprintInput`, which already used `height` for the pane size.
+- **Root cause:** The interface being extended was not read before the new field was named.
+- **Fix:** Plan Amendment 2 renamed the new field.
+- **How to avoid:** Read the interface being extended before naming new fields.
+
+### A colour rule changed existing behaviour (plan Amendment 3)
+- **Date:** 2026-11-13
+- **What happened:** The plan coloured blueprint sides by edge index. That reversed the shades of quarter-turned furniture.
+- **Root cause:** The generalised rule was not checked against the existing quarter-turn cases.
+- **Fix:** Sides are coloured by the plan axis they face.
+- **How to avoid:** Check a generalised rule against the existing quarter-turn cases before adopting it.
+
+### A test that pins the whole config object (plan Amendment 4)
+- **Date:** 2026-11-13
+- **What happened:** Adding constants to `config.ts` failed `catalog.test.ts`, which the plan had not listed.
+- **Root cause:** No search was made for tests that snapshot the whole object.
+- **Fix:** Plan Amendment 4 added the test to the task.
+- **How to avoid:** Search for tests that snapshot a whole object before planning to extend it.
+
+### Non-finite input was not specified (plan Amendment 4)
+- **Date:** 2026-11-13
+- **What happened:** The outline operations accepted NaN targets until an implementer pointed it out.
+- **Root cause:** The plan did not say what each operation does with non-finite numbers.
+- **Fix:** Plan Amendment 4 specified the behaviour for non-finite input.
+- **How to avoid:** Say what every operation does with non-finite numbers.
+
+### Old-shape references left outside the data-switch task (plan Amendments 5 and 6)
+- **Date:** 2026-11-13
+- **What happened:** Overrides and assertions on `rot` and `setRoomDim`, and a `Rotate 90°` click handler, were outside the data-switch task's file list.
+- **Root cause:** Production and test code were not searched for every removed name.
+- **Fix:** Plan Amendments 5 and 6 added them to the task.
+- **How to avoid:** Before a data-shape change, grep both production and test code for every removed name.
+
+### The snapping rule was wrong twice (plan Amendments 6 and 7)
+- **Date:** 2026-11-13
+- **What happened:** First the plan snapped a piece's centre, so a piece with an odd dimension could not sit flush against a wall. The replacement, which snapped the bounding box's corner on every move, made arrow-key nudges move 1.5 in after a rotation.
+- **Root cause:** Each replacement rule was checked against one interaction, not against all of them.
+- **Fix:** Final rule: drags snap the bounding box's corner, nudges move by the exact step, and rotation keeps the centre.
+- **How to avoid:** When replacing a behaviour, list every existing interaction (drag, nudge, rotate) and work an example for each before fixing the rule.
+
+### The painter's sort assumed an antisymmetric comparison
+- **Date:** 2026-11-13
+- **What happened:** The plan's `frontOf` axis order let two prisms each be "in front" of the other. The sort treated that as a cycle and drew a turned piece over a shelf that should hide it. A reviewer reproduced it.
+- **Root cause:** The comparison was assumed to be antisymmetric and was not checked.
+- **Fix:** The sort ignores mutually in-front pairs.
+- **How to avoid:** When generalising a comparison, check that it stays antisymmetric, or make the consumer tolerate ties.
+
+### No keyboard way to add a corner (plan Amendment 8)
+- **Date:** 2026-11-13
+- **What happened:** The plan made adding a corner pointer-only, which broke its own accessibility rule.
+- **Root cause:** The new action was not checked against the keyboard rule while it was planned.
+- **Fix:** An `Add a corner` button per wall.
+- **How to avoid:** Check each new action against the keyboard rule while planning it.
+
+### Double load under StrictMode
+- **Date:** 2026-11-13
+- **What happened:** The persistence design let React's double effect run call `load()` twice. The first call removed an unreadable plan and the second reported `empty`, so the notice never showed in development.
+- **Root cause:** An effect that calls a function with side effects was not designed for a double run.
+- **Fix:** The implementer loads once.
+- **How to avoid:** Design any effect that calls a function with side effects for a double run.
+
+### Two live-check rows were written wrongly (plan Amendment 10)
+- **Date:** 2026-11-13
+- **What happened:** Row B15 expected a migrated plan to be written back on load, which the design says does not happen. Row B18 expected no third-party request in a session that also visits the home page, which loads Google Fonts.
+- **Root cause:** The expectations were not derived from the design text, and the network check was not scoped to the route under test.
+- **Fix:** Plan Amendment 10 corrected both rows.
+- **How to avoid:** Derive each row's expectation from the design text, and scope a network check to the route under test.
+
+### The fix pass was planned after the live verification (plan Amendment 9)
+- **Date:** 2026-11-13
+- **What happened:** The plan put the fix pass after the live verification, so the check would have run on code that then changed.
+- **Root cause:** The order of the last tasks was not checked against what each one changes.
+- **Fix:** Plan Amendment 9: known findings are fixed first.
+- **How to avoid:** Put the live check after the last planned code change.
+
+### An invalid mutation check hid a coverage gap (Task 3)
+- **Date:** 2026-11-13
+- **What happened:** The first mutation for "clearances use the outline" replaced `outline` with `roomOutline({ w: 144, l: 168, h: 96 })`. That still went through the mocked `roomOutline`, so the mutation survived and proved nothing. Re-running it exposed that the view's clearance call had no test with a non-seed outline.
+- **Root cause:** The mutation used the same seam the test replaces. The seed room and the bounding box give identical gaps, which hid the gap in coverage.
+- **Fix:** The mutation was re-run with a literal rectangle array and the new test failed as it should. A test was added: `runs the clearance lines to the walls of the outline, not of the bounding box` (16 in to the cut-out wall, not 40).
+- **How to avoid:** Write a mutation that does not go through the seam the test replaces, and check that it fails before trusting it.
+
+### A temporary probe test was briefly in the repo (Task 3)
+- **Date:** 2026-11-13
+- **What happened:** To check how jsdom handles `clipPath` and `transform`, a probe test (`room-planner/zz-probe.test.ts`) was copied into the repo. It was deleted immediately (`ls room-planner/zz*` printed no matches) and was never staged.
+- **Root cause:** Vitest only collects tests inside the repo.
+- **Fix:** The file was deleted.
+- **How to avoid:** Use an inline check inside an existing test run instead of a probe file.
+
+### A tolerance test tested a gap, not an overlap (Task 5)
+- **Date:** 2026-11-13
+- **What happened:** The first "touching within 0.01" test used a box starting at 10.005, which is strictly separated from the box ending at 10. It passed even with the tolerance removed.
+- **Root cause:** The test covered a gap, not an overlap inside the tolerance.
+- **Fix:** The second box now starts at 9.995 (0.005 overlap). The tolerance mutation makes the test fail.
+- **How to avoid:** Run a mutation that removes the tolerance and check that the test fails.
+
+### Mutation runs that tested nothing (Task 13)
+- **Date:** 2026-11-13
+- **What happened:** The first mutation run on the keyboard hook used `$f.test.tsx` with `$f` set to the `.ts` file. That path does not exist, so vitest ran no tests and printed nothing. The empty output was noticed.
+- **Root cause:** The test path was built from the source path's variable.
+- **Fix:** An explicit test-file variable was used and both mutations were re-run. They failed as expected.
+- **How to avoid:** Name the test file explicitly, and treat an empty test run as a failure of the check.
+
+### A mutation that did not compile (Task 13)
+- **Date:** 2026-11-13
+- **What happened:** The first Alt-ordering mutation on `RoomEditLayer` produced a syntax error (TS1109), so every test file failed to load and the result proved nothing.
+- **Root cause:** A careless string splice.
+- **Fix:** A mutation that only moves the listener registration after `startDrag` and drops capture was used. It compiled and failed exactly one test, the Alt row. Both files were restored from backups and `diff -q` confirmed it. Production code was never committed with a mutation in it.
+- **How to avoid:** Check that a mutated file compiles, and that the failure is the intended one, before trusting the result.
+
+### A flaky test filtered random UUIDs by the prefix `c` (Task 14)
+- **Date:** 2026-11-13
+- **What happened:** The test "adds and selects a corner at the midpoint …" failed intermittently, about 1 run in 6. It was found while running mutation checks, when a mutation run reported an extra, unrelated failure; the unmutated suite was then run 6 times.
+- **Root cause:** To keep only the old corners, the test filtered corner ids with `startsWith('c')`. A random UUID from `crypto.randomUUID()` sometimes starts with `c`, so it was kept too.
+- **Fix:** The test now asserts the ids at indexes 0, 1, 3 and 4 directly, and checks that the new id is not one of c1 to c4. After the fix, 8 consecutive runs plus 3 more Verify runs all passed.
+- **How to avoid:** Never pattern-match on random ids in tests; assert by position or identity.
+
+### An off-by-one in an oversized-load fixture (Task 17)
+- **Date:** 2026-11-13
+- **What happened:** `'{' + ' '.repeat(max - 1) + '}x'` is max+2 characters, so the fixture's own length assertion failed on the first run.
+- **Root cause:** The two-character suffix was miscounted.
+- **Fix:** The fixture is now a valid serialised document padded with spaces to exactly max+1, which also proves that the size gate, not a parse failure, discards it.
+- **How to avoid:** Build a boundary fixture from a valid document and assert its length.
+
+### A wrong unit literal in a test fixture (Task 17)
+- **Date:** 2026-11-13
+- **What happened:** `units: 'in'` in the overwrite test failed `tsc` during `npm run check`. Vitest does not typecheck, so the test run was green.
+- **Root cause:** Inches were assumed to be a unit option. `Units` is `'ft' | 'm'`.
+- **Fix:** The fixture uses `'m'`.
+- **How to avoid:** Check the domain type before writing literals in fixtures. A green Vitest run is not a green typecheck.
+
+### Restore step edited the backup instead of restoring from it (Task 18)
+- **Date:** 2026-11-13
+- **What happened:** During the Notice mutation check, the restore step ran `sed` on the backup copy instead of restoring from it. That left a second mutant (no null return) in place, and the follow-up `Write` was refused because the file had changed since it was read. The first `npm run check` then failed 3 tests.
+- **Root cause:** The mutate and restore steps were chained in one shell command and the backup was edited.
+- **Fix:** The file was read and the `if (notice === null) return null;` line was restored with an exact edit. The four test files were re-run (35 passed) and `npm run check` exited 0 before the commit.
+- **How to avoid:** Restore from the backup with a plain copy, in a separate step, and confirm the file matches it.
+
+### The App notice test used an ambiguous role lookup (Task 18)
+- **Date:** 2026-11-13
+- **What happened:** The first draft of the App notice test used `getByRole('status')`. The failing run showed that `RoomSection` keeps an empty `.room-problem[role=status]` always mounted, so the lookup was ambiguous.
+- **Root cause:** The test assumed only one `status` element would be mounted.
+- **Fix:** The test finds `.notice` and asserts `role="status"` on it. The loading test keeps `getByRole('status')`, because the workspace is not mounted while loading.
+- **How to avoid:** Run a new test and read its failure before relying on a lookup.
+
+### A double-click test combined `user.dblClick` with an extra click (Task 19)
+- **Date:** 2026-11-13
+- **What happened:** The test saw `onConfirm` called twice.
+- **Root cause:** The unkeyed fragment `armed ? <>[confirm, cancel]</> : <button>` lets React reuse the confirm `<button>` DOM node as the label button. The double click's second click therefore re-armed the component, and the third click (an extra `fireEvent.click`) confirmed again. Three clicks is not a double click.
+- **Fix:** The test was split into a realistic `dblClick` test and a separate test that sends two clicks inside one `act()`, so both reach the armed button before the re-render. The `armedRef` guard is what makes the second one pass, as mutation M1 shows. `key`s were briefly added to the buttons, but no test could tell them apart, so they were removed instead of shipping untested code.
+- **How to avoid:** Send the number of clicks a user would send. Do not keep code that no test can tell apart from its absence.
+
+### The `ended` flag was not covered by any test (Task 19b)
+- **Date:** 2026-11-13
+- **What happened:** The first fix only returned early in the move callback while the mode was not `'room'`. A mutation run that removed `ended ||` stayed green.
+- **Root cause:** No test covered room mode coming back before pointer up, when the old drag would resume editing.
+- **Fix:** An assertion for that case was added and watched failing against the first fix. The move callback now ends the drag (`endDrag()`) the first time it sees a non-room mode.
+- **How to avoid:** Run a mutation on every guard added in a fix, and add the test the mutation shows is missing.
+
+### A test leaked store wrappers into later tests (Task 19b)
+- **Date:** 2026-11-13
+- **What happened:** The first version of the test wrapped the stores' `reset` methods with `setState`, which merges, so the wrappers would have stayed on the stores after the test.
+- **Root cause:** `setState` merges instead of restoring, so the wrapped methods were never put back.
+- **Fix:** The original methods are restored in `try/finally`.
+- **How to avoid:** Restore anything a test replaces on a shared store in `try/finally`.
