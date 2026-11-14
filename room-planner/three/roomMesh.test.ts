@@ -429,74 +429,90 @@ describe('buildRoom opening frames', () => {
   /** Holes on wall 0 (C1 to C2) only. */
   const onWall0 = (...cut: WallHole[]): WallHole[][] => R.map((_, i) => (i === 0 ? cut : []));
 
-  function frames(group: THREE.Group): THREE.LineSegments[] {
+  /** Every object named opening-frames under the room, after the world matrices are updated. */
+  function frames(group: THREE.Group): StdMesh[] {
     group.updateMatrixWorld(true);
-    return group.children.filter((c): c is THREE.LineSegments => c.name === 'opening-frames');
-  }
-
-  /** The frame's segments as `(along,up)-(along,up)` in the frame of the wall from a to b, sorted. */
-  function segmentsInWall(frame: THREE.LineSegments, a: Point, b: Point): string[] {
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    const ux = (b.x - a.x) / len;
-    const uy = (b.y - a.y) / len;
-    const pos = frame.geometry.getAttribute('position');
-    const at = (i: number): string => {
-      const p = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(frame.matrixWorld);
-      const along = (p.x - a.x) * ux + (p.z - a.y) * uy;
-      return `(${round6(along)},${round6(p.y)})`;
-    };
-    const out: string[] = [];
-    for (let i = 0; i + 1 < pos.count; i += 2) out.push([at(i), at(i + 1)].sort().join('-'));
-    return out.sort();
-  }
-
-  /** Signed distance of every frame vertex from the wall's plane, along its inward normal. */
-  function offsetsFromWall(frame: THREE.LineSegments, a: Point, b: Point): number[] {
-    const n = inwardNormal(a, b);
-    const pos = frame.geometry.getAttribute('position');
-    const out: number[] = [];
-    for (let i = 0; i < pos.count; i++) {
-      const p = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(frame.matrixWorld);
-      out.push((p.x - a.x) * n.x + (p.z - a.y) * n.z);
-    }
+    const out: StdMesh[] = [];
+    group.traverse((n) => {
+      if (n.name === 'opening-frames') out.push(n as StdMesh);
+    });
     return out;
   }
 
-  const seg = (p: [number, number], q: [number, number]): string =>
-    [`(${round6(p[0])},${round6(p[1])})`, `(${round6(q[0])},${round6(q[1])})`].sort().join('-');
+  /** Signed distance of every frame vertex from the wall's plane, along its inward normal. */
+  function offsetsFromWall(frame: THREE.Mesh, a: Point, b: Point): number[] {
+    const n = inwardNormal(a, b);
+    return worldVertices(frame).map((p) => (p.x - a.x) * n.x + (p.z - a.y) * n.z);
+  }
 
-  it('frames a door hole with its two jambs and its head, just inside the wall, in the text colour', () => {
-    const found = frames(buildRoom(R, H, TOKENS, null, onWall0(DOOR_HOLE)));
+  it('frames a door hole with two jambs and a head drawn inside its edges, facing inward like the wall', () => {
+    const group = buildRoom(R, H, TOKENS, null, onWall0(DOOR_HOLE));
+    const found = frames(group);
     expect(found).toHaveLength(1);
-    const [frame] = found as [THREE.LineSegments];
-    expect(frame).toBeInstanceOf(THREE.LineSegments);
-    // SceneRenderer's disposeTree frees the geometry and material of every THREE.Line.
-    expect(frame).toBeInstanceOf(THREE.Line);
-    expect(segmentsInWall(frame, C1, C2)).toEqual([
-      seg([20, 0], [20, 80]), seg([52, 0], [52, 80]), seg([20, 80], [52, 80]),
-    ].sort());
-    for (const d of offsetsFromWall(frame, C1, C2)) expect(d).toBeCloseTo(0.25, 9);
-    const material = frame.material as THREE.Material;
-    expect(material).toBeInstanceOf(THREE.LineBasicMaterial);
-    expect((material as THREE.LineBasicMaterial).color.getHexString()).toBe('111111');
+    const [frame] = found as [StdMesh];
+    expect(frame).toBeInstanceOf(THREE.Mesh);
+    // Jambs, head.
+    expect(covers(frame, C1, C2, 20.5, 40)).toBe(true);
+    expect(covers(frame, C1, C2, 51.5, 40)).toBe(true);
+    expect(covers(frame, C1, C2, 36, 79.5)).toBe(true);
+    // Not the opening itself, and no sill on the floor.
+    expect(covers(frame, C1, C2, 36, 40)).toBe(false);
+    expect(covers(frame, C1, C2, 36, 0.5)).toBe(false);
+    // Not outside the hole.
+    expect(covers(frame, C1, C2, 19.5, 40)).toBe(false);
+    expect(covers(frame, C1, C2, 36, 80.5)).toBe(false);
+    expectFacesInward(frame, C1, C2);
+    for (const d of offsetsFromWall(frame, C1, C2)) expect(d).toBeCloseTo(0.25, 6);
+    expect(frame.material).toBeInstanceOf(THREE.MeshBasicMaterial);
+    expect(frame.material.color.getHexString()).toBe('111111');
+    expect(frame.material.side).toBe(THREE.FrontSide);
+    expect(frame.castShadow).toBe(false);
+    expect(frame.receiveShadow).toBe(false);
   });
 
   it('frames a window hole with its jambs, head and sill', () => {
-    const [frame] = frames(buildRoom(R, H, TOKENS, null, onWall0(WINDOW_HOLE))) as [THREE.LineSegments];
-    expect(segmentsInWall(frame, C1, C2)).toEqual([
-      seg([100, 36], [100, 84]), seg([136, 36], [136, 84]), seg([100, 84], [136, 84]), seg([100, 36], [136, 36]),
-    ].sort());
+    const [frame] = frames(buildRoom(R, H, TOKENS, null, onWall0(WINDOW_HOLE))) as [StdMesh];
+    expect(covers(frame, C1, C2, 100.5, 60)).toBe(true);
+    expect(covers(frame, C1, C2, 135.5, 60)).toBe(true);
+    expect(covers(frame, C1, C2, 118, 83.5)).toBe(true);
+    expect(covers(frame, C1, C2, 118, 36.5)).toBe(true);
+    expect(covers(frame, C1, C2, 118, 60)).toBe(false);
+    expect(covers(frame, C1, C2, 118, 35.5)).toBe(false);
+    expectFacesInward(frame, C1, C2);
+  });
+
+  it('clamps the frame to the wall and skips the parts left with no area', () => {
+    // A hole running past the wall's start and above its top: its left jamb and its head fall
+    // outside the wall and are dropped; the right jamb is cut at the ceiling.
+    const [frame] = frames(buildRoom(R, H, TOKENS, null, onWall0({ x0: -10, x1: 30, z0: 0, z1: 120, glass: false }))) as [StdMesh];
+    for (const p of wallFrame(frame, C1, C2)) {
+      expect(p.x).toBeGreaterThanOrEqual(-1e-9);
+      expect(p.x).toBeLessThanOrEqual(144 + 1e-9);
+      expect(p.y).toBeGreaterThanOrEqual(-1e-9);
+      expect(p.y).toBeLessThanOrEqual(96 + 1e-9);
+    }
+    expect(covers(frame, C1, C2, 29.5, 48)).toBe(true);
+    expect(covers(frame, C1, C2, 0.5, 48)).toBe(false);
+    // Two triangles: only the right jamb is left.
+    expect(frame.geometry.getIndex()?.count).toBe(6);
   });
 
   it('puts every frame of one wall in one object', () => {
-    const [frame, ...rest] = frames(buildRoom(R, H, TOKENS, null, onWall0(DOOR_HOLE, WINDOW_HOLE)));
-    expect(rest).toHaveLength(0);
-    if (!frame) throw new Error('no frame');
-    expect(segmentsInWall(frame, C1, C2)).toHaveLength(7);
+    const found = frames(buildRoom(R, H, TOKENS, null, onWall0(DOOR_HOLE, WINDOW_HOLE)));
+    expect(found).toHaveLength(1);
+    const [frame] = found as [StdMesh];
+    expect(covers(frame, C1, C2, 20.5, 40)).toBe(true);
+    expect(covers(frame, C1, C2, 118, 36.5)).toBe(true);
   });
 
-  it('gives a wall without holes no frame object', () => {
-    expect(frames(buildRoom(R, H, TOKENS, null, onWall0(DOOR_HOLE)))).toHaveLength(1);
+  it('gives a wall without holes no opening-frames child', () => {
+    const group = buildRoom(R, H, TOKENS, null, onWall0(DOOR_HOLE));
+    const { walls } = split(group);
+    const holed = wallOn(walls, C1, C2);
+    expect(holed.children.filter((c) => c.name === 'opening-frames')).toHaveLength(1);
+    for (const wall of walls.filter((w) => w !== holed)) {
+      expect(wall.children.filter((c) => c.name === 'opening-frames')).toHaveLength(0);
+    }
     expect(frames(buildRoom(R, H, TOKENS, null, R.map(() => [])))).toHaveLength(0);
     expect(frames(buildRoom(R, H, TOKENS, null))).toHaveLength(0);
   });

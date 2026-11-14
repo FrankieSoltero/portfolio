@@ -100,7 +100,6 @@
   stroke: var(--color-text);
   stroke-width: 1;
 }
-/* A window is two parallel lines: on the wall line and 3px inside it. */
 /* A window: a band across the wall in the background colour, 6 px wide and centred on the wall
    line, with a thin line along each edge and one along the centre (three parallel lines). */
 .plan-window-band {

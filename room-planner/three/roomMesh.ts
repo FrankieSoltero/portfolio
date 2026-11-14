@@ -154,20 +154,29 @@ function rectsGeometry(rects: readonly WallRect[], length: number, height: numbe
   return geometry;
 }
 
+/** Width of an opening's frame strips, in inches, drawn just inside the hole's edges. */
+const FRAME_WIDTH = 1;
+
 /**
- * The frame segments of a wall's holes, as (along, up) end-point pairs in the wall's frame: the two
- * jambs and the head of every hole, and the sill of a hole that starts above the floor.
+ * The frame of a `length` × `height` wall's holes, as rectangles in the wall's frame: for every hole
+ * its two jambs and its head, and its sill when it starts above the floor, each FRAME_WIDTH wide (or
+ * the hole's own size, if smaller) just inside the hole's edges. Each is clamped to the wall, and a
+ * rectangle left with no area is dropped.
  */
-function frameSegments(holes: readonly WallHole[]): [number, number][][] {
-  return holes.flatMap((h) => {
-    const segments: [number, number][][] = [
-      [[h.x0, h.z0], [h.x0, h.z1]],
-      [[h.x1, h.z0], [h.x1, h.z1]],
-      [[h.x0, h.z1], [h.x1, h.z1]],
-    ];
-    if (h.z0 > 0) segments.push([[h.x0, h.z0], [h.x1, h.z0]]);
-    return segments;
-  });
+function frameRects(holes: readonly WallHole[], length: number, height: number): WallRect[] {
+  const clamp = (v: number, max: number): number => Math.min(Math.max(v, 0), max);
+  return holes
+    .flatMap((h) => {
+      const rects: WallRect[] = [
+        { x0: h.x0, x1: Math.min(h.x0 + FRAME_WIDTH, h.x1), z0: h.z0, z1: h.z1 },
+        { x0: Math.max(h.x1 - FRAME_WIDTH, h.x0), x1: h.x1, z0: h.z0, z1: h.z1 },
+        { x0: h.x0, x1: h.x1, z0: Math.max(h.z1 - FRAME_WIDTH, h.z0), z1: h.z1 },
+      ];
+      if (h.z0 > 0) rects.push({ x0: h.x0, x1: h.x1, z0: h.z0, z1: Math.min(h.z0 + FRAME_WIDTH, h.z1) });
+      return rects;
+    })
+    .map((r) => ({ x0: clamp(r.x0, length), x1: clamp(r.x1, length), z0: clamp(r.z0, height), z1: clamp(r.z1, height) }))
+    .filter((r) => r.x1 > r.x0 && r.z1 > r.z0);
 }
 
 /**
@@ -176,8 +185,8 @@ function frameSegments(holes: readonly WallHole[]): [number, number][][] {
  * corners whose normal is the wall's inward normal, so a wall between the camera and the
  * room is culled. `holes` (one list per wall, from `wallHoles`) cuts doors and windows out of
  * the walls, fills each window with a translucent pane and outlines each hole with a thin frame in
- * the text colour (one `opening-frames` LineSegments per wall with holes, FRAME_OFFSET inside the
- * wall); without it the walls are whole.
+ * the text colour: one `opening-frames` mesh per wall with holes, a child of the wall FRAME_OFFSET
+ * inside it, single-sided like the wall so it is culled with it. Without it the walls are whole.
  */
 export function buildRoom(outline: readonly Point[], height: number, tokens: Tokens,
   floorMap: THREE.Texture | null, holes?: readonly (readonly WallHole[])[]): THREE.Group {
@@ -226,16 +235,19 @@ export function buildRoom(outline: readonly Point[], height: number, tokens: Tok
       group.add(pane);
     }
 
-    if (cut.length > 0) {
-      // World position of a point `along` the wall from a and `up` above the floor, just inside it.
-      const positions = frameSegments(cut).flat().flatMap(([along, up]) => [
-        a.x + ny * along + nx * FRAME_OFFSET, up, a.y - nx * along + ny * FRAME_OFFSET,
-      ]);
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      const frames = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: tokens.text }));
+    const rims = frameRects(cut, len, height);
+    if (rims.length > 0) {
+      // A child of the wall, so it has the wall's place and turn; moved FRAME_OFFSET along the
+      // wall's +Z, its inward normal, so it does not z-fight with the wall.
+      const frames = new THREE.Mesh(
+        rectsGeometry(rims, len, height),
+        new THREE.MeshBasicMaterial({ color: tokens.text, side: THREE.FrontSide }),
+      );
       frames.name = 'opening-frames';
-      group.add(frames);
+      frames.position.set(0, 0, FRAME_OFFSET);
+      frames.castShadow = false;
+      frames.receiveShadow = false;
+      mesh.add(frames);
     }
   });
 

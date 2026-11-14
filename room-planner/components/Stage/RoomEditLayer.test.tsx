@@ -83,10 +83,28 @@ function lastDrag(): { id: string; target: Point; opts: { angleSnap: boolean; to
 
 describe('useRoomModeDrag', () => {
   /** A bare element that starts a room-mode drag on every pointer down, with no button check of its own. */
-  function Dragger({ onMove }: { onMove: (dx: number, dy: number) => void }) {
+  function Dragger({ onMove, onEnd }: { onMove: (dx: number, dy: number) => void; onEnd?: () => void }) {
     const beginDrag = useRoomModeDrag();
-    return <div data-testid="dragger" onPointerDown={(e) => beginDrag(e, onMove, { freeze: layout })} />;
+    return <div data-testid="dragger" onPointerDown={(e) => beginDrag(e, onMove, { freeze: layout, onEnd })} />;
   }
+
+  it('calls onEnd once for a secondary-button pointer down, so a caller\'s setup is undone, and freezes nothing', () => {
+    const freeze = vi.fn();
+    const onMove = vi.fn();
+    const onEnd = vi.fn();
+    render(
+      <FreezePlanLayoutContext value={freeze}>
+        <Dragger onMove={onMove} onEnd={onEnd} />
+      </FreezePlanLayoutContext>,
+    );
+    fireEvent.pointerDown(screen.getByTestId('dragger'), { clientX: 100, clientY: 100, button: 2 });
+    expect(onEnd).toHaveBeenCalledTimes(1);
+    fireEvent.pointerMove(window, { clientX: 140, clientY: 120 });
+    fireEvent.pointerUp(window);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+    expect(freeze).not.toHaveBeenCalled();
+    expect(onMove).not.toHaveBeenCalled();
+  });
 
   it('starts no drag for a secondary-button pointer down: no freeze, no moves', () => {
     const freeze = vi.fn();

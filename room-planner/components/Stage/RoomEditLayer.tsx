@@ -31,7 +31,8 @@ export type BeginRoomDrag = (
 /**
  * Room-mode drags of corners, doors, windows and obstacles. The returned function freezes the plan
  * layout at `opts.freeze` and starts a drag that reports the pointer movement to `onMove`; only a
- * primary-button press starts one (callers check `isPrimaryPress` before selecting anything). The drag
+ * primary-button press starts one (callers check `isPrimaryPress` before selecting anything). For any
+ * other button it freezes nothing and starts nothing, but calls `opts.onEnd` once, straight away. The drag
  * ends (calling `opts.onEnd`, then releasing the layout) on pointer up or cancel, when the calling
  * component unmounts, or at the first move after the mode has left 'room'; once ended it edits
  * nothing more, even back in room mode. Only the most recent drag is ended on unmount: one pointer
@@ -45,7 +46,11 @@ export function useRoomModeDrag(): BeginRoomDrag {
   useEffect(() => () => endDragRef.current?.(), []);
 
   return (e, onMove, { freeze, onEnd }) => {
-    if (e.button !== 0) return;
+    // A non-primary press starts nothing; onEnd still runs once, so a caller's setup is undone.
+    if (e.button !== 0) {
+      onEnd?.();
+      return;
+    }
     freezeLayout(freeze);
     let ended = false;
     const endDrag = (): void => {
