@@ -35,7 +35,7 @@ export function SelectionBar(): JSX.Element {
             {note !== undefined && <span className="selection-note">{note}</span>}
           </div>
           <div className="selection-actions">
-            <button type="button" className="btn btn-secondary" onClick={rotateSelected}>
+            <button type="button" className="btn btn-secondary" onClick={() => rotateSelected()}>
               <RotateCw size={16} strokeWidth={1.5} aria-hidden />
               Rotate 90°
             </button>

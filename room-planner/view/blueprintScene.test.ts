@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument, PARTS } from '../domain/catalog';
-import { footprint, mapPart } from '../domain/geometry';
 import { boundsOf } from '../domain/polygon';
 import { footprintCorners, itemFootprint, partCorners, roomBounds, roomHeight } from '../domain/shape';
-import type { Item, Kind, Point, Rot } from '../domain/types';
+import type { Item, Kind, Point } from '../domain/types';
 import { placedItem, rectRoom } from '../test/fixtures';
 import { computeCameraPose } from './camera';
 import type { Vec3 } from './camera';
@@ -37,10 +36,66 @@ function prismFrom(id: string, pts: readonly [Point, Point, Point, Point], z0 = 
 }
 
 const KINDS = Object.keys(PARTS) as Kind[];
-const ROTS: readonly Rot[] = [0, 1, 2, 3];
+/** Quarter turns; turn n is an angle of n × 90 degrees. */
+const ROTS = [0, 1, 2, 3] as const;
+type QuarterTurn = (typeof ROTS)[number];
 /** Footprint centres of the 50×30 box whose footprint's top-left is (20, 35), per quarter turn (odd turns are 30×50). */
-const CENTRE_OF_BOX_AT_20_35: Record<Rot, { cx: number; cy: number }> = {
+const CENTRE_OF_BOX_AT_20_35: Record<QuarterTurn, { cx: number; cy: number }> = {
   0: { cx: 45, cy: 50 }, 1: { cx: 35, cy: 60 }, 2: { cx: 45, cy: 50 }, 3: { cx: 35, cy: 60 },
+};
+/**
+ * Plan rectangles [minX, maxX, minY, maxY] of each part of that box, per kind and quarter turn, as
+ * the slice A quarter-turn part mapping placed them (values copied from that passing comparison).
+ */
+const QUARTER_TURN_PART_BOXES: Record<Kind, readonly (readonly (readonly [number, number, number, number])[])[]> = {
+  sofa: [
+    [[24, 66, 43.4, 65], [20, 70, 35, 43.4], [20, 24, 43.4, 65], [66, 70, 43.4, 65]],
+    [[20, 41.6, 39, 81], [41.6, 50, 35, 85], [20, 41.6, 35, 39], [20, 41.6, 81, 85]],
+    [[24, 66, 35, 56.6], [20, 70, 56.6, 65], [66, 70, 35, 56.6], [20, 24, 35, 56.6]],
+    [[28.4, 50, 39, 81], [20, 28.4, 35, 85], [28.4, 50, 81, 85], [28.4, 50, 35, 39]],
+  ],
+  chair: [
+    [[26, 64, 42.5, 65], [20, 70, 35, 42.5], [20, 26, 42.5, 65], [64, 70, 42.5, 65]],
+    [[20, 42.5, 41, 79], [42.5, 50, 35, 85], [20, 42.5, 35, 41], [20, 42.5, 79, 85]],
+    [[26, 64, 35, 57.5], [20, 70, 57.5, 65], [64, 70, 35, 57.5], [20, 26, 35, 57.5]],
+    [[27.5, 50, 41, 79], [20, 27.5, 35, 85], [27.5, 50, 79, 85], [27.5, 50, 35, 41]],
+  ],
+  bed: [
+    [[20, 70, 36.2, 65], [20, 70, 35, 36.2], [24, 43, 37.4, 42.8], [47, 66, 37.4, 42.8]],
+    [[20, 48.8, 35, 85], [48.8, 50, 35, 85], [42.2, 47.6, 39, 58], [42.2, 47.6, 62, 81]],
+    [[20, 70, 35, 63.8], [20, 70, 63.8, 65], [47, 66, 57.2, 62.6], [24, 43, 57.2, 62.6]],
+    [[21.2, 50, 35, 85], [20, 21.2, 35, 85], [22.4, 27.8, 62, 81], [22.4, 27.8, 39, 58]],
+  ],
+  desk: [
+    [[20, 70, 35, 65], [21, 23, 36.8, 63.2], [67, 69, 36.8, 63.2]],
+    [[20, 50, 35, 85], [21.8, 48.2, 36, 38], [21.8, 48.2, 82, 84]],
+    [[20, 70, 35, 65], [67, 69, 36.8, 63.2], [21, 23, 36.8, 63.2]],
+    [[20, 50, 35, 85], [21.8, 48.2, 82, 84], [21.8, 48.2, 36, 38]],
+  ],
+  table: [
+    [[20, 70, 35, 65], [23, 26, 38, 62], [64, 67, 38, 62]],
+    [[20, 50, 35, 85], [23, 47, 38, 41], [23, 47, 79, 82]],
+    [[20, 70, 35, 65], [64, 67, 38, 62], [23, 26, 38, 62]],
+    [[20, 50, 35, 85], [23, 47, 79, 82], [23, 47, 38, 41]],
+  ],
+  shelf: [
+    [[20, 70, 35, 65]],
+    [[20, 50, 35, 85]],
+    [[20, 70, 35, 65]],
+    [[20, 50, 35, 85]],
+  ],
+  rug: [
+    [[20, 70, 35, 65]],
+    [[20, 50, 35, 85]],
+    [[20, 70, 35, 65]],
+    [[20, 50, 35, 85]],
+  ],
+  box: [
+    [[20, 70, 35, 65]],
+    [[20, 50, 35, 85]],
+    [[20, 70, 35, 65]],
+    [[20, 50, 35, 85]],
+  ],
 };
 
 describe('buildPrisms', () => {
@@ -70,14 +125,15 @@ describe('buildPrisms', () => {
       for (const rot of ROTS) {
         const it = placedItem({ kind, w: 50, d: 30, h: 40, ...CENTRE_OF_BOX_AT_20_35[rot], angle: rot * 90 });
         const { prisms, rugs } = buildPrisms([it]);
-        const [fw, fd] = footprint(it);
-        PARTS[kind].forEach((part, i) => {
-          const m = mapPart(part, rot);
+        const expected = at(QUARTER_TURN_PART_BOXES[kind], rot);
+        expect(expected).toHaveLength(PARTS[kind].length);
+        PARTS[kind].forEach((_part, i) => {
+          const [minX, maxX, minY, maxY] = at(expected, i);
           const b = boundsOf(at(kind === 'rug' ? rugs : prisms, i).pts);
-          expect(b.minX).toBeCloseTo(20 + m[0] * fw, 9);
-          expect(b.maxX).toBeCloseTo(20 + m[1] * fw, 9);
-          expect(b.minY).toBeCloseTo(35 + m[2] * fd, 9);
-          expect(b.maxY).toBeCloseTo(35 + m[3] * fd, 9);
+          expect(b.minX).toBeCloseTo(minX, 9);
+          expect(b.maxX).toBeCloseTo(maxX, 9);
+          expect(b.minY).toBeCloseTo(minY, 9);
+          expect(b.maxY).toBeCloseTo(maxY, 9);
         });
       }
     }
@@ -99,13 +155,19 @@ describe('buildPrisms', () => {
     const desk = seed('seed-desk');
     const { prisms } = buildPrisms([desk]);
     expect(prisms).toHaveLength(PARTS.desk.length);
-    PARTS.desk.forEach((part, i) => {
+    // The quarter-turned part boxes of the 26 × 55 footprint at (118, 104), [minX, maxX, minY, maxY].
+    const expected = [
+      [118, 144, 104, 159],
+      [119.56, 142.44, 105.1, 107.3],
+      [119.56, 142.44, 155.7, 157.9],
+    ] as const;
+    PARTS.desk.forEach((_part, i) => {
       const b = boundsOf(at(prisms, i).pts);
-      const m = mapPart(part, 1);
-      expect(b.minX).toBeCloseTo(118 + m[0] * 26, 10);
-      expect(b.maxX).toBeCloseTo(118 + m[1] * 26, 10);
-      expect(b.minY).toBeCloseTo(104 + m[2] * 55, 10);
-      expect(b.maxY).toBeCloseTo(104 + m[3] * 55, 10);
+      const [minX, maxX, minY, maxY] = at(expected, i);
+      expect(b.minX).toBeCloseTo(minX, 10);
+      expect(b.maxX).toBeCloseTo(maxX, 10);
+      expect(b.minY).toBeCloseTo(minY, 10);
+      expect(b.maxY).toBeCloseTo(maxY, 10);
     });
     expect(boundsOf(at(prisms, 1).pts).minX).toBeCloseTo(119.56, 10);
     expect(boundsOf(at(prisms, 1).pts).maxY).toBeCloseTo(107.3, 10);
@@ -232,7 +294,7 @@ describe('sortPrisms', () => {
   });
 
   it('returns each rotated prism exactly once', () => {
-    const items = createInitialDocument().items.map((i, n) => ({ ...i, rot: (n % 4) as Rot }));
+    const items = createInitialDocument().items.map((i, n) => ({ ...i, angle: (n % 4) * 90 }));
     const { prisms } = buildPrisms(items);
     const sorted = sortPrisms(prisms, [-200, 300, 150]);
     expect(sorted).toHaveLength(prisms.length);

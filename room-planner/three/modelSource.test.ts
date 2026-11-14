@@ -23,7 +23,7 @@ describe('modelKey', () => {
   it.each<[string, Partial<Item>]>([
     ['x', { x: 7 }],
     ['y', { y: 9 }],
-    ['rot', { rot: 2 }],
+    ['angle', { angle: 180 }],
     ['name', { name: 'Another bed' }],
     ['price', { price: 1 }],
   ])('does not change when %s changes', (_field, change) => {

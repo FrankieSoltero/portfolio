@@ -1,16 +1,19 @@
 export type Units = 'ft' | 'm';
 export type Kind = 'sofa' | 'chair' | 'bed' | 'desk' | 'table' | 'shelf' | 'rug' | 'box';
-export type Rot = 0 | 1 | 2 | 3;
 export type ModelTier = 'retailer' | 'generated' | 'parametric' | 'box';
-export type RoomAxis = 'w' | 'l' | 'h';
-export interface Room { w: number; l: number; h: number }
+/** A room: its outline (corners in order, positive signed area) and its ceiling height, in inches. */
+export interface Room { outline: Corner[]; height: number }
 export interface ItemModel { tier: ModelTier; label: string; assetUrl: string | null }
+/**
+ * A placed item. `x`, `y` are the centre of its footprint on the plan; `w` × `d` is its unturned
+ * footprint, turned by `angle` degrees clockwise on the plan, in [0, 360).
+ */
 export interface Item {
   id: string; kind: Kind; name: string; host: string; sourceUrl: string | null;
   price: number | null; w: number; d: number; h: number;
-  x: number; y: number; rot: Rot; model: ItemModel;
+  x: number; y: number; angle: number; model: ItemModel;
 }
-export interface PlanDocument { schemaVersion: 1; units: Units; room: Room; items: Item[] }
+export interface PlanDocument { schemaVersion: 2; units: Units; room: Room; items: Item[] }
 export interface ProductPreview {
   kind: Kind; name: string; host: string; sourceUrl: string; price: number | null;
   w: number; d: number; h: number; known: boolean; model: ItemModel;

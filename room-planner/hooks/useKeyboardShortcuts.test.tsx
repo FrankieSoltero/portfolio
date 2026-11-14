@@ -54,7 +54,7 @@ describe('useKeyboardShortcuts', () => {
   it.each(['r', 'R'])('%s rotates the selected item', (key) => {
     useUiStore.getState().select(BED);
     press(document.body, key);
-    expect(bed()?.rot).toBe(1);
+    expect(bed()?.angle).toBe(90);
   });
 
   it.each(['Delete', 'Backspace'])('%s removes the selected item and clears the selection', (key) => {
@@ -93,7 +93,7 @@ describe('useKeyboardShortcuts', () => {
   it('r with focus on a radio is handled', () => {
     useUiStore.getState().select(BED);
     press(focused('input', 'radio'), 'r');
-    expect(bed()?.rot).toBe(1);
+    expect(bed()?.angle).toBe(90);
   });
 
   it.each([{ metaKey: true }, { ctrlKey: true }, { altKey: true }])('modifier %o is ignored', (mod) => {
@@ -101,15 +101,15 @@ describe('useKeyboardShortcuts', () => {
     press(document.body, 'r', mod);
     press(document.body, 'Backspace', mod);
     const ev = press(document.body, 'ArrowRight', mod);
-    expect(bed()).toMatchObject({ x: 40, y: 20, rot: 0 });
+    expect(bed()).toMatchObject({ x: 40, y: 20.5, angle: 0 });
     expect(ev.defaultPrevented).toBe(false);
   });
 
   it.each([
-    ['ArrowRight', 41, 20],
-    ['ArrowLeft', 39, 20],
-    ['ArrowDown', 40, 21],
-    ['ArrowUp', 40, 19],
+    ['ArrowRight', 41, 20.5],
+    ['ArrowLeft', 39, 20.5],
+    ['ArrowDown', 40, 21.5],
+    ['ArrowUp', 40, 19.5],
   ])('%s nudges the selected item by one step and prevents default', (key, x, y) => {
     expect(CONFIG.nudgeStep).toBe(1);
     useUiStore.getState().select(BED);
@@ -122,19 +122,19 @@ describe('useKeyboardShortcuts', () => {
     expect(CONFIG.nudgeStepLarge).toBe(12);
     useUiStore.getState().select(BED);
     press(document.body, 'ArrowRight', { shiftKey: true });
-    expect(bed()).toMatchObject({ x: 52, y: 20 });
+    expect(bed()).toMatchObject({ x: 52, y: 20.5 });
   });
 
   it.each(['text', 'number', 'radio'])('arrows with focus in a %s input are ignored', (type) => {
     useUiStore.getState().select(BED);
     const ev = press(focused('input', type), 'ArrowRight');
-    expect(bed()).toMatchObject({ x: 40, y: 20 });
+    expect(bed()).toMatchObject({ x: 40, y: 20.5 });
     expect(ev.defaultPrevented).toBe(false);
   });
 
   it('arrows with no selection change nothing and do not prevent default', () => {
     const ev = press(document.body, 'ArrowDown');
-    expect(bed()).toMatchObject({ x: 40, y: 20 });
+    expect(bed()).toMatchObject({ x: 40, y: 20.5 });
     expect(ev.defaultPrevented).toBe(false);
   });
 });

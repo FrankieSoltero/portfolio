@@ -87,7 +87,7 @@ describe('ItemList', () => {
 
   it('shows a conflict tag under the desk row once the desk is moved onto the bed', () => {
     render(<ItemList />);
-    act(() => usePlanStore.getState().moveItemTo('seed-desk', 40, 0));
+    act(() => usePlanStore.getState().moveItemTo('seed-desk', 53, 27.5));
     const tag = within(row(DESK)).getByText(`Overlaps ${BED}`);
     expect(tag).toHaveClass('tag');
     expect(tag).toHaveClass('item-row-conflict');

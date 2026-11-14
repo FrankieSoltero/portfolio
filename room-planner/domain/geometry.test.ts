@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialDocument } from './catalog';
-import { centrePosition, clampSnap, footprint, mapPart, moveItem, rotateItem } from './geometry';
-import type { Item, PartRect, Room } from './types';
+import { moveItem, rotateItemBy, setItemAngle } from './geometry';
+import { boundsOf } from './polygon';
+import { footprintCorners, itemFootprint, roomBounds } from './shape';
+import type { Item } from './types';
 
-const ROOM: Room = { w: 144, l: 168, h: 96 };
+const BOUNDS = roomBounds(createInitialDocument().room);
 
 function seed(id: string): Item {
   const item = createInitialDocument().items.find((i) => i.id === id);
@@ -11,93 +13,98 @@ function seed(id: string): Item {
   return item;
 }
 
-function expectTupleClose(actual: readonly number[], expected: readonly number[]): void {
-  expect(actual).toHaveLength(expected.length);
-  expected.forEach((v, i) => expect(actual[i]).toBeCloseTo(v, 10));
-}
-
-describe('footprint', () => {
-  it('keeps w×d for even rotations and swaps for odd rotations', () => {
-    expect(footprint({ w: 55, d: 26, rot: 0 })).toEqual([55, 26]);
-    expect(footprint({ w: 55, d: 26, rot: 1 })).toEqual([26, 55]);
-    expect(footprint({ w: 55, d: 26, rot: 2 })).toEqual([55, 26]);
-    expect(footprint({ w: 55, d: 26, rot: 3 })).toEqual([26, 55]);
-  });
-});
-
-describe('mapPart', () => {
-  const part: PartRect = [0.1, 0.4, 0.2, 0.3, 0, 1];
-
-  it('returns the part unchanged at rot 0', () => {
-    expectTupleClose(mapPart(part, 0), [0.1, 0.4, 0.2, 0.3]);
-  });
-
-  it('maps the part a quarter turn at rot 1', () => {
-    expectTupleClose(mapPart(part, 1), [0.7, 0.8, 0.1, 0.4]);
-  });
-
-  it('maps the part a half turn at rot 2', () => {
-    expectTupleClose(mapPart(part, 2), [0.6, 0.9, 0.7, 0.8]);
-  });
-
-  it('maps the part three quarter turns at rot 3', () => {
-    expectTupleClose(mapPart(part, 3), [0.2, 0.3, 0.6, 0.9]);
-  });
-});
-
-describe('clampSnap', () => {
-  it('rounds to the nearest snap step', () => {
-    expect(clampSnap(10.4, 100, 1)).toBe(10);
-    expect(clampSnap(10.5, 100, 1)).toBe(11);
-    expect(clampSnap(13, 100, 6)).toBe(12);
-  });
-
-  it('clamps into [0, max] and treats a negative max as 0', () => {
-    expect(clampSnap(-5, 100, 1)).toBe(0);
-    expect(clampSnap(150, 100, 1)).toBe(100);
-    expect(clampSnap(5, -10, 1)).toBe(0);
-  });
-});
-
 describe('moveItem', () => {
-  it('clamps the item inside the room using its footprint', () => {
-    const moved = moveItem(seed('seed-bed'), 200, -3, ROOM, 1);
-    expect(moved.x).toBe(80);
-    expect(moved.y).toBe(0);
+  it('snaps the footprint bounding box min corner to the snap step', () => {
+    // The seed bed is 64 × 85 unturned: half-extents 32, 42.5.
+    const moved = moveItem(seed('seed-bed'), 80.4, 50.6, BOUNDS, 1);
+    expect(moved).toMatchObject({ x: 80, y: 50.5 });
+    expect(moveItem(seed('seed-bed'), 13, 14, BOUNDS, 6)).toMatchObject({ x: 14, y: 12.5 });
   });
 
-  it('returns a new object and leaves the input unchanged', () => {
-    const bed = seed('seed-bed');
-    const before = structuredClone(bed);
-    const moved = moveItem(bed, 10, 20, ROOM, 1);
-    expect(moved).not.toBe(bed);
-    expect(bed).toEqual(before);
-    expect(moved).toEqual({ ...before, x: 10, y: 20 });
+  it('keeps the seed bed flush with the back wall when it slides along it', () => {
+    for (const x of [30.3, 60, 96.6]) {
+      const moved = moveItem(seed('seed-bed'), x, 42.7, BOUNDS, 1);
+      expect(moved.y).toBe(42.5);
+      expect(boundsOf(footprintCorners(itemFootprint(moved))).minY).toBeCloseTo(0, 10);
+    }
   });
-});
 
-describe('rotateItem', () => {
-  it('turns the seed desk about its centre and re-clamps it', () => {
+  it('puts the min corner of a quarter-turned odd-sized item on the grid', () => {
+    // 55 × 27 turned 90°: the bounding box is 27 × 55, half-extents 13.5, 27.5.
+    const item: Item = { ...seed('seed-desk'), w: 55, d: 27, angle: 90 };
+    const moved = moveItem(item, 50.2, 60.3, BOUNDS, 1);
+    expect(moved).toMatchObject({ x: 50.5, y: 60.5 });
+    const b = boundsOf(footprintCorners(itemFootprint(moved)));
+    expect(b.minX).toBeCloseTo(37, 10);
+    expect(b.minY).toBeCloseTo(33, 10);
+  });
+
+  it('puts the min corner of a 45° item on the grid, to the 0.01 in the centre is stored to', () => {
+    // 40 × 20 at 45°: half-extents (40 + 20)·cos 45° / 2 = 21.2132 on both axes.
+    const item: Item = { ...seed('seed-desk'), w: 40, d: 20, angle: 45 };
+    const moved = moveItem(item, 50, 50, BOUNDS, 1);
+    expect(moved).toMatchObject({ x: 50.21, y: 50.21 });
+    const b = boundsOf(footprintCorners(itemFootprint(moved)));
+    expect(b.minX).toBeCloseTo(29, 2);
+    expect(b.minY).toBeCloseTo(29, 2);
+  });
+
+  it('clamps the centre into the bounds after snapping', () => {
+    expect(moveItem(seed('seed-bed'), -50, 900, BOUNDS, 1)).toMatchObject({ x: 0, y: 168 });
+    expect(moveItem(seed('seed-bed'), 143.8, 168.4, BOUNDS, 1)).toMatchObject({ x: 144, y: 168 });
+    const offset = { minX: 10, minY: 20, maxX: 50, maxY: 60, w: 40, l: 40 };
+    expect(moveItem(seed('seed-bed'), 0, 100, offset, 1)).toMatchObject({ x: 10, y: 60 });
+  });
+
+  it('lets the footprint reach past the bounds; only the centre is kept inside', () => {
+    expect(moveItem(seed('seed-bed'), 5.2, 5.2, BOUNDS, 1)).toMatchObject({ x: 5, y: 5.5 });
+  });
+
+  it('stores coordinates rounded to 0.01 in', () => {
+    const moved = moveItem(seed('seed-bed'), 0.29, 0.71, BOUNDS, 0.1);
+    expect(moved.x).toBe(0.3);
+    expect(moved.y).toBe(0.7);
+  });
+
+  it('keeps the angle and returns a new object, leaving the input unchanged', () => {
     const desk = seed('seed-desk');
-    const rotated = rotateItem(desk, ROOM, 1);
-    expect(rotated.rot).toBe(2);
-    expect(rotated.x).toBe(89);
-    expect(rotated.y).toBe(119);
-    expect(desk).toMatchObject({ rot: 1, x: 118, y: 104 });
-  });
-
-  it('wraps rot 3 back to rot 0', () => {
-    const item: Item = { ...seed('seed-desk'), rot: 3, x: 0, y: 0 };
-    expect(rotateItem(item, ROOM, 1).rot).toBe(0);
+    const before = structuredClone(desk);
+    const moved = moveItem(desk, 10, 20.5, BOUNDS, 1);
+    expect(moved).not.toBe(desk);
+    expect(desk).toEqual(before);
+    expect(moved).toEqual({ ...before, x: 10, y: 20.5 });
   });
 });
 
-describe('centrePosition', () => {
-  it('centres the footprint in the room', () => {
-    expect(centrePosition({ w: 84, d: 36 }, ROOM, 1)).toEqual({ x: 30, y: 66 });
+describe('rotateItemBy', () => {
+  it('turns the seed desk by 90 degrees about its centre', () => {
+    const desk = seed('seed-desk');
+    const rotated = rotateItemBy(desk, 90);
+    expect(rotated).toMatchObject({ angle: 180, x: 131, y: 131.5 });
+    expect(desk).toMatchObject({ angle: 90, x: 131, y: 131.5 });
   });
 
-  it('pins an oversized item to the origin on the overflowing axis', () => {
-    expect(centrePosition({ w: 200, d: 36 }, ROOM, 1).x).toBe(0);
+  it('wraps past 360 and below 0', () => {
+    const item: Item = { ...seed('seed-desk'), angle: 350 };
+    expect(rotateItemBy(item, 15).angle).toBe(5);
+    expect(rotateItemBy({ ...item, angle: 0 }, -90).angle).toBe(270);
+    expect(rotateItemBy({ ...item, angle: 270 }, 90).angle).toBe(0);
+  });
+
+  it('stores the angle rounded to 0.01 degrees and never as 360', () => {
+    const item: Item = { ...seed('seed-desk'), angle: 0.1 };
+    expect(rotateItemBy(item, 0.2).angle).toBe(0.3);
+    expect(rotateItemBy({ ...item, angle: 359.99 }, 0.004).angle).toBe(359.99);
+    expect(rotateItemBy({ ...item, angle: 359.99 }, 0.006).angle).toBe(0);
+  });
+});
+
+describe('setItemAngle', () => {
+  it('sets the normalised angle and keeps the position', () => {
+    const desk = seed('seed-desk');
+    expect(setItemAngle(desk, -30)).toMatchObject({ angle: 330, x: 131, y: 131.5 });
+    expect(setItemAngle(desk, 405).angle).toBe(45);
+    expect(setItemAngle(desk, 12.346).angle).toBe(12.35);
+    expect(desk.angle).toBe(90);
   });
 });

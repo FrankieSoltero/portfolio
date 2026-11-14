@@ -2,8 +2,11 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import { centrePosition } from '../domain/geometry';
-import type { Item, PlanDocument, ProductPreview } from '../domain/types';
+import { findConflicts } from '../domain/conflicts';
+import { setRectangleSize, startingShape } from '../domain/outline';
+import { boundsOf, pointInPolygon } from '../domain/polygon';
+import { footprintCorners, itemFootprint } from '../domain/shape';
+import type { Corner, Item, PlanDocument, ProductPreview } from '../domain/types';
 import { nudgeSelected, placePreview, removeSelected, rotateSelected } from './actions';
 import { usePlanStore } from './planStore';
 import { totalPrice, useConflicts, useSelectedItem } from './selectors';
@@ -33,6 +36,12 @@ function docOf(state: PlanDocument): PlanDocument {
 function req<T>(value: T | undefined, what: string): T {
   if (value === undefined) throw new Error(`expected ${what}`);
   return value;
+}
+
+/** The seed room as an L-shape: the top-right 72 × 84 in is cut away. */
+function lShape(): Corner[] {
+  let n = 0;
+  return startingShape('l-shape', 144, 168, () => `l${++n}`);
 }
 
 function itemById(id: string): Item {
@@ -70,29 +79,58 @@ describe('planStore', () => {
     expect(after.items).toEqual(before.items);
   });
 
-  it('setRoomDim sets the axis without re-clamping items', () => {
-    const itemsBefore = usePlanStore.getState().items;
-    usePlanStore.getState().setRoomDim('w', 120);
+  it('setRoomHeight sets the ceiling height and keeps the outline and items', () => {
+    const before = usePlanStore.getState();
+    usePlanStore.getState().setRoomHeight(108);
     const after = usePlanStore.getState();
-    expect(after.room).toEqual({ w: 120, l: 168, h: 96 });
-    expect(after.items).toEqual(itemsBefore);
+    expect(after.room.height).toBe(108);
+    expect(after.room.outline).toBe(before.room.outline);
+    expect(after.items).toBe(before.items);
   });
 
-  it('setRoomDim to the current value keeps the same room and notifies no one', () => {
+  it('setRoomHeight to the current value keeps the same room and notifies no one', () => {
     const before = usePlanStore.getState().room;
     const listener = vi.fn();
     const unsubscribe = usePlanStore.subscribe(listener);
-    usePlanStore.getState().setRoomDim('w', before.w);
+    usePlanStore.getState().setRoomHeight(before.height);
     unsubscribe();
     expect(usePlanStore.getState().room).toBe(before);
     expect(listener).not.toHaveBeenCalled();
-    usePlanStore.getState().setRoomDim('w', before.w + 12);
+    usePlanStore.getState().setRoomHeight(before.height + 12);
     expect(usePlanStore.getState().room).not.toBe(before);
+  });
+
+  it('applyOutline stores an accepted outline without moving items and returns true', () => {
+    const before = usePlanStore.getState();
+    const outline = lShape();
+    expect(usePlanStore.getState().applyOutline({ ok: true, outline })).toBe(true);
+    const after = usePlanStore.getState();
+    expect(after.room).toEqual({ outline, height: 96 });
+    expect(after.items).toBe(before.items);
+  });
+
+  it('applyOutline writes through setRectangleSize', () => {
+    const { room } = usePlanStore.getState();
+    expect(usePlanStore.getState().applyOutline(setRectangleSize(room.outline, { w: 120 }))).toBe(true);
+    expect(usePlanStore.getState().room.outline).toEqual([
+      { id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 120, y: 0 }, { id: 'c3', x: 120, y: 168 }, { id: 'c4', x: 0, y: 168 },
+    ]);
+  });
+
+  it('applyOutline refused changes nothing, notifies no one and returns false', () => {
+    const before = usePlanStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = usePlanStore.subscribe(listener);
+    const applied = usePlanStore.getState().applyOutline({ ok: false, problem: 'crossing' });
+    unsubscribe();
+    expect(applied).toBe(false);
+    expect(usePlanStore.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('addItem appends the preview centred, unrotated, with a new id and copied source and model', () => {
     const id = usePlanStore.getState().addItem(SOFA);
-    const { items, room } = usePlanStore.getState();
+    const { items } = usePlanStore.getState();
     expect(items).toHaveLength(3);
     const added = req(items[2], 'added item');
     expect(typeof id).toBe('string');
@@ -100,11 +138,30 @@ describe('planStore', () => {
     expect(added.id).toBe(id);
     expect(['seed-bed', 'seed-desk']).not.toContain(id);
     expect(added).toMatchObject({
-      kind: 'sofa', name: SOFA.name, host: SOFA.host, price: 1299, w: 84, d: 36, h: 33, rot: 0,
+      kind: 'sofa', name: SOFA.name, host: SOFA.host, price: 1299, w: 84, d: 36, h: 33, angle: 0,
       sourceUrl: SOFA.sourceUrl, model: SOFA.model,
-      ...centrePosition(SOFA, room, CONFIG.furnitureSnap),
     });
-    expect(added).toMatchObject({ x: 30, y: 66 });
+    // Centred on interiorPoint(outline), the seed room's centre; 84 × 36 keeps it on the grid.
+    expect(added).toMatchObject({ x: 72, y: 84 });
+    expect(added.model).not.toBe(SOFA.model);
+  });
+
+  it('addItem with an odd width and depth puts the footprint min corner on the 1 in grid', () => {
+    const id = usePlanStore.getState().addItem({ ...SOFA, w: 55, d: 27 });
+    const added = itemById(id);
+    expect(added).toMatchObject({ x: 72.5, y: 84.5, angle: 0 });
+    expect(added.x - added.w / 2).toBe(45);
+    expect(added.y - added.d / 2).toBe(71);
+  });
+
+  it('addItem in an L-shaped room centres the item inside the outline', () => {
+    const outline = lShape();
+    usePlanStore.getState().applyOutline({ ok: true, outline });
+    const id = usePlanStore.getState().addItem(SOFA);
+    const added = itemById(id);
+    expect(added.angle).toBe(0);
+    expect(Number.isInteger(added.x - added.w / 2) && Number.isInteger(added.y - added.d / 2)).toBe(true);
+    expect(pointInPolygon({ x: added.x, y: added.y }, outline, 0)).toBe(true);
   });
 
   it('addItem gives each added item a different id', () => {
@@ -113,9 +170,23 @@ describe('planStore', () => {
     expect(a).not.toBe(b);
   });
 
-  it('moveItemTo snaps and clamps the item inside the room', () => {
-    usePlanStore.getState().moveItemTo('seed-bed', 200, -3);
-    expect(itemById('seed-bed')).toMatchObject({ x: 80, y: 0 });
+  it('moveItemTo moves the centre, with the footprint bounding box min corner snapped to 1 in', () => {
+    usePlanStore.getState().moveItemTo('seed-bed', 80.4, 50.6);
+    expect(itemById('seed-bed')).toMatchObject({ x: 80, y: 50.5, angle: 0 });
+  });
+
+  it('moveItemTo along the back wall keeps the seed bed flush with it and conflict-free', () => {
+    usePlanStore.getState().moveItemTo('seed-bed', 60.4, 42.8);
+    const bed = itemById('seed-bed');
+    expect(bed).toMatchObject({ x: 60, y: 42.5 });
+    expect(boundsOf(footprintCorners(itemFootprint(bed))).minY).toBeCloseTo(0, 10);
+    const { items, room } = usePlanStore.getState();
+    expect(findConflicts(items, room)).toEqual({});
+  });
+
+  it('moveItemTo keeps the centre inside the room bounds', () => {
+    usePlanStore.getState().moveItemTo('seed-bed', -50, 900);
+    expect(itemById('seed-bed')).toMatchObject({ x: 0, y: 168 });
   });
 
   it('moveItemTo to where the item already lands keeps the same items and notifies no one', () => {
@@ -141,9 +212,55 @@ describe('planStore', () => {
     expect(docOf(after)).toEqual(docOf(before));
   });
 
-  it('rotateItem turns the item a quarter turn about its centre', () => {
-    usePlanStore.getState().rotateItem('seed-desk');
-    expect(itemById('seed-desk')).toMatchObject({ rot: 2, x: 89, y: 119 });
+  it('rotateItemBy turns the item about its centre', () => {
+    usePlanStore.getState().rotateItemBy('seed-desk', 90);
+    expect(itemById('seed-desk')).toMatchObject({ angle: 180, x: 131, y: 131.5 });
+  });
+
+  it('rotateItemBy wraps the angle into [0, 360)', () => {
+    usePlanStore.getState().setItemAngle('seed-desk', 350);
+    usePlanStore.getState().rotateItemBy('seed-desk', 15);
+    expect(itemById('seed-desk').angle).toBe(5);
+  });
+
+  it('setItemAngle stores the normalised angle and keeps the position', () => {
+    usePlanStore.getState().setItemAngle('seed-desk', -30);
+    expect(itemById('seed-desk')).toMatchObject({ angle: 330, x: 131, y: 131.5 });
+  });
+
+  it('setItemAngle to the current angle keeps the same items and notifies no one', () => {
+    const before = usePlanStore.getState().items;
+    const listener = vi.fn();
+    const unsubscribe = usePlanStore.subscribe(listener);
+    usePlanStore.getState().setItemAngle('seed-desk', 90);
+    usePlanStore.getState().setItemAngle('seed-desk', 450);
+    usePlanStore.getState().rotateItemBy('seed-desk', 0);
+    unsubscribe();
+    expect(usePlanStore.getState().items).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('rotateItemBy and setItemAngle with an unknown id leave state unchanged', () => {
+    const before = usePlanStore.getState();
+    usePlanStore.getState().rotateItemBy('nope', 90);
+    usePlanStore.getState().setItemAngle('nope', 45);
+    expect(usePlanStore.getState()).toBe(before);
+  });
+
+  it('ignores a number that is not finite, so no NaN is ever stored', () => {
+    const before = usePlanStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = usePlanStore.subscribe(listener);
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      usePlanStore.getState().setItemAngle('seed-desk', bad);
+      usePlanStore.getState().rotateItemBy('seed-desk', bad);
+      usePlanStore.getState().moveItemTo('seed-bed', bad, 10);
+      usePlanStore.getState().moveItemTo('seed-bed', 10, bad);
+      usePlanStore.getState().setRoomHeight(bad);
+    }
+    unsubscribe();
+    expect(usePlanStore.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('removeItem drops the item', () => {
@@ -309,10 +426,12 @@ describe('actions', () => {
     expect(useUiStore.getState().selectedId).toBeNull();
   });
 
-  it('rotateSelected rotates the selected item', () => {
+  it('rotateSelected turns the selected item 90 degrees, or by the given degrees', () => {
     useUiStore.getState().select('seed-desk');
     rotateSelected();
-    expect(itemById('seed-desk')).toMatchObject({ rot: 2, x: 89, y: 119 });
+    expect(itemById('seed-desk')).toMatchObject({ angle: 180, x: 131, y: 131.5 });
+    rotateSelected(15);
+    expect(itemById('seed-desk')).toMatchObject({ angle: 195, x: 131, y: 131.5 });
   });
 
   it('removeSelected removes the selected item and clears the selection', () => {
@@ -341,20 +460,20 @@ describe('actions', () => {
     expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
   });
 
-  it('nudgeSelected moves the selected item by exactly dx, dy inches', () => {
+  it('nudgeSelected moves the centre of the selected item by exactly dx, dy inches', () => {
     useUiStore.getState().select('seed-bed');
     nudgeSelected(1, 0);
-    expect(itemById('seed-bed')).toMatchObject({ x: 41, y: 0 });
+    expect(itemById('seed-bed')).toMatchObject({ x: 73, y: 42.5 });
     nudgeSelected(0, 12);
-    expect(itemById('seed-bed')).toMatchObject({ x: 41, y: 12 });
+    expect(itemById('seed-bed')).toMatchObject({ x: 73, y: 54.5 });
   });
 
-  it('nudgeSelected clamps the item to the room', () => {
+  it('nudgeSelected keeps the centre inside the room bounds', () => {
     useUiStore.getState().select('seed-bed');
-    nudgeSelected(0, -5);
+    nudgeSelected(0, -500);
     expect(itemById('seed-bed').y).toBe(0);
     nudgeSelected(500, 0);
-    expect(itemById('seed-bed').x).toBe(80);
+    expect(itemById('seed-bed').x).toBe(144);
   });
 
   it('nudgeSelected does nothing when nothing is selected', () => {
@@ -385,7 +504,10 @@ describe('selectors', () => {
   it('useConflicts recomputes when items change', () => {
     const { result, rerender } = renderHook(() => useConflicts());
     const first = result.current;
-    act(() => usePlanStore.getState().setRoomDim('w', 60));
+    act(() => {
+      const { applyOutline, room } = usePlanStore.getState();
+      applyOutline(setRectangleSize(room.outline, { w: 60 }));
+    });
     rerender();
     expect(result.current).not.toBe(first);
     expect(Object.keys(result.current)).toEqual(['seed-bed', 'seed-desk']);

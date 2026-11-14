@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { rectangleSize, setRectangleSize, startingShape } from '../../domain/outline';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { Header } from '../Header';
@@ -16,6 +17,23 @@ beforeEach(() => {
 
 function input(label: string): HTMLInputElement {
   return screen.getByLabelText(label) as HTMLInputElement;
+}
+
+/** Stores a rectangle `inches` wide through the outline, as the Width input does. */
+function setWidth(inches: number): void {
+  const { applyOutline, room } = usePlanStore.getState();
+  applyOutline(setRectangleSize(room.outline, { w: inches }));
+}
+
+/** The stored rectangle's size, or null when the outline is not a rectangle. */
+function storedSize(): { w: number; l: number } | null {
+  return rectangleSize(usePlanStore.getState().room.outline);
+}
+
+/** Replaces the seed room's outline with an L-shape of the same 144 × 168 in bounds. */
+function makeLShape(): void {
+  let n = 0;
+  usePlanStore.getState().applyOutline({ ok: true, outline: startingShape('l-shape', 144, 168, () => `l${++n}`) });
 }
 
 /** Simulates the browser reporting `value` for a number input (bypasses jsdom's number sanitising). */
@@ -105,11 +123,11 @@ describe('RoomSection', () => {
   });
 
   it('re-seeds on a units change even when the draft happens to parse to the stored length', () => {
-    usePlanStore.getState().setRoomDim('w', 100);
+    setWidth(100);
     render(<RoomSection />);
     // 2.540 ft is out of range, so the store keeps 100 in — which is exactly 2.540 m.
     typeRaw(input('Width'), '2.540');
-    expect(usePlanStore.getState().room.w).toBe(100);
+    expect(storedSize()?.w).toBe(100);
     act(() => usePlanStore.getState().setUnits('m'));
     expect(input('Width').value).toBe('2.54');
   });
@@ -117,7 +135,7 @@ describe('RoomSection', () => {
   it('writes a valid width to the store immediately', () => {
     render(<RoomSection />);
     typeRaw(input('Width'), '10');
-    expect(usePlanStore.getState().room.w).toBe(120);
+    expect(storedSize()?.w).toBe(120);
     expect(input('Width').value).toBe('10');
   });
 
@@ -128,7 +146,7 @@ describe('RoomSection', () => {
     // Force the raw value so the component's handling of the typed string is what is tested.
     Object.defineProperty(el, 'value', { configurable: true, writable: true, value: '10.' });
     fireEvent.change(el);
-    expect(usePlanStore.getState().room.w).toBe(120);
+    expect(storedSize()?.w).toBe(120);
     // React re-renders with draft "10."; the controlled value must not be re-seeded to "10".
     expect(el.value).toBe('10.');
   });
@@ -143,15 +161,73 @@ describe('RoomSection', () => {
 
   it('re-seeds the width input when the stored width changes from outside', () => {
     render(<RoomSection />);
-    act(() => usePlanStore.getState().setRoomDim('w', 150));
+    act(() => setWidth(150));
     expect(input('Width').value).toBe('12.5');
   });
 
   it('re-seeds an out-of-range draft when the stored value changes from outside', () => {
     render(<RoomSection />);
     typeRaw(input('Width'), '2');
-    act(() => usePlanStore.getState().setRoomDim('w', 150));
+    act(() => setWidth(150));
     expect(input('Width').value).toBe('12.5');
+  });
+
+  it('writes a valid length through the outline, keeping the width and height', () => {
+    render(<RoomSection />);
+    typeRaw(input('Length'), '10');
+    expect(storedSize()).toEqual({ w: 144, l: 120 });
+    expect(usePlanStore.getState().room.height).toBe(96);
+    expect(input('Length').value).toBe('10');
+  });
+
+  it('writes a valid ceiling height with setRoomHeight, leaving the outline unchanged', () => {
+    const outline = usePlanStore.getState().room.outline;
+    render(<RoomSection />);
+    typeRaw(input('Ceiling'), '9');
+    expect(usePlanStore.getState().room.height).toBe(108);
+    expect(usePlanStore.getState().room.outline).toBe(outline);
+    expect(input('Ceiling').value).toBe('9');
+  });
+
+  it('leaves the height unchanged and keeps the typed text for an out-of-range ceiling', () => {
+    render(<RoomSection />);
+    typeRaw(input('Ceiling'), '2');
+    expect(usePlanStore.getState().room.height).toBe(96);
+    expect(input('Ceiling').value).toBe('2');
+  });
+
+  it('re-seeds the ceiling input when the stored height changes from outside', () => {
+    render(<RoomSection />);
+    act(() => usePlanStore.getState().setRoomHeight(102));
+    expect(input('Ceiling').value).toBe('8.5');
+  });
+
+  it('shows only the Ceiling input while the room is not a rectangle', () => {
+    makeLShape();
+    render(<RoomSection />);
+    expect(screen.queryByLabelText('Width')).toBeNull();
+    expect(screen.queryByLabelText('Length')).toBeNull();
+    expect(input('Ceiling').value).toBe('8');
+  });
+
+  it('shows Width and Length again, seeded from the outline, once the room is a rectangle again', () => {
+    makeLShape();
+    render(<RoomSection />);
+    act(() => {
+      usePlanStore.getState().applyOutline({
+        ok: true,
+        outline: [{ id: 'r1', x: 0, y: 0 }, { id: 'r2', x: 120, y: 0 }, { id: 'r3', x: 120, y: 96 }, { id: 'r4', x: 0, y: 96 }],
+      });
+    });
+    expect(input('Width').value).toBe('10');
+    expect(input('Length').value).toBe('8');
+  });
+
+  it('shows the floor area of a room that is not a rectangle', () => {
+    makeLShape();
+    render(<RoomSection />);
+    // 144 × 168 less the 72 × 84 cut-away is 18144 sq in, 126 sq ft.
+    expect(screen.getByText(/^Floor area/).textContent).toBe('Floor area 126 sq ft.');
   });
 
   it('shows the floor area line in square feet', () => {

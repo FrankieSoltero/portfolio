@@ -70,9 +70,9 @@ describe('App', () => {
     if (!row) throw new Error('no desk row in the item list');
     fireEvent.click(row);
     expect(useUiStore.getState().selectedId).toBe('seed-desk');
-    expect(desk().rot).toBe(1);
+    expect(desk().angle).toBe(90);
     fireEvent.keyDown(window, { key: 'r' });
-    expect(desk().rot).toBe(2);
+    expect(desk().angle).toBe(180);
   });
 
   it('creates the lookup provider once and passes the same instance to Sidebar on re-render', () => {

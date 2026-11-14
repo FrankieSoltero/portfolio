@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialDocument } from '../../domain/catalog';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import { setRectangleSize } from '../../domain/outline';
 import { boundsOf } from '../../domain/polygon';
 import { itemFootprint, roomBounds, roomOutline } from '../../domain/shape';
 import type { Item, PlanDocument, Point } from '../../domain/types';
@@ -225,7 +226,7 @@ describe('PlanView', () => {
     desk.focus();
     fireEvent.keyDown(desk, { key: 'Enter' });
     fireEvent.keyDown(desk, { key: 'ArrowLeft' });
-    expect(item('seed-desk')).toMatchObject({ x: 117, y: 104 });
+    expect(item('seed-desk')).toMatchObject({ x: 130, y: 131.5 });
   });
 
   it('a click on an item selects it', () => {
@@ -384,7 +385,7 @@ describe('PlanView', () => {
   });
 
   it('marks a conflicting unselected item is-conflict', () => {
-    usePlanStore.getState().moveItemTo('seed-desk', 50, 10); // onto the bed
+    usePlanStore.getState().moveItemTo('seed-desk', 63, 37.5); // onto the bed
     render(<PlanView pane={MAIN} />);
     expect(itemEl('seed-desk')).toHaveClass('is-conflict');
     expect(itemEl('seed-desk')).not.toHaveClass('is-selected');
@@ -413,28 +414,28 @@ describe('PlanView', () => {
     expect(useUiStore.getState().selectedId).toBe('seed-desk');
   });
 
-  it('drags the bed by (+28.095, +56.19) px to x 50, y 20', () => {
+  it('drags the bed by (+28.095, +56.19) px to centre x 82, y 62.5', () => {
     render(<PlanView pane={MAIN} />);
     fireEvent.pointerDown(itemEl('seed-bed'), { clientX: 100, clientY: 100 });
     fireEvent.pointerMove(window, { clientX: 128.095, clientY: 156.19 });
     fireEvent.pointerUp(window);
-    expect(item('seed-bed')).toMatchObject({ x: 50, y: 20 });
+    expect(item('seed-bed')).toMatchObject({ x: 82, y: 62.5 });
   });
 
-  it('drags the quarter-turned desk by (−28.095, −28.095) px to x 108, y 94', () => {
+  it('drags the quarter-turned desk by (−28.095, −28.095) px to centre x 121, y 121.5', () => {
     render(<PlanView pane={MAIN} />);
     fireEvent.pointerDown(itemEl('seed-desk'), { clientX: 100, clientY: 100 });
     fireEvent.pointerMove(window, { clientX: 100 - 28.095, clientY: 100 - 28.095 });
     fireEvent.pointerUp(window);
-    expect(item('seed-desk')).toMatchObject({ x: 108, y: 94, rot: 1 });
+    expect(item('seed-desk')).toMatchObject({ x: 121, y: 121.5, angle: 90 });
   });
 
-  it('clamps a drag inside the room: x = room.w − footprint width', () => {
+  it('clamps a drag to the room bounds: the centre stops at x = room width', () => {
     render(<PlanView pane={MAIN} />);
     fireEvent.pointerDown(itemEl('seed-bed'), { clientX: 100, clientY: 100 });
     fireEvent.pointerMove(window, { clientX: 5000, clientY: 100 });
     fireEvent.pointerUp(window);
-    expect(item('seed-bed')?.x).toBe(144 - 64);
+    expect(item('seed-bed')?.x).toBe(144);
   });
 
   it('pointerdown on the pane background deselects', () => {
@@ -473,7 +474,7 @@ describe('PlanView', () => {
   });
 
   it('omits the chip on a clearance line whose showLabel is false', () => {
-    usePlanStore.getState().moveItemTo('seed-bed', 10, 0); // 10 in left gap → 28 px
+    usePlanStore.getState().moveItemTo('seed-bed', 42, 42.5); // 10 in left gap → 28 px
     useUiStore.getState().select('seed-bed');
     render(<PlanView pane={MAIN} />);
     const s = usePlanStore.getState();
@@ -514,7 +515,8 @@ describe('PlanView', () => {
   });
 
   it('draws no clearances when the selected item is outside the room', () => {
-    usePlanStore.getState().setRoomDim('w', 90); // bed spans x 40–104
+    const { applyOutline, room } = usePlanStore.getState();
+    applyOutline(setRectangleSize(room.outline, { w: 90 })); // bed spans x 40–104
     useUiStore.getState().select('seed-bed');
     render(<PlanView pane={MAIN} />);
     expect(document.querySelectorAll('.plan-clearance')).toHaveLength(0);
@@ -529,7 +531,7 @@ describe('PlanView', () => {
 
   it('re-renders when the store changes', () => {
     render(<PlanView pane={MAIN} />);
-    act(() => usePlanStore.getState().moveItemTo('seed-bed', 50, 20));
+    act(() => usePlanStore.getState().moveItemTo('seed-bed', 82, 62.5));
     const L = seedLayout();
     expect(px(itemEl('seed-bed'), 'left')).toBeCloseTo(L.ox + 50 * SCALE, 3);
   });

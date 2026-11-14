@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PARTS } from './catalog';
-import { footprint, mapPart } from './geometry';
-import { boundsOf, signedArea } from './polygon';
+import { signedArea } from './polygon';
 import {
   footprintCorners,
   itemFootprint,
@@ -13,7 +12,7 @@ import {
   type Footprint,
 } from './shape';
 import { placedItem, rectRoom } from '../test/fixtures';
-import type { Kind, Point, Rot } from './types';
+import type { Point } from './types';
 
 const ROOM = rectRoom(144, 168, 96);
 const BED = placedItem({ w: 64, d: 85, h: 38, cx: 72, cy: 42.5 });
@@ -29,7 +28,9 @@ function expectPoints(actual: readonly Point[], expected: readonly [number, numb
 
 describe('room accessors', () => {
   it('outlines a rectangular room from (0,0) clockwise on the plan', () => {
-    expect(roomOutline(ROOM)).toEqual([{ x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 168 }, { x: 0, y: 168 }]);
+    expect(roomOutline(ROOM)).toEqual([
+      { id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 },
+    ]);
   });
 
   it('reports the room height', () => {
@@ -42,11 +43,15 @@ describe('room accessors', () => {
 });
 
 describe('itemFootprint', () => {
+  it('reads the stored centre and angle', () => {
+    expect(itemFootprint({ x: 10.5, y: 20.25, w: 30, d: 12, angle: 37.5 })).toEqual({ cx: 10.5, cy: 20.25, w: 30, d: 12, angle: 37.5 });
+  });
+
   it('centres an unrotated item on its footprint', () => {
     expect(itemFootprint(BED)).toEqual({ cx: 72, cy: 42.5, w: 64, d: 85, angle: 0 });
   });
 
-  it('keeps the unrotated width and depth and turns a quarter turn into 90 degrees', () => {
+  it('keeps the unrotated width and depth and the angle', () => {
     expect(itemFootprint(DESK)).toEqual({ cx: 131, cy: 131.5, w: 55, d: 26, angle: 90 });
   });
 });
@@ -77,22 +82,27 @@ describe('footprintCorners', () => {
 });
 
 describe('partCorners', () => {
-  it('agrees with the quarter-turn part mapping for every part of every kind', () => {
-    for (const kind of Object.keys(PARTS) as Kind[]) {
-      for (const part of PARTS[kind]) {
-        for (const rot of [0, 1, 2, 3] as Rot[]) {
-          const item = { x: 30, y: 50, w: 60, d: 40, rot };
-          const [fw, fd] = footprint(item);
-          const [m0, m1, m2, m3] = mapPart(part, rot);
-          const b = boundsOf(partCorners(itemFootprint(item), part));
-          const label = `${kind} [${part.join(',')}] rot ${rot}`;
-          expect(Math.abs(b.minX - (item.x + m0 * fw)), label).toBeLessThan(1e-9);
-          expect(Math.abs(b.maxX - (item.x + m1 * fw)), label).toBeLessThan(1e-9);
-          expect(Math.abs(b.minY - (item.y + m2 * fd)), label).toBeLessThan(1e-9);
-          expect(Math.abs(b.maxY - (item.y + m3 * fd)), label).toBeLessThan(1e-9);
-        }
-      }
+  it('places the first sofa part of a 60×40 item at each quarter turn', () => {
+    // Fixed values the Task 2 comparison with the quarter-turn part mapping produced, for the
+    // 60×40 item whose axis-aligned footprint's top-left was (30, 50).
+    const cases: [number, number, number, [number, number][]][] = [
+      [0, 60, 70, [[34.8, 61.2], [85.2, 61.2], [85.2, 90], [34.8, 90]]],
+      [90, 50, 80, [[58.8, 54.8], [58.8, 105.2], [30, 105.2], [30, 54.8]]],
+      [180, 60, 70, [[85.2, 78.8], [34.8, 78.8], [34.8, 50], [85.2, 50]]],
+      [270, 50, 80, [[41.2, 105.2], [41.2, 54.8], [70, 54.8], [70, 105.2]]],
+    ];
+    for (const [angle, x, y, expected] of cases) {
+      expectPoints(partCorners(itemFootprint({ x, y, w: 60, d: 40, angle }), PARTS.sofa[0]), expected);
     }
+  });
+
+  it('turns a part about the footprint centre at an angle that is not a quarter turn', () => {
+    // The 20×20 part [0, 0.5, 0, 0.5] of a 40×40 item centred at the origin, turned 45°.
+    const r = 10 * Math.SQRT2;
+    expectPoints(
+      partCorners(itemFootprint({ x: 0, y: 0, w: 40, d: 40, angle: 45 }), [0, 0.5, 0, 0.5, 0, 1]),
+      [[0, -2 * r], [r, -r], [0, 0], [-r, -r]],
+    );
   });
 
   it('lists the part corners back-left, back-right, front-right, front-left', () => {

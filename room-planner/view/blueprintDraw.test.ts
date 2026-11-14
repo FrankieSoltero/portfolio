@@ -422,7 +422,7 @@ describe('drawBlueprint', () => {
     expectSamePoints(at(flatFaces, 1).coords, P(flat, [[50, 90, 0], [94, 90, 0], [94, 90, 20], [50, 90, 20]]));
     // A quarter turn, x 50–80, y 60–104: as in slice A, plan side x = 50 is n200 and
     // plan side y = 104 is a200, although they are now the crate's front and right.
-    const turned = input({ items: [{ ...CRATE, rot: 1 }] });
+    const turned = input({ items: [{ ...CRATE, x: 65, y: 82, angle: 90 }] });
     const turnedFaces = faceFills(draw(turned).paints);
     expect(turnedFaces).toHaveLength(3);
     expect(styleOfFace(turnedFaces, P(turned, [[50, 60, 0], [50, 104, 0], [50, 104, 20], [50, 60, 20]]))).toBe(T.n200);
@@ -431,7 +431,7 @@ describe('drawBlueprint', () => {
   });
 
   it('colours a selected quarter-turned prism a300 on its plan-x side and a400 on its plan-y side', () => {
-    const inp = input({ items: [{ ...CRATE, rot: 1 }], selectedId: 'crate-1' });
+    const inp = input({ items: [{ ...CRATE, x: 65, y: 82, angle: 90 }], selectedId: 'crate-1' });
     const faces = faceFills(draw(inp).paints);
     expect(faces).toHaveLength(3);
     expect(styleOfFace(faces, projectAll(inp, [[50, 60, 0], [50, 104, 0], [50, 104, 20], [50, 60, 20]]))).toBe(T.a300);

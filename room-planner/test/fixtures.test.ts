@@ -3,10 +3,17 @@ import { itemFootprint, roomHeight, roomOutline } from '../domain/shape';
 import { placedItem, planDoc, rectRoom } from './fixtures';
 
 describe('rectRoom', () => {
-  it('outlines the rectangle from (0,0) clockwise and keeps the height', () => {
+  it('outlines the rectangle from (0,0) clockwise with corners c1…c4 and keeps the height', () => {
     const room = rectRoom(144, 168, 96);
-    expect(roomOutline(room)).toEqual([{ x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 168 }, { x: 0, y: 168 }]);
+    expect(roomOutline(room)).toEqual([
+      { id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 },
+    ]);
     expect(roomHeight(room)).toBe(96);
+  });
+
+  it('stores the outline and height', () => {
+    const room = rectRoom(144, 168, 96);
+    expect(room).toEqual({ outline: roomOutline(room), height: 96 });
   });
 });
 
@@ -26,8 +33,15 @@ describe('placedItem', () => {
     expect(itemFootprint(item)).toEqual({ cx: 30, cy: 20, w: 20, d: 10, angle: 0 });
   });
 
-  it('throws, naming Task 12, for an angle that is not a quarter turn', () => {
-    expect(() => placedItem({ w: 20, d: 20, h: 20, cx: 0, cy: 0, angle: 45 })).toThrow(/Task 12/);
+  it('accepts an angle that is not a quarter turn', () => {
+    const item = placedItem({ w: 20, d: 20, h: 20, cx: 0, cy: 0, angle: 45 });
+    expect(itemFootprint(item)).toEqual({ cx: 0, cy: 0, w: 20, d: 20, angle: 45 });
+  });
+
+  it('stores the footprint centre as x, y and the angle', () => {
+    const item = placedItem({ w: 55, d: 26, h: 30, cx: 131, cy: 131.5, angle: 90 });
+    expect(item).toMatchObject({ x: 131, y: 131.5, angle: 90 });
+    expect(item).not.toHaveProperty('rot');
   });
 
   it('fills the other fields with fixed defaults and honours overrides', () => {
@@ -48,10 +62,10 @@ describe('placedItem', () => {
 });
 
 describe('planDoc', () => {
-  it('assembles a version 1 document, in feet unless told otherwise', () => {
+  it('assembles a version 2 document, in feet unless told otherwise', () => {
     const room = rectRoom(144, 168, 96);
     const items = [placedItem({ w: 20, d: 20, h: 20, cx: 10, cy: 10 })];
-    expect(planDoc(room, items)).toEqual({ schemaVersion: 1, units: 'ft', room, items });
+    expect(planDoc(room, items)).toEqual({ schemaVersion: 2, units: 'ft', room, items });
     expect(planDoc(room, items, 'm').units).toBe('m');
   });
 });

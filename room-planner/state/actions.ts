@@ -3,11 +3,11 @@ import { useUiStore } from './uiStore';
 
 /** Cross-store actions: operations on the plan driven by the UI selection or lookup state. */
 
-/** Turns the selected item a quarter turn; no-op when nothing is selected. */
-export function rotateSelected(): void {
+/** Turns the selected item `deg` degrees clockwise (a quarter turn by default); no-op when nothing is selected. */
+export function rotateSelected(deg = 90): void {
   const id = useUiStore.getState().selectedId;
   if (id === null) return;
-  usePlanStore.getState().rotateItem(id);
+  usePlanStore.getState().rotateItemBy(id, deg);
 }
 
 /** Removes the selected item and clears the selection; no-op when nothing is selected. */
@@ -27,7 +27,7 @@ export function placePreview(): void {
   ui.setLookup({ status: 'idle' });
 }
 
-/** Moves the selected item by (dx, dy) inches, kept inside the room; no-op when nothing is selected. */
+/** Moves the selected item's centre by (dx, dy) inches, kept inside the room bounds; no-op when nothing is selected. */
 export function nudgeSelected(dx: number, dy: number): void {
   const id = useUiStore.getState().selectedId;
   if (id === null) return;

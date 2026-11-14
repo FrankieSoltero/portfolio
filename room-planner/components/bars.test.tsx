@@ -40,13 +40,13 @@ function preview(overrides: Partial<ProductPreview>): ProductPreview {
 
 /** A 36 in ceiling makes the 38 in bed the only conflict (the 30 in desk still fits). */
 function oneConflict(): void {
-  act(() => usePlanStore.getState().setRoomDim('h', 36));
+  act(() => usePlanStore.getState().setRoomHeight(36));
 }
 
 /** One conflict, plus a too-tall shelf and a centred sofa that overlaps the bed. */
 function threeConflicts(): void {
   act(() => {
-    usePlanStore.getState().setRoomDim('h', 36);
+    usePlanStore.getState().setRoomHeight(36);
     usePlanStore.getState().addItem(preview({ kind: 'shelf', name: 'Tall shelf', w: 36, d: 13, h: 78 }));
     usePlanStore.getState().addItem(preview({ kind: 'sofa', name: 'Sofa', w: 84, d: 36, h: 33 }));
   });
@@ -162,9 +162,9 @@ describe('SelectionBar', () => {
   it('rotates the selected desk a quarter turn on Rotate 90°', async () => {
     act(() => useUiStore.getState().select(DESK_ID));
     render(<SelectionBar />);
-    expect(desk().rot).toBe(1);
+    expect(desk().angle).toBe(90);
     await userEvent.setup().click(screen.getByRole('button', { name: 'Rotate 90°' }));
-    expect(desk().rot).toBe(2);
+    expect(desk().angle).toBe(180);
   });
 
   it('removes the selected desk and clears the selection on Remove', async () => {

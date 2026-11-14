@@ -1,28 +1,23 @@
-import { footprint } from './geometry';
 import { boundsOf } from './polygon';
 import type { Bounds, Item, PartRect, Point, Room } from './types';
 
 /**
  * Shape accessors the views read from: the room's outline and height, and each item's
- * footprint as a centre, unrotated size and angle. Implemented over today's data
- * (`Room { w, l, h }`, `Item { x, y, rot }`); views must not read those fields directly.
- * Angles are degrees, clockwise as seen on the plan (x right, y down).
+ * footprint as a centre, unrotated size and angle. Views read the stored room and items only
+ * through these. Angles are degrees, clockwise as seen on the plan (x right, y down).
  */
 
 /** An item's footprint: centre (cx, cy), unrotated width w and depth d, and angle in degrees. */
 export interface Footprint { cx: number; cy: number; w: number; d: number; angle: number }
 
-/** Degrees per quarter turn of the stored `rot`. */
-const QUARTER_TURN_DEG = 90;
-
 /** The room's corners in outline order (positive signed area). */
 export function roomOutline(room: Room): readonly Point[] {
-  return [{ x: 0, y: 0 }, { x: room.w, y: 0 }, { x: room.w, y: room.l }, { x: 0, y: room.l }];
+  return room.outline;
 }
 
 /** The room's ceiling height in inches. */
 export function roomHeight(room: Room): number {
-  return room.h;
+  return room.height;
 }
 
 /** Axis-aligned bounding box of the room's outline. */
@@ -31,9 +26,8 @@ export function roomBounds(room: Room): Bounds {
 }
 
 /** The item's footprint centre, unrotated size and clockwise angle. */
-export function itemFootprint(item: Pick<Item, 'x' | 'y' | 'w' | 'd' | 'rot'>): Footprint {
-  const [fw, fd] = footprint(item);
-  return { cx: item.x + fw / 2, cy: item.y + fd / 2, w: item.w, d: item.d, angle: item.rot * QUARTER_TURN_DEG };
+export function itemFootprint(item: Pick<Item, 'x' | 'y' | 'w' | 'd' | 'angle'>): Footprint {
+  return { cx: item.x, cy: item.y, w: item.w, d: item.d, angle: item.angle };
 }
 
 /** Plan-space position of the local point (lx, ly) of a footprint; local y = −d/2 is the back edge. */

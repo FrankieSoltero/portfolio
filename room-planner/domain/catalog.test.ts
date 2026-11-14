@@ -9,12 +9,15 @@ describe('createInitialDocument', () => {
   it('returns the seeded plan document', () => {
     const doc = createInitialDocument();
     const model = { tier: 'retailer', label: '3D model from retailer', assetUrl: null };
-    expect(doc.schemaVersion).toBe(1);
+    expect(doc.schemaVersion).toBe(2);
     expect(doc.units).toBe('ft');
-    expect(doc.room).toEqual({ w: 144, l: 168, h: 96 });
+    expect(doc.room).toEqual({
+      outline: [{ id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 }],
+      height: 96,
+    });
     expect(doc.items).toEqual([
-      { id: 'seed-bed', kind: 'bed', name: 'Low platform bed, queen', host: 'shop.example', sourceUrl: null, price: 890, w: 64, d: 85, h: 38, x: 40, y: 0, rot: 0, model },
-      { id: 'seed-desk', kind: 'desk', name: 'Tack writing desk', host: 'shop.example', sourceUrl: null, price: 420, w: 55, d: 26, h: 30, x: 118, y: 104, rot: 1, model },
+      { id: 'seed-bed', kind: 'bed', name: 'Low platform bed, queen', host: 'shop.example', sourceUrl: null, price: 890, w: 64, d: 85, h: 38, x: 72, y: 42.5, angle: 0, model },
+      { id: 'seed-desk', kind: 'desk', name: 'Tack writing desk', host: 'shop.example', sourceUrl: null, price: 420, w: 55, d: 26, h: 30, x: 131, y: 131.5, angle: 90, model },
     ]);
   });
 
@@ -27,9 +30,11 @@ describe('createInitialDocument', () => {
     expect(firstA).toBeDefined();
     expect(firstA).not.toBe(firstB);
     if (firstA) firstA.model.label = 'changed';
-    a.room.w = 1;
+    a.room.height = 1;
+    a.room.outline[1].x = 1;
     expect(firstB?.model.label).toBe('3D model from retailer');
-    expect(b.room.w).toBe(144);
+    expect(b.room.height).toBe(96);
+    expect(b.room.outline[1].x).toBe(144);
   });
 });
 

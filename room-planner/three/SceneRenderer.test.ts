@@ -216,7 +216,7 @@ describe('SceneRenderer', () => {
     const items = seedItems();
     sr.update(input({ items }));
     const before = groupOf('seed-desk');
-    const moved = items.map((i) => (i.id === 'seed-desk' ? { ...i, x: 20, y: 30 } : i));
+    const moved = items.map((i) => (i.id === 'seed-desk' ? { ...i, x: 33, y: 57.5 } : i));
     sr.update(input({ items: moved }));
     const after = groupOf('seed-desk');
     expect(after).toBe(before);
