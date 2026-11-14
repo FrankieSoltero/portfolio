@@ -6,7 +6,7 @@ import { fmtLen } from '../domain/units';
 import type { Bounds, Point } from '../domain/types';
 import { rectRoom } from '../test/fixtures';
 import type { PaneRect } from './panes';
-import { computeClearances, computePlanLayout, labelBox, planItemBox, toPane } from './planLayout';
+import { computeClearances, computePlanLayout, labelBox, planItemBox, toPane, toPlan } from './planLayout';
 import type { ClearanceLine, PlanLayout } from './planLayout';
 
 const ROOM = rectRoom(144, 168, 96);
@@ -58,6 +58,18 @@ describe('computePlanLayout', () => {
 describe('toPane', () => {
   it('maps a plan point to (ox + x·scale, oy + y·scale)', () => {
     expect(toPane({ x: 3, y: -4 }, { scale: 2, ox: 10, oy: 20 })).toEqual({ x: 16, y: 12 });
+  });
+});
+
+describe('toPlan', () => {
+  it('inverts toPane for points on, inside and outside the room with an offset layout', () => {
+    const layout: PlanLayout = { scale: 2.8095, ox: 101.714, oy: -37.5 };
+    const points: Point[] = [{ x: 0, y: 0 }, { x: 72.25, y: 131.5 }, { x: -24, y: 200.125 }];
+    for (const p of points) {
+      const back = toPlan(toPane(p, layout), layout);
+      expect(Math.abs(back.x - p.x)).toBeLessThanOrEqual(1e-9);
+      expect(Math.abs(back.y - p.y)).toBeLessThanOrEqual(1e-9);
+    }
   });
 });
 

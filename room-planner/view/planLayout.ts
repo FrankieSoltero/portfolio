@@ -39,6 +39,11 @@ export function toPane(p: Point, layout: PlanLayout): Point {
   return { x: layout.ox + p.x * layout.scale, y: layout.oy + p.y * layout.scale };
 }
 
+/** The plan point at a pane-pixel position: the inverse of toPane. */
+export function toPlan(p: Point, layout: PlanLayout): Point {
+  return { x: (p.x - layout.ox) / layout.scale, y: (p.y - layout.oy) / layout.scale };
+}
+
 /**
  * One line per side of the footprint, from the side's midpoint along its outward normal to the
  * nearest wall of the outline. Gaps of 0.5 in or less (or no wall hit) are skipped; labels are

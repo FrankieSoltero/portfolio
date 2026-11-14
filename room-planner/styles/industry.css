@@ -40,6 +40,10 @@
   --color-accent-2-800: #314457;
   --color-accent-2-900: #1f2d3a;
 
+  /* Warning (amber): text and outlines, and the tag background. */
+  --color-warning: #8a5300;
+  --color-warning-100: #fff1d0;
+
   --font-heading: "Barlow Condensed", system-ui, sans-serif;
   --font-heading-weight: 600;
   --font-body: "Barlow", system-ui, sans-serif;

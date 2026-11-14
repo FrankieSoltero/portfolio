@@ -6,12 +6,14 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { setRectangleSize } from '../../domain/outline';
 import { boundsOf } from '../../domain/polygon';
 import { itemFootprint, roomBounds, roomOutline } from '../../domain/shape';
-import type { Item, PlanDocument, Point } from '../../domain/types';
+import { BLOCKS_A_DOOR, COVERS_A_WINDOW, findPlanIssues } from '../../domain/conflicts';
+import type { Door, Item, Obstacle, Opening, PlanDocument, Point, WindowOpening } from '../../domain/types';
 import { fmtLen } from '../../domain/units';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { placedItem } from '../../test/fixtures';
 import type { PaneRect } from '../../view/panes';
+import { doorDrawing } from '../../view/planFeatures';
 import { computeClearances, computePlanLayout, labelBox, planItemBox, toPane } from '../../view/planLayout';
 import { InsetFrame } from './InsetFrame';
 import { PlanView } from './PlanView';
@@ -684,6 +686,98 @@ describe('PlanView in room mode', () => {
     } finally {
       vi.restoreAllMocks();
     }
+  });
+});
+
+describe('PlanView doors, windows and obstacles', () => {
+  /** Door D1 of the brief: on the top wall c1, 20 in from (0, 0), 32 in wide; the seed bed is in its swing. */
+  const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+  /** On the right wall beside the seed desk; its 24 in sill is below the desk's 30 in top. */
+  const W1: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 100, width: 36, sill: 24, height: 48 };
+  const BOX: Obstacle = { id: 'o1', shape: 'box', label: 'Radiator', x: 30, y: 140, rotation: 0, width: 30, depth: 8, height: 30, elevation: 0 };
+  const COLUMN: Obstacle = { id: 'o2', shape: 'cylinder', label: 'Column', x: 100, y: 100, rotation: 0, width: 12, depth: 12, height: 96, elevation: 0 };
+
+  function withFeatures(openings: Opening[], obstacles: Obstacle[] = [BOX, COLUMN]): PlanDocument {
+    return { ...createInitialDocument(), openings, obstacles };
+  }
+
+  function before(a: Element | null, b: Element | null): boolean {
+    if (!a || !b) throw new Error('missing element');
+    return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  }
+
+  it.each(['furnish', 'room'] as const)('draws the openings and obstacles in %s mode', (mode) => {
+    usePlanStore.getState().reset(withFeatures([D1, W1]));
+    useUiStore.getState().setMode(mode);
+    render(<PlanView pane={MAIN} />);
+    const L = seedLayout();
+    const svg = document.querySelector('svg.plan-features');
+    expect(svg?.querySelectorAll('[data-opening-id="d1"]')).toHaveLength(3);
+    expect(svg?.querySelectorAll('line.plan-window[data-opening-id="w1"]')).toHaveLength(2);
+    const arc = svg?.querySelector('path.plan-door-arc');
+    expect(arc?.getAttribute('d')).toBe(doorDrawing(D1, usePlanStore.getState().room.outline, L)?.arc);
+    expect(document.querySelectorAll('div.plan-obstacle')).toHaveLength(2);
+    // None is focusable or exposed; the sidebar lists them.
+    for (const el of document.querySelectorAll('svg.plan-features, [data-opening-id], [data-obstacle-id]')) {
+      expect(el).not.toHaveAttribute('tabindex');
+    }
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    // The furniture count is unaffected: the drawings use other data attributes.
+    expect(document.querySelectorAll('[data-item-id]')).toHaveLength(2);
+  });
+
+  it('stacks room, walls, openings, obstacles, furniture and clearance lines in that order', () => {
+    usePlanStore.getState().reset(withFeatures([D1, W1]));
+    useUiStore.getState().select('seed-desk');
+    render(<PlanView pane={MAIN} />);
+    const room = document.querySelector('.plan-room');
+    const walls = document.querySelector('svg.plan-outline');
+    const openings = document.querySelector('svg.plan-features');
+    const obstacle = document.querySelector('.plan-obstacle');
+    const furniture = document.querySelector('[data-item-id]');
+    const clearance = document.querySelector('.plan-clearance');
+    expect(before(room, walls)).toBe(true);
+    expect(before(walls, openings)).toBe(true);
+    expect(before(openings, obstacle)).toBe(true);
+    expect(before(obstacle, furniture)).toBe(true);
+    expect(before(furniture, clearance)).toBe(true);
+    // No inline z-index: they paint in document order below the furniture (z-index 1 to 4).
+    for (const el of [openings, ...document.querySelectorAll('.plan-obstacle')]) {
+      expect((el as HTMLElement | SVGElement | null)?.style.zIndex).toBe('');
+    }
+  });
+
+  it('puts the room edit layer above the drawings in room mode', () => {
+    usePlanStore.getState().reset(withFeatures([D1, W1]));
+    useUiStore.getState().setMode('room');
+    render(<PlanView pane={MAIN} />);
+    const items = document.querySelectorAll('[data-item-id]');
+    expect(before(document.querySelector('.plan-obstacle'), items[items.length - 1] ?? null)).toBe(true);
+    expect(before(items[items.length - 1] ?? null, document.querySelector('.room-wall-hit'))).toBe(true);
+  });
+
+  it('marks an item with a warning and no conflict is-warning, and a conflicting item is-conflict only', () => {
+    usePlanStore.getState().reset(withFeatures([D1, W1], []));
+    render(<PlanView pane={MAIN} />);
+    // The desk covers W1 (sill 24 < its 30 in top); the bed is in D1's swing.
+    expect(itemEl('seed-desk')).toHaveClass('is-warning');
+    expect(itemEl('seed-desk')).not.toHaveClass('is-conflict');
+    expect(itemEl('seed-bed')).toHaveClass('is-conflict');
+    expect(itemEl('seed-bed')).not.toHaveClass('is-warning');
+  });
+
+  it('an item with both a warning and a conflict has is-conflict only', () => {
+    // On the right wall: a window over the desk's upper half and a door swinging into its lower half.
+    const win: WindowOpening = { ...W1, offset: 104, width: 24 };
+    const door: Door = { ...D1, id: 'd2', wallId: 'c2', offset: 130, width: 28 };
+    const doc = withFeatures([win, door], []);
+    usePlanStore.getState().reset(doc);
+    const issues = findPlanIssues(doc.items, doc.room, doc.openings, doc.obstacles);
+    expect(issues.warnings['seed-desk']).toBe(COVERS_A_WINDOW);
+    expect(issues.conflicts['seed-desk']).toBe(BLOCKS_A_DOOR);
+    render(<PlanView pane={MAIN} />);
+    expect(itemEl('seed-desk')).toHaveClass('is-conflict');
+    expect(itemEl('seed-desk')).not.toHaveClass('is-warning');
   });
 });
 

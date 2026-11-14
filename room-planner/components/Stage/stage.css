@@ -72,6 +72,78 @@
   pointer-events: none;
 }
 
+/* Doors, windows and obstacles: drawn over the walls and under the furniture, with no z-index
+   (document order puts them below the items' z-index 1 to 4). Drawing only: no pointer input. */
+.plan-features {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+/* The door's gap paints over the 2px wall in the plan background colour, so the wall reads open. */
+.plan-door-gap {
+  stroke: var(--color-bg);
+  stroke-width: 4;
+  stroke-linecap: butt;
+}
+.plan-door-leaf {
+  stroke: var(--color-text);
+  stroke-width: 1.5;
+  stroke-linecap: square;
+}
+.plan-door-arc {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-width: 1;
+}
+/* A window is two parallel lines: on the wall line and 3px inside it. */
+.plan-window {
+  stroke: var(--color-text);
+  stroke-width: 1.5;
+}
+.plan-door-leaf.is-conflict,
+.plan-door-arc.is-conflict,
+.plan-window.is-conflict {
+  stroke-dasharray: 4 3;
+}
+
+/* A fixed obstacle: a neutral diagonal hatch, so it reads as part of the room and not as
+   furniture. A column is round; its label is clipped to the box. */
+.plan-obstacle {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--color-neutral-700);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--color-neutral-200) 0 4px,
+    var(--color-neutral-500) 4px 5px
+  );
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+.plan-obstacle.is-round {
+  border-radius: 50%;
+}
+.plan-obstacle.is-conflict {
+  border: 1.5px dashed var(--color-text);
+}
+.plan-obstacle-label {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1.3;
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
+}
+
 /* Furniture boxes. Later rules win: conflict hatch over rug fill, selected border over
    conflict border (the hatch stays on a selected conflicting item, as in the prototype). */
 .plan-item {
@@ -99,6 +171,11 @@
     var(--color-bg) 0 5px,
     color-mix(in srgb, var(--color-text) 16%, var(--color-bg)) 5px 6px
   );
+}
+/* A warning (covers a window) is an amber ring just outside the box; a box-shadow, so the
+   focus outline (2px further out) still shows on a warned item. */
+.plan-item.is-warning {
+  box-shadow: 0 0 0 2px var(--color-warning);
 }
 .plan-item.is-selected {
   border: 2px solid var(--color-accent);

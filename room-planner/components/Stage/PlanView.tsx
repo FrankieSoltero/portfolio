@@ -9,7 +9,7 @@ import type { Item } from '../../domain/types';
 import { fmtFurnDims, fmtLen, gridStepInches } from '../../domain/units';
 import { startDrag } from '../../hooks/startDrag';
 import { usePlanStore } from '../../state/planStore';
-import { useConflicts } from '../../state/selectors';
+import { useConflicts, useWarnings } from '../../state/selectors';
 import { useUiStore } from '../../state/uiStore';
 import type { PaneRect } from '../../view/panes';
 import {
@@ -21,6 +21,7 @@ import {
   toPane,
 } from '../../view/planLayout';
 import { BlueprintCorners } from '../ui/BlueprintCorners';
+import { PlanFeatures } from './PlanFeatures';
 import { FreezePlanLayoutContext, RoomEditLayer } from './RoomEditLayer';
 import './stage.css';
 
@@ -33,10 +34,10 @@ const Z_ITEM = 2;
 const RAD_TO_DEG = 180 / Math.PI;
 
 /**
- * The interactive 2D plan: dimension lines, the room outline, furniture boxes, clearance lines
- * for the selected item, and in room mode the room editor over dimmed, inert furniture. Fills its
- * parent; every position is computed from `pane` and the shape accessors (outline, bounds,
- * footprints), so it does not measure the DOM. Ported from prototype lines 136–173 and 679–699.
+ * The interactive 2D plan: dimension lines, the room outline, doors, windows and obstacles,
+ * furniture boxes, clearance lines for the selected item, and in room mode the room editor over
+ * dimmed, inert furniture. Fills its parent; every position is computed from `pane` and the shape
+ * accessors (outline, bounds, footprints), so it does not measure the DOM. Ported from prototype lines 136–173 and 679–699.
  */
 export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
   const room = usePlanStore((s) => s.room);
@@ -48,6 +49,7 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
   const roomMode = useUiStore((s) => s.mode === 'room');
   const selectCorner = useUiStore((s) => s.selectCorner);
   const conflicts = useConflicts();
+  const warnings = useWarnings();
   // Set by the room editor for the length of a corner drag, so the room does not re-fit mid-drag.
   const [frozenLayout, setFrozenLayout] = useState<PlanLayout | null>(null);
 
@@ -120,16 +122,21 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
           <BlueprintCorners />
         </div>
       )}
+      {/* Doors, windows and obstacles: over the walls, under the furniture (no z-index, so they
+          paint in document order below the items' z-index 1 to 4). */}
+      <PlanFeatures layout={layout} />
       {items.map((item) => {
         const fp = itemFootprint(item);
         const box = planItemBox(fp, layout);
         const label = labelBox(fp, layout);
         const isSelected = item.id === selectedId;
+        const isConflict = conflicts[item.id] !== undefined;
         const parts = PARTS[item.kind];
         const className = [
           'plan-item',
           item.kind === 'rug' && 'is-rug',
-          conflicts[item.id] !== undefined && 'is-conflict',
+          isConflict && 'is-conflict',
+          !isConflict && warnings[item.id] !== undefined && 'is-warning',
           isSelected && 'is-selected',
         ]
           .filter(Boolean)
