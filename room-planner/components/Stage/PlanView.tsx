@@ -60,7 +60,9 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
   const boundsTopLeft = toPane({ x: bounds.minX, y: bounds.minY }, layout);
   const boundsW = bounds.w * scale;
   const boundsH = bounds.l * scale;
-  const dimOffset = pane.inset ? CONFIG.dimOffsetInset : CONFIG.dimOffset;
+  // In room mode the overall dimension lines move further out, clear of the wall length labels.
+  const dimOffset =
+    (pane.inset ? CONFIG.dimOffsetInset : CONFIG.dimOffset) + (roomMode ? CONFIG.dimOffsetRoomExtra : 0);
   const grid = gridStepInches(units) * scale;
   const panePoints = outline.map((p) => toPane(p, layout));
   const clipPath = `polygon(${panePoints.map((p) => `${p.x}px ${p.y}px`).join(', ')})`;

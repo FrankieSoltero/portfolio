@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CONFIG } from '../../config';
 import { createInitialDocument } from '../../domain/catalog';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { setRectangleSize } from '../../domain/outline';
@@ -563,6 +564,29 @@ describe('PlanView in room mode', () => {
     expect(cornerHandles()).toHaveLength(4);
     act(() => useUiStore.getState().setMode('furnish'));
     expect(cornerHandles()).toHaveLength(0);
+  });
+
+  it.each([
+    ['main', 30, MAIN],
+    ['inset', 22, INSET],
+  ] as const)('moves the dimension lines a further dimOffsetRoomExtra px out in the %s pane (%i px base)', (_name, off, pane) => {
+    expect(CONFIG.dimOffsetRoomExtra).toBe(22);
+    expect(pane.inset ? CONFIG.dimOffsetInset : CONFIG.dimOffset).toBe(off);
+    useUiStore.getState().setMode('room');
+    render(<PlanView pane={pane} />);
+    const bounds = roomBounds(usePlanStore.getState().room);
+    const tl = toPane({ x: bounds.minX, y: bounds.minY }, computePlanLayout(bounds, pane));
+    const wDim = document.querySelector<HTMLElement>('.plan-dim-w');
+    const lDim = document.querySelector<HTMLElement>('.plan-dim-l');
+    if (!wDim || !lDim) throw new Error('no dimension lines');
+    expect(px(wDim, 'top')).toBeCloseTo(tl.y - (off + CONFIG.dimOffsetRoomExtra), 3);
+    expect(px(wDim, 'left')).toBeCloseTo(tl.x, 3);
+    expect(px(lDim, 'left')).toBeCloseTo(tl.x - (off + CONFIG.dimOffsetRoomExtra), 3);
+    expect(px(lDim, 'top')).toBeCloseTo(tl.y, 3);
+    // Back in furnish mode the lines return to the base offset.
+    act(() => useUiStore.getState().setMode('furnish'));
+    expect(px(wDim, 'top')).toBeCloseTo(tl.y - off, 3);
+    expect(px(lDim, 'left')).toBeCloseTo(tl.x - off, 3);
   });
 
   it('furniture is inert, hidden from assistive technology and out of the tab order', () => {

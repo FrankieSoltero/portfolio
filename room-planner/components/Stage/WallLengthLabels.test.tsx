@@ -116,6 +116,62 @@ describe('WallLengthLabels', () => {
   });
 });
 
+describe('WallLengthLabels: moving-end marks', () => {
+  function marks(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>('span.room-wall-moving-end')];
+  }
+
+  /** The pane px of each mark, as [left, top]. */
+  function markPoints(): number[][] {
+    return marks().map((el) => [parseFloat(el.style.left), parseFloat(el.style.top)]);
+  }
+
+  // R's c1 (0,0) is pane (10, 20) and c2 (144,0) is pane (298, 20) at scale 2.
+  it.each([
+    ['end', [[298, 20]]],
+    ['start', [[10, 20]]],
+    ['both', [[10, 20], [298, 20]]],
+  ] as const)('anchor %s on wall c1 marks the corner(s) a typed length moves', (anchor, expected) => {
+    useUiStore.getState().selectWall('c1');
+    useUiStore.getState().setLengthAnchor(anchor);
+    render(<WallLengthLabels layout={LAYOUT} />);
+    expect(marks()).toHaveLength(expected.length);
+    for (const el of marks()) expect(el).toHaveAttribute('aria-hidden', 'true');
+    markPoints().forEach(([x, y], i) => {
+      expect(x).toBeCloseTo(expected[i]?.[0] ?? NaN, 6);
+      expect(y).toBeCloseTo(expected[i]?.[1] ?? NaN, 6);
+    });
+  });
+
+  it('marks the last wall\'s end at the first corner (anchor end on c4)', () => {
+    useUiStore.getState().selectWall('c4');
+    useUiStore.getState().setLengthAnchor('end');
+    render(<WallLengthLabels layout={LAYOUT} />);
+    expect(markPoints()).toEqual([[10, 20]]);
+  });
+
+  it('follows the anchor and the selection as they change', () => {
+    useUiStore.getState().selectWall('c1');
+    useUiStore.getState().setLengthAnchor('end');
+    render(<WallLengthLabels layout={LAYOUT} />);
+    act(() => useUiStore.getState().setLengthAnchor('both'));
+    expect(marks()).toHaveLength(2);
+    act(() => useUiStore.getState().selectWall(null));
+    expect(marks()).toHaveLength(0);
+  });
+
+  it('draws no mark with no wall selected', () => {
+    render(<WallLengthLabels layout={LAYOUT} />);
+    expect(marks()).toHaveLength(0);
+  });
+
+  it('draws no mark for an unknown wall id', () => {
+    useUiStore.getState().selectWall('nope');
+    render(<WallLengthLabels layout={LAYOUT} />);
+    expect(marks()).toHaveLength(0);
+  });
+});
+
 /** The open editor (there is at most one), or null. */
 function editorEl(): HTMLElement | null {
   return document.querySelector<HTMLElement>('div.room-wall-editor');
@@ -588,5 +644,21 @@ describe('wall label styles (stage.css)', () => {
     const corner = rule('.room-corner:focus-visible');
     expect(corner).toContain('outline: 2px solid var(--color-accent-700);');
     expect(corner).toContain('outline-offset: 3px;');
+  });
+
+  it('a moving-end mark is a dashed accent ring centred on its corner, taking no pointer input', () => {
+    const body = rule('.room-wall-moving-end');
+    for (const decl of [
+      'position: absolute;',
+      'width: 26px;',
+      'height: 26px;',
+      'transform: translate(-50%, -50%);',
+      'border: 2px dashed var(--color-accent);',
+      'border-radius: 50%;',
+      'pointer-events: none;',
+      'z-index: 7;',
+    ]) {
+      expect(body).toContain(decl);
+    }
   });
 });

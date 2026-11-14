@@ -18,6 +18,8 @@ export const CONFIG = {
   planMarginInset: 48,
   dimOffset: 30,
   dimOffsetInset: 22,
+  // In room mode the overall dimension lines sit this many px further out, clear of the wall labels.
+  dimOffsetRoomExtra: 22,
   insetGap: 16,
   minPlanScale: 0.2,
   minSafeWidth: 200,

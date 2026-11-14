@@ -360,6 +360,21 @@
   outline-offset: 3px;
 }
 
+/* A dashed ring on each corner of the selected wall that a typed length would move, centred on
+   its inline left/top. Decoration only: it takes no pointer input and sits under the corner
+   handles. */
+.room-wall-moving-end {
+  position: absolute;
+  z-index: 7;
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border: 2px dashed var(--color-accent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 /* The length editor that takes a label's place, centred on the same point and drawn above the
    corner handles: a number input with its unit, then the three which-end radios. */
 .room-wall-editor {

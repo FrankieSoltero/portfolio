@@ -184,7 +184,8 @@ function WallLengthEditor({ wall, cornerCount, units, left, top, onClose }: Wall
  * selects its wall (a clicked button is not focused in every browser) and replaces the label with the
  * wall's length editor (WallLengthEditor). One editor is open at a time: a real click on another label
  * first moves focus out of the open editor, which applies its draft as leaving does, and opening the
- * new editor then closes the first without applying anything more.
+ * new editor then closes the first without applying anything more. After the labels it draws the
+ * selected wall's moving-end marks (MovingEndMarks), if a wall of the outline is selected.
  */
 export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Element {
   const outline = usePlanStore((s) => s.room.outline);
@@ -206,9 +207,12 @@ export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Elemen
     labelRefs.current.get(id)?.focus();
   }, [editingId]);
 
+  const walls = wallsOf(outline);
+  const selectedWall = walls.find((w) => w.id === selectedWallId);
+
   return (
     <>
-      {wallsOf(outline).map((wall) => {
+      {walls.map((wall) => {
         const { n } = wallFrame(wall);
         const mid = toPane({ x: (wall.a.x + wall.b.x) / 2, y: (wall.a.y + wall.b.y) / 2 }, layout);
         const left = mid.x - CONFIG.wallLabelOffsetPx * n.x;
@@ -252,6 +256,32 @@ export function WallLengthLabels({ layout }: { layout: PlanLayout }): JSX.Elemen
           >
             {text}
           </button>
+        );
+      })}
+      {selectedWall && <MovingEndMarks wall={selectedWall} layout={layout} />}
+    </>
+  );
+}
+
+/**
+ * A decorative ring on each corner of `wall` that a typed length would move under the current
+ * `lengthAnchor`: the wall's end corner for `end`, its start corner for `start`, both for `both`.
+ * Each is centred on its corner in pane px; hidden from assistive technology.
+ */
+function MovingEndMarks({ wall, layout }: { wall: Wall; layout: PlanLayout }): JSX.Element {
+  const lengthAnchor = useUiStore((s) => s.lengthAnchor);
+  const corners = lengthAnchor === 'start' ? [wall.a] : lengthAnchor === 'end' ? [wall.b] : [wall.a, wall.b];
+  return (
+    <>
+      {corners.map((corner) => {
+        const p = toPane(corner, layout);
+        return (
+          <span
+            key={corner.id}
+            className="room-wall-moving-end"
+            aria-hidden="true"
+            style={{ left: p.x, top: p.y }}
+          />
         );
       })}
     </>
