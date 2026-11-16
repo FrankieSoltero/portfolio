@@ -44,12 +44,24 @@ function keyed(kind: KeyedKind, id: string, change: () => void): void {
 }
 
 /**
+ * The letter a history shortcut is read from: `e.key` in lower case when it is a Latin letter, so
+ * layouts that move the letters (Dvorak, AZERTY) go by letter; otherwise, as on a Cyrillic layout,
+ * the physical key: `KeyZ` counts as z and `KeyY` as y.
+ */
+function historyLetter(e: KeyboardEvent): string {
+  if (/^[a-z]$/i.test(e.key)) return e.key.toLowerCase();
+  if (e.code === 'KeyZ') return 'z';
+  if (e.code === 'KeyY') return 'y';
+  return '';
+}
+
+/**
  * Ctrl or Cmd+Z is undo; Ctrl or Cmd+Shift+Z, and Ctrl+Y without Cmd or Shift, are redo. Any
- * combination with Alt is neither. The letter counts in either case.
+ * combination with Alt is neither. The letter counts in either case (see historyLetter).
  */
 function historyKey(e: KeyboardEvent): 'undo' | 'redo' | null {
   if (e.altKey) return null;
-  const key = e.key.toLowerCase();
+  const key = historyLetter(e);
   if ((e.metaKey || e.ctrlKey) && key === 'z') return e.shiftKey ? 'redo' : 'undo';
   if (e.ctrlKey && !e.metaKey && !e.shiftKey && key === 'y') return 'redo';
   return null;

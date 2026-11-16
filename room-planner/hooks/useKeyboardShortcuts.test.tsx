@@ -832,6 +832,20 @@ describe('useKeyboardShortcuts undo and redo keys', () => {
     expect(redo).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [{ key: 'я', code: 'KeyZ', ctrlKey: true }, 'undo'],
+    [{ key: 'Я', code: 'KeyZ', ctrlKey: true, shiftKey: true }, 'redo'],
+    [{ key: 'н', code: 'KeyY', ctrlKey: true }, 'redo'],
+    [{ key: 'w', code: 'KeyZ', ctrlKey: true }, 'nothing'],
+    [{ key: 'z', code: 'KeyW', ctrlKey: true }, 'undo'],
+  ] as const)('Physical key: %o does %s (e.code counts only when e.key is not a Latin letter)', (init, wanted) => {
+    const { key, ...rest } = init;
+    const ev = press(document.body, key, rest);
+    expect(vi.mocked(undo).mock.calls.length).toBe(wanted === 'undo' ? 1 : 0);
+    expect(vi.mocked(redo).mock.calls.length).toBe(wanted === 'redo' ? 1 : 0);
+    expect(ev.defaultPrevented).toBe(wanted !== 'nothing');
+  });
+
   it('Ctrl+Z takes back a nudge and Ctrl+Shift+Z puts it back', () => {
     useUiStore.getState().select(BED);
     press(document.body, 'ArrowRight');
