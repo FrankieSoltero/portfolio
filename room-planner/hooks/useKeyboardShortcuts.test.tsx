@@ -4,17 +4,17 @@ import { SelectionBar } from '../components/SelectionBar';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
 import type { Corner, Door, Item, Obstacle } from '../domain/types';
-import { clearHistory, redo, undo } from '../state/historyStore';
+import { clearHistory, redo, runKeyed, undo, useHistoryStore } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { startDrag } from './startDrag';
 import { useElementSize } from './useElementSize';
 import { ROTATE_STEP_COARSE, ROTATE_STEP_FINE, useKeyboardShortcuts } from './useKeyboardShortcuts';
 
-// undo and redo are spies that call the real functions, so a test can count the calls the hook makes.
+// undo, redo and runKeyed are spies that call the real functions, so a test can count the calls the hook makes.
 vi.mock('../state/historyStore', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../state/historyStore')>();
-  return { ...actual, undo: vi.fn(actual.undo), redo: vi.fn(actual.redo) };
+  return { ...actual, undo: vi.fn(actual.undo), redo: vi.fn(actual.redo), runKeyed: vi.fn(actual.runKeyed) };
 });
 
 const BED = 'seed-bed';
@@ -846,6 +846,16 @@ describe('useKeyboardShortcuts undo and redo keys', () => {
     expect(ev.defaultPrevented).toBe(wanted !== 'nothing');
   });
 
+  it.each([
+    ['z', { metaKey: true }],
+    ['z', { ctrlKey: true }],
+  ] as const)('Nothing to undo: %s with %o still prevents default', (key, init) => {
+    expect(useHistoryStore.getState().canUndo).toBe(false);
+    const ev = press(document.body, key, init);
+    expect(vi.mocked(undo).mock.results).toEqual([{ type: 'return', value: false }]);
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
   it('Ctrl+Z takes back a nudge and Ctrl+Shift+Z puts it back', () => {
     useUiStore.getState().select(BED);
     press(document.body, 'ArrowRight');
@@ -950,6 +960,27 @@ describe('useKeyboardShortcuts key runs', () => {
     expect(usePlanStore.getState().room).toBe(afterCorner);
     expect(stepCount()).toBe(1);
     expect(usePlanStore.getState().room).toBe(before);
+  });
+
+  it('Backspace is its own step: ArrowRight then Backspace at once are 2 steps', () => {
+    useUiStore.getState().select(BED);
+    press(document.body, 'ArrowRight');
+    press(document.body, 'Backspace');
+    expect(bed()).toBeUndefined();
+    expect(stepCount()).toBe(2);
+    expect(bed()).toMatchObject({ x: 72, y: 42.5 });
+  });
+
+  it.each([
+    ['furnish', () => useUiStore.getState().select(BED)],
+    ['room', () => useUiStore.getState().selectCorner('c2')],
+  ] as const)('Escape in %s mode adds no step and is not keyed', (mode, selectIt) => {
+    useUiStore.getState().setMode(mode);
+    selectIt();
+    vi.mocked(runKeyed).mockClear();
+    press(document.body, 'Escape');
+    expect(runKeyed).not.toHaveBeenCalled();
+    expect(useHistoryStore.getState().canUndo).toBe(false);
   });
 
   it('Delete is its own step: ArrowRight then Delete at once are 2 steps', () => {
