@@ -188,23 +188,30 @@ describe('Header', () => {
       expect(status).toBeEmptyDOMElement();
     });
 
-    it('announces Undone then Redone in a new status element each time, so two undos are both announced', async () => {
+    it('announces Undone then Redone in one lasting status element, so two undos in a row are both announced', async () => {
       render(<Header />);
       const user = userEvent.setup();
+      /** The text for `word` at the current count: a trailing U+00A0 when announceCount is odd. */
+      const expected = (word: string) => (useHistoryStore.getState().announceCount % 2 === 1 ? `${word}\u00a0` : word);
+      const status = within(screen.getByRole('banner')).getByRole('status');
+      expect(status.textContent).toBe('');
       oneStep();
       act(() => setWidth(200));
       await user.click(undoButton());
-      const first = screen.getByRole('status');
-      expect(first).toHaveTextContent(/^Undone$/);
-      expect(first).toHaveClass('visually-hidden');
+      expect(screen.getByRole('status')).toBe(status);
+      expect(status.textContent).toBe(expected('Undone'));
+      const firstText = status.textContent;
       await user.click(undoButton());
-      const second = screen.getByRole('status');
-      expect(second).toHaveTextContent(/^Undone$/);
-      expect(second).not.toBe(first);
+      expect(screen.getByRole('status')).toBe(status);
+      expect(status.textContent).toBe(expected('Undone'));
+      // The same word twice is still a change of text, so a screen reader says it again.
+      expect(status.textContent).not.toBe(firstText);
+      expect([firstText, status.textContent].sort()).toEqual(['Undone', 'Undone\u00a0']);
       await user.click(redoButton());
-      const third = screen.getByRole('status');
-      expect(third).toHaveTextContent(/^Redone$/);
-      expect(third).not.toBe(second);
+      expect(screen.getByRole('status')).toBe(status);
+      expect(status.textContent).toBe(expected('Redone'));
+      expect(status.textContent?.startsWith('Redone')).toBe(true);
+      expect(status).toHaveClass('visually-hidden');
     });
 
     describe('styles (sidebar.css)', () => {
