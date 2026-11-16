@@ -26,6 +26,11 @@ export const CONFIG = {
   minPlanScale: 0.2,
   minSafeWidth: 200,
   conflictEpsilon: 0.01,
+  // Stopping a moved piece at the walls: a piece fits when it is inside within wallStopEpsilon
+  // (conflictEpsilon when it starts up to that much over a wall), and the furthest fit along a
+  // path is found by halving the path wallStopIterations times.
+  wallStopEpsilon: 1e-6,
+  wallStopIterations: 26,
   cornerSnap: 1,
   angleSnapDeg: 15,
   angleSnapTolerancePx: 8,

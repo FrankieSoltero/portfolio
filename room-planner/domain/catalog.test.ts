@@ -80,7 +80,7 @@ describe('CONFIG', () => {
       pitchMin: 0.12, pitchMax: 1.45, zoomMin: 0.6, zoomMax: 2.5,
       orbitYawPerPx: 0.008, orbitPitchPerPx: 0.006, zoomPerDelta: 0.001,
       planMargin: 64, planMarginInset: 48, dimOffset: 30, dimOffsetInset: 22, dimOffsetRoomExtra: 22, dimOffsetRoomExtraInset: 16,
-      insetGap: 16, minPlanScale: 0.2, minSafeWidth: 200, conflictEpsilon: 0.01,
+      insetGap: 16, minPlanScale: 0.2, minSafeWidth: 200, conflictEpsilon: 0.01, wallStopEpsilon: 1e-6, wallStopIterations: 26,
       cornerSnap: 1, angleSnapDeg: 15, angleSnapTolerancePx: 8, wallMin: 6, maxCorners: 64, sameDirectionSlack: 0.005, wallDragThresholdPx: 4, wallLabelOffsetPx: 10, wallLabelHalfHeightPx: 9, coordMax: 1440, maxItems: 200,
       maxPixelRatio: 2, nudgeStep: 1, nudgeStepLarge: 12,
       hemiIntensity: 3.0, sunIntensity: 1.7,
