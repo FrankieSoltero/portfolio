@@ -314,3 +314,43 @@ Two live-check rows were written wrongly; the app was right in both.
   first.
 
 The whole table is run again after this amendment.
+
+### Amendment 2 (2026-11-16, after the whole-change review)
+
+The whole-change review found two defects where the wall stop meets existing code, and one
+weakness. All three are fixed in one fix commit. Room A below is Task 1's room A.
+
+1. **The asked-for place is no longer clamped to the room's bounding box for a piece that
+   starts inside.** The plan told the move functions to compute "the place it returns today"
+   (which clamps the centre into the bounding box) and then stop at walls. Beyond an angled
+   wall that cuts a corner off the box, the clamped place lies in another direction from the
+   pointer, so the piece ran along the wall away from the pointer. Now: `stopAtWalls` takes
+   an optional `whenOutside` point. The move functions pass the snapped place clamped only to
+   ±2·`CONFIG.coordMax` as `to`, and the bounding-box-clamped place (today's result) as
+   `whenOutside`; `stopAtWalls` returns `whenOutside` (rounded) in step 2 when it is given.
+   Row: room A, 20×20 item at (100,100), `moveItem` to (220,220), snap 1 → (112,112). Same
+   for a box obstacle of 20×20.
+2. **A nudge never changes the other coordinate.** The spec says a nudge into a wall "moves
+   the part of the step that fits and stops flush. More presses do nothing." With the slide
+   candidates, ArrowRight against a 45° wall moved the piece diagonally on every press.
+   Now: `stopAtWalls` takes an optional `straight: true`; steps 6 and 7 are then replaced by
+   one "furthest fit from `from` towards `to`". `shiftItem` and `shiftObstacle` pass it.
+   Rows: room A, 20×20 item at (100,100), `shiftItem` by (1,0) forty times → ends at
+   (124,100), and y is 100 after every press; the same item, `shiftItem` by (1,1) → moves
+   along the diagonal as far as fits.
+3. **The slide along an angled wall lagged by up to a few inches.** The slide's end was
+   rounded to 0.01 before it was tested, which often put it over the wall, so the slide
+   failed and the piece crept. Now: the slide's end is tested unrounded (furthest fit towards
+   the unrounded end), and the result is the fitting point nearest `to` among the four
+   0.01-grid neighbours of that end (floor/ceil of x and y); when none fits, the slide gives
+   no candidate. Row: room `(0,0) (200,0) (200,120) (0,150)`, a 40×30 piece turned 45°: over
+   a drag of 80 frames with the pointer moving diagonally into the angled wall, the piece's
+   distance from where it settles once the pointer stops is never more than 1 in on any
+   frame after the first touch (the reviewer measured 5.3 in before the fix).
+
+Also in the fix commit: one keyboard test row for an arrow-key nudge of a piece that starts
+inside and moves freely; the two store tests that assert `not.toBe(OUTSIDE_THE_ROOM)` assert
+`toBeUndefined()`; and the docs corrections listed in the fix brief. The live check is run
+again on the fix commit, with two added rows: X2 (a nudge into an angled wall keeps the
+other coordinate) and X3 (a drag past the bounding box beyond an angled wall ends nearest
+the pointer's direction, not at the box corner).
