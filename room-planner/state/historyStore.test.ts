@@ -198,6 +198,29 @@ describe('keyed runs', () => {
     expect(undoAll()).toBe(1);
   });
 
+  it('Keyed run, edge: a keyed change exactly 1000 ms after the previous one joins the step', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    runKeyed('k', change);
+    vi.setSystemTime(11_000);
+    runKeyed('k', change);
+    expect(undoAll()).toBe(1);
+  });
+
+  it('Keyed run after undo: the same key within 1000 ms starts a new step, not joined to an older one', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const start = height();
+    runKeyed('k', change);
+    vi.setSystemTime(10_100);
+    expect(undo()).toBe(true);
+    vi.setSystemTime(10_200);
+    runKeyed('k', change);
+    expect(useHistoryStore.getState().canUndo).toBe(true);
+    expect(undoAll()).toBe(1);
+    expect(height()).toBe(start);
+  });
+
   it('Different keys: two keys at once are two steps', () => {
     runKeyed('a', change);
     runKeyed('b', change);
@@ -357,6 +380,26 @@ describe('undo and redo', () => {
     expect(usePlanStore.getState().room).toBe(room);
   });
 
+  it('Change after redo: a change after a redo starts a new step', () => {
+    openGroup('field');
+    change();
+    undo();
+    redo();
+    change();
+    closeGroup('field');
+    expect(undoAll()).toBe(2);
+  });
+
+  it('Blocked in a drag: undo returns false in an open drag before any change was made', () => {
+    change();
+    const room = usePlanStore.getState().room;
+    openGroup('drag');
+    expect(undo()).toBe(false);
+    expect(usePlanStore.getState().room).toBe(room);
+    closeGroup('drag');
+    expect(undo()).toBe(true);
+  });
+
   it('Blocked in a drag: redo waits for the drag to close', () => {
     change();
     undo();
@@ -507,5 +550,19 @@ describe('stale selections', () => {
     change();
     undo();
     expect(useUiStore.getState().selectedObstacleId).toBe(OBSTACLE.id);
+  });
+
+  it('Kept selection: a selected corner and a selected opening that still exist after undo stay selected', () => {
+    usePlanStore.setState({ openings: [DOOR] });
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectCorner('c1');
+    change();
+    undo();
+    expect(useUiStore.getState().selectedCornerId).toBe('c1');
+
+    useUiStore.getState().selectOpening(DOOR.id);
+    change();
+    undo();
+    expect(useUiStore.getState().selectedOpeningId).toBe(DOOR.id);
   });
 });
