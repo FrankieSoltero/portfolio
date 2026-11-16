@@ -70,6 +70,28 @@ describe('startDrag: history', () => {
     fireEvent.pointerUp(window);
     expect(undoAll()).toBe(1);
   });
+
+  it('closes the drag group when onEnd throws: the error surfaces and undo is not blocked afterwards', () => {
+    const boom = new Error('onEnd failed');
+    const reported: unknown[] = [];
+    // A listener's error is reported on window, not thrown out of dispatchEvent.
+    const onError = (ev: ErrorEvent) => {
+      reported.push(ev.error);
+      ev.preventDefault();
+    };
+    window.addEventListener('error', onError);
+    try {
+      startDrag(pointerDown(), nudgeBed, () => {
+        throw boom;
+      });
+      fireEvent.pointerMove(window, { clientX: 1, clientY: 0 });
+      fireEvent.pointerUp(window);
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+    expect(reported).toEqual([boom]);
+    expect(undo()).toBe(true);
+  });
 });
 
 describe('startDrag: existing behaviour', () => {
