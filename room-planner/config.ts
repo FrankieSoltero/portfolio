@@ -59,6 +59,10 @@ export const CONFIG = {
   planStorageKey: 'room-planner:plan:v1',
   maxStoredChars: 524288,
   saveDebounceMs: 300,
+  // Undo history (in memory only): at most historyLimit steps are kept, and a keyed change joins
+  // the latest step when it comes within historyMergeMs of that step's latest change.
+  historyLimit: 100,
+  historyMergeMs: 1000,
   // Limits for doors, windows and obstacles; planSchema reads them, so edits and loading agree.
   maxOpenings: 64,
   maxObstacles: 64,

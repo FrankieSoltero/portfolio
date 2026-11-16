@@ -85,6 +85,7 @@ describe('CONFIG', () => {
       maxPixelRatio: 2, nudgeStep: 1, nudgeStepLarge: 12,
       hemiIntensity: 3.0, sunIntensity: 1.7,
       planStorageKey: 'room-planner:plan:v1', maxStoredChars: 524288, saveDebounceMs: 300,
+      historyLimit: 100, historyMergeMs: 1000,
       maxOpenings: 64, maxObstacles: 64,
       openingWidthMin: 12, openingWidthMax: 240, openingHeightMin: 12, openingHeightMax: 240,
       sillMax: 240, obstacleSizeMin: 1, obstacleSizeMax: 240, obstacleHeightMax: 720, obstacleLabelMax: 40,
