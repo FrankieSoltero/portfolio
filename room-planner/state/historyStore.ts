@@ -47,8 +47,12 @@ const openGroups: Record<GroupKind, Group | null> = { drag: null, field: null };
 let currentKey: string | null = null;
 /** The step later changes may join; null after an undo, a redo or clearHistory. */
 let latestStep: Step | null = null;
-/** True while undo or redo replaces the plan, so that update is not recorded. */
-let restoring = false;
+/**
+ * While undo or redo replaces the plan: the plan state just before the replacement, else null. The
+ * replacement's own update is the one whose previous state is this object, and it alone is not
+ * recorded; any other update made meanwhile (say by a subscriber reacting to the restored plan) is.
+ */
+let stateBeforeRestore: PlanState | null = null;
 
 /** The undo and redo state the controls read. Changed only by this module. */
 export const useHistoryStore: UseBoundStore<StoreApi<HistoryState>> = create<HistoryState>()(() => ({
@@ -92,7 +96,7 @@ function pushUndo(step: Step): void {
  * is emptied.
  */
 function record(next: PlanState, prev: PlanState): void {
-  if (restoring || !isChange(next, prev)) return;
+  if (prev === stateBeforeRestore || !isChange(next, prev)) return;
   redoList = [];
   const now = Date.now();
   const group = openGroups.drag ?? openGroups.field;
@@ -132,15 +136,17 @@ function clearStaleSelections(): void {
 
 /**
  * Puts `plan` back into the plan store, keeping the current units and schema version, without
- * recording it; then clears stale selections and announces `text`.
+ * recording that update (a change another subscriber makes in reaction is recorded as usual); then
+ * clears stale selections and announces `text`.
  */
 function restore(plan: Snapshot, text: 'Undone' | 'Redone'): void {
-  const { schemaVersion, units, reset } = usePlanStore.getState();
-  restoring = true;
+  const current = usePlanStore.getState();
+  const { schemaVersion, units, reset } = current;
+  stateBeforeRestore = current;
   try {
     reset({ schemaVersion, units, ...plan });
   } finally {
-    restoring = false;
+    stateBeforeRestore = null;
   }
   // A change after an undo or redo always starts a new step.
   latestStep = null;

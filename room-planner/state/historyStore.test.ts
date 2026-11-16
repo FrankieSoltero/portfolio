@@ -407,6 +407,34 @@ describe('undo and redo', () => {
     runKeyed('k', change);
     expect(undoAll()).toBe(1);
   });
+
+  it('Change during a restore: a change another subscriber makes on seeing the restored plan is its own step', () => {
+    const restoredRoom = usePlanStore.getState().room;
+    const restoredItems = usePlanStore.getState().items;
+    change();
+    let reacted = false;
+    const unsubscribe = usePlanStore.subscribe((s) => {
+      if (!reacted && s.room === restoredRoom) {
+        reacted = true;
+        s.addItem(CHAIR);
+      }
+    });
+    try {
+      expect(undo()).toBe(true);
+    } finally {
+      unsubscribe();
+    }
+    expect(reacted).toBe(true);
+    // The reaction cleared the redo list, so no redo can wipe it.
+    expect(useHistoryStore.getState().canRedo).toBe(false);
+    expect(redo()).toBe(false);
+    expect(useHistoryStore.getState().canUndo).toBe(true);
+    // One undo takes back the reaction alone, back to the restored plan.
+    expect(undo()).toBe(true);
+    expect(usePlanStore.getState().room).toBe(restoredRoom);
+    expect(usePlanStore.getState().items).toBe(restoredItems);
+    expect(useHistoryStore.getState().canUndo).toBe(false);
+  });
 });
 
 describe('stale selections', () => {
