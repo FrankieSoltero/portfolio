@@ -263,7 +263,7 @@ describe('RoomSection', () => {
     useUiStore.getState().setMode('room');
     render(<RoomSection />);
     expect(screen.getByText(/^Floor area/).textContent).toBe(
-      'Floor area 168 sq ft. Drag a corner to reshape the room. Click a wall to add a corner. Hold Alt to turn off angle snapping.',
+      'Floor area 168 sq ft. Drag a wall to move it. Drag a corner to change an angle. Double-click a wall to add a corner. Click a length to type it. Hold Alt to turn off angle snapping.',
     );
   });
 
@@ -372,6 +372,16 @@ describe('RoomSection', () => {
     expect(corners).toHaveLength(6);
     expect([corners[0].x, corners[0].y]).toEqual([24, 12]);
     expect(boundsOf(corners)).toEqual(before);
+  });
+
+  it('clears the selected wall when a starting shape is accepted', async () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectWall('c1');
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+    render(<RoomSection />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'L-shape' }));
+    expect(usePlanStore.getState().room.outline).toHaveLength(6);
+    expect(useUiStore.getState().selectedWallId).toBeNull();
   });
 
   it('applies a starting shape in furnish mode too', async () => {

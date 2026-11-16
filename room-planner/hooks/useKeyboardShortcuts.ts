@@ -9,6 +9,7 @@ import {
   rotateSelected,
   rotateSelectedObstacle,
   slideSelectedOpeningToward,
+  slideSelectedWallToward,
 } from '../state/actions';
 import { useUiStore } from '../state/uiStore';
 
@@ -31,15 +32,17 @@ function inFormField(target: EventTarget | null, includeRadio: boolean): boolean
 }
 
 /**
- * Room mode acts on the selected corner, door or window, or obstacle (at most one is selected).
- * Arrows nudge a corner or an obstacle, and slide a door or window along its wall the way the arrow
+ * Room mode acts on the selected corner, wall, door or window, or obstacle (at most one is selected).
+ * Arrows nudge a corner or an obstacle, slide a wall in or out the way the arrow points on screen (an
+ * arrow along the wall does nothing), and slide a door or window along its wall the way the arrow
  * points on screen (an arrow across the wall does nothing); Shift takes the large step. R turns an obstacle 90°, Shift+R 15°.
- * Delete/Backspace remove the selected thing. Escape disarms an armed door or window tool, or else
- * clears the room selection.
+ * Delete/Backspace remove the selected corner, door or window, or obstacle; a wall is not removed.
+ * Escape disarms an armed door or window tool, or else clears the room selection.
  */
 function onRoomKeyDown(e: KeyboardEvent): void {
-  const { selectedCornerId, selectedOpeningId, selectedObstacleId, roomTool } = useUiStore.getState();
-  const anySelected = selectedCornerId !== null || selectedOpeningId !== null || selectedObstacleId !== null;
+  const { selectedCornerId, selectedWallId, selectedOpeningId, selectedObstacleId, roomTool } = useUiStore.getState();
+  const anySelected =
+    selectedCornerId !== null || selectedWallId !== null || selectedOpeningId !== null || selectedObstacleId !== null;
   if (!anySelected && roomTool === 'corner') return;
 
   const arrow = ARROWS[e.key];
@@ -48,6 +51,7 @@ function onRoomKeyDown(e: KeyboardEvent): void {
     e.preventDefault();
     const step = e.shiftKey ? CONFIG.nudgeStepLarge : CONFIG.nudgeStep;
     if (selectedCornerId !== null) nudgeSelectedCorner(arrow[0] * step, arrow[1] * step);
+    else if (selectedWallId !== null) slideSelectedWallToward({ x: arrow[0], y: arrow[1] }, step);
     else if (selectedOpeningId !== null) slideSelectedOpeningToward({ x: arrow[0], y: arrow[1] }, step);
     else nudgeSelectedObstacle(arrow[0] * step, arrow[1] * step);
     return;
@@ -63,6 +67,7 @@ function onRoomKeyDown(e: KeyboardEvent): void {
     if (roomTool !== 'corner') ui.setRoomTool('corner');
     else {
       ui.selectCorner(null);
+      ui.selectWall(null);
       ui.selectOpening(null);
       ui.selectObstacle(null);
     }
@@ -98,7 +103,7 @@ function onKeyDown(e: KeyboardEvent): void {
 /**
  * Workspace shortcuts. Furnish mode acts on the selected item: R turns it 90°, Shift+R 15°,
  * Delete/Backspace remove, Escape deselect, arrows nudge. Room mode acts on the selected corner,
- * door or window, or obstacle, and Escape also disarms the door and window tools (see onRoomKeyDown).
+ * wall, door or window, or obstacle, and Escape also disarms the door and window tools (see onRoomKeyDown).
  */
 export function useKeyboardShortcuts(): void {
   useEffect(() => {

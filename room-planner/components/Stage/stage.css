@@ -261,8 +261,10 @@
 /* ── Room editing ─────────────────────────────────────────────────────────── */
 /* Stacking in room mode, bottom to top: the editor's backdrop (no z-index), the inert furniture
    (1 to 4), editable obstacles (5), door leaves and swing arcs (.plan-features-over, 5, later in
-   document order, so over the obstacles; no pointer input), wall bands (6), door and window
-   handles (7) and corner handles (8), all under the inset frame (9). In furnish mode the leaves and
+   document order, so over the obstacles; no pointer input), wall bands (6), wall length labels
+   (6, later in document order, so over the bands), door and window handles (7) and corner
+   handles (8), all under the inset frame (9); the open length editor (9) shares the inset frame's
+   level, so it is not under it. In furnish mode the leaves and
    arcs (5) are over the furniture and under the clearance lines (7); clearance lines are not drawn
    in room mode. */
 
@@ -312,16 +314,122 @@
   position: absolute;
   z-index: 6;
   transform-origin: 0 50%;
-  cursor: copy;
+  cursor: grab;
   touch-action: none;
   pointer-events: auto;
 }
 .room-wall-hit:hover {
   background: color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
+/* The selected wall: a stronger tint than hover, after it so it wins while hovered. */
+.room-wall-hit.is-selected {
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
 /* With a door or window tool armed, a wall click places it. */
 .room-edit-layer.is-placing .room-wall-hit {
   cursor: crosshair;
+}
+
+/* A wall's length label, centred on its inline left/top (just outside the wall's midpoint); its
+   inline transform adds a turn so it runs along its wall, and the centring translate here is the
+   fallback. Its fixed 18 px height (wallLabelHalfHeightPx is half of it) gives every label the same
+   strip beside its wall. It shares the wall bands' level and follows them in the document, so it is
+   drawn over them. The thin border and text cursor say it can be clicked to type a length. */
+.room-wall-label {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  height: 18px;
+  padding: 1px 6px;
+  transform: translate(-50%, -50%);
+  border: 1px solid color-mix(in srgb, var(--color-text) 35%, transparent);
+  border-radius: 3px;
+  font-family: var(--font-heading);
+  font-size: 12px;
+  line-height: 14px;
+  white-space: nowrap;
+  color: var(--color-text);
+  background: var(--color-bg);
+  cursor: text;
+  pointer-events: auto;
+}
+/* With a door or window tool armed, a press near a wall always reaches the wall to place it. */
+.room-edit-layer.is-placing .room-wall-label {
+  pointer-events: none;
+}
+.room-wall-label:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.room-wall-label[aria-pressed="true"] {
+  color: var(--color-accent-700);
+}
+.room-wall-label:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: 3px;
+}
+
+/* A dashed ring on each corner of the selected wall that a typed length would move, centred on
+   its inline left/top. Decoration only: it takes no pointer input and sits under the corner
+   handles. */
+.room-wall-moving-end {
+  position: absolute;
+  z-index: 7;
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border: 2px dashed var(--color-accent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* The length editor that takes a label's place, centred 10 px (wallLabelOffsetPx) outside its
+   wall's midpoint, nearer the wall than a label's centre (19 px), and drawn above the corner
+   handles: a number input with its unit, then the three which-end radios. */
+.room-wall-editor {
+  position: absolute;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  pointer-events: auto;
+}
+.room-wall-editor .input-suffix-wrap > .input {
+  width: 88px;
+}
+.room-wall-editor-ends {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+}
+.room-wall-editor-end {
+  width: 30px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.room-wall-editor-end[aria-checked="true"] {
+  color: var(--color-bg);
+  background: var(--color-accent);
+}
+.room-wall-editor-end:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: -2px;
+}
+/* Turned inline to the wall's angle, so the arrows point along the wall. */
+.room-wall-editor-arrow {
+  display: inline-block;
 }
 
 /* Door and window handles, centred on their inline left/top (the middle of the opening): a

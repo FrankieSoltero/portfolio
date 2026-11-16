@@ -11,6 +11,9 @@ import {
   placePreview,
   removeSelectedCorner,
   rotateSelected,
+  setWallLengthTo,
+  slideWallTo,
+  startWallSlide,
 } from '../state/actions';
 import { ROOM_PROBLEM_TEXT, type RoomProblem, usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
@@ -466,5 +469,72 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
     expect(placeObstacle('box', centre, 'one-too-many')).toBe('too-many-obstacles');
     expectExact('add an obstacle past the cap');
     expect(usePlanStore.getState().obstacles).toHaveLength(CONFIG.maxObstacles);
+  });
+});
+
+/** Stores `corners` as the room's outline, with no doors, windows or obstacles. */
+function seedOutline(corners: [string, number, number][]): void {
+  const { room } = usePlanStore.getState();
+  usePlanStore.setState({ room: { ...room, outline: corners.map(([id, x, y]) => ({ id, x, y })) }, openings: [], obstacles: [] });
+}
+
+function slideWall(wallId: string, distance: number): void {
+  const slide = startWallSlide(wallId);
+  if (slide === null) throw new Error(`expected wall ${wallId}`);
+  slideWallTo(slide, distance);
+}
+
+/** Asserts the stored plan parses and its outline, doors, windows and obstacles read back equal. */
+function expectParsedEqualsStore(step: string): void {
+  expectExact(step);
+  const doc = currentDocument();
+  const result = parsePlan(JSON.parse(JSON.stringify(doc)));
+  if (!result.ok) throw new Error(`${step}: ${result.reason}`);
+  expect(result.doc.room.outline, step).toEqual(doc.room.outline);
+  expect(result.doc.openings, step).toEqual(doc.openings);
+  expect(result.doc.obstacles, step).toEqual(doc.obstacles);
+}
+
+const T_CORNERS: [string, number, number][] = [['c1', 0, 0], ['m1', 48, 0], ['m2', 96, 0], ['c2', 144, 0], ['c3', 144, 168], ['c4', 0, 168]];
+const Q_CORNERS: [string, number, number][] = [['q1', 0, 0], ['q2', 100, 0], ['q3', 150, 50], ['q4', 150, 150], ['q5', 0, 150]];
+
+describe('plans with slid walls survive save and load', () => {
+  it('a step slid on a wall with a door and a window beside it', () => {
+    seedOutline(T_CORNERS);
+    expect(placeOpening('door', 'm1', { x: 72, y: 0 }, 'door-1')).toBeNull();
+    expect(placeOpening('window', 'c1', { x: 22, y: 0 }, 'window-1')).toBeNull();
+    expect(usePlanStore.getState().openings.map((o) => [o.id, o.wallId, o.offset, o.width])).toEqual([
+      ['door-1', 'm1', 8, 32], ['window-1', 'c1', 4, 36],
+    ]);
+    slideWall('m1', 24);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+    expect(usePlanStore.getState().room.outline).toHaveLength(8);
+    expectParsedEqualsStore('slide a wall with openings');
+  });
+
+  it('a diagonal slide, then a typed length', () => {
+    seedOutline(Q_CORNERS);
+    slideWall('q1', 10);
+    expectParsedEqualsStore('diagonal slide');
+    useUiStore.getState().setLengthAnchor('both');
+    expect(setWallLengthTo('q2', 60)).toBe(true);
+    expectParsedEqualsStore('typed length after the slide');
+  });
+
+  it('a slide that uses up a neighbouring wall', () => {
+    seedOutline(Q_CORNERS);
+    slideWall('q1', 49.7);
+    expectParsedEqualsStore('use up the neighbour');
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+  });
+
+  it('a slide far from the origin that would pass the limit is refused and the stored plan still parses', () => {
+    // The brief's x 1300 to 1444 is itself past coordMax (1440), so the room is x 1290 to 1434.
+    seedOutline([['c1', 1290, 0], ['c2', 1434, 0], ['c3', 1434, 168], ['c4', 1290, 168]]);
+    expectParsedEqualsStore('the room before the slide');
+    slideWall('c2', -10);
+    expect(useUiStore.getState().roomProblem).toBe(ROOM_PROBLEM_TEXT['too-large']);
+    expect(usePlanStore.getState().room.outline.map((c) => c.x)).toEqual([1290, 1434, 1434, 1290]);
+    expectParsedEqualsStore('after the refused slide');
   });
 });

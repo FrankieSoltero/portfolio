@@ -3,12 +3,20 @@ import { createContext, useContext, useEffect, useRef, type JSX } from 'react';
 import { CONFIG } from '../../config';
 import { openingName, openingSpan } from '../../domain/openings';
 import { wallsOf, type Wall } from '../../domain/outline';
-import type { Corner, Opening, Point } from '../../domain/types';
+import type { Point } from '../../domain/types';
 import { startDrag } from '../../hooks/startDrag';
-import { addCornerOnWall, dragCornerTo, placeOpeningOnWall, slideOpeningTo } from '../../state/actions';
+import {
+  addCornerOnWall,
+  dragCornerTo,
+  placeOpeningOnWall,
+  slideOpeningTo,
+  slideWallTo,
+  startWallSlide,
+} from '../../state/actions';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { type PlanLayout, toPane, toPlan } from '../../view/planLayout';
+import { WallLengthLabels } from './WallLengthLabels';
 
 /** Thickness of a wall's pointer hit band, in px, centred on the wall. */
 const WALL_HIT_PX = 16;
@@ -29,7 +37,7 @@ export type BeginRoomDrag = (
 ) => void;
 
 /**
- * Room-mode drags of corners, doors, windows and obstacles. The returned function freezes the plan
+ * Room-mode drags of corners, walls, doors, windows and obstacles. The returned function freezes the plan
  * layout at `opts.freeze` and starts a drag that reports the pointer movement to `onMove`; only a
  * primary-button press starts one (callers check `isPrimaryPress` before selecting anything). For any
  * other button it freezes nothing and starts nothing, but calls `opts.onEnd` once, straight away. The drag
@@ -99,12 +107,17 @@ function midpoint(a: Point, b: Point): Point {
 
 /**
  * The on-plan room editor shown in room mode, bottom to top: a transparent backdrop over the whole
- * plan (pointer down clears the room selection), a hit band along every wall (pointer down adds a
- * corner there, or places the armed door or window), a handle on every door and window (pointer
- * down selects and focuses it and slides it along its wall) and a handle on every corner (pointer
- * down selects and focuses it and drags it). Enter or Space on a handle selects it. The layer fills
- * the plan view; positions are pane pixels from `layout`, and the wall-click position is measured
- * from the plan view's box.
+ * plan (pointer down clears the room selection, the selected wall included), a hit band along every
+ * wall, a length label for every wall (WallLengthLabels), a handle on every door and window (pointer down selects and focuses it and slides it along
+ * its wall) and a handle on every corner (pointer down selects and focuses it and drags it). Enter
+ * or Space on a handle selects it.
+ * A wall band, with no door or window tool armed: pointer down selects the wall (its band is marked
+ * `is-selected`) and focuses its length label; once the pointer has moved more than `CONFIG.wallDragThresholdPx` the drag slides
+ * the wall along its inward normal by the movement across it, for the rest of that drag; a
+ * double-click adds a corner at the pointer, unless either of its presses slid the wall or placed an
+ * opening. With a door or window tool armed, pointer down places
+ * it and does nothing else. The layer fills the plan view; positions are pane pixels from `layout`,
+ * and a wall-click position is measured from the plan view's box.
  * Obstacles are made editable by PlanFeatures and stack between the backdrop and the wall bands.
  */
 export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
@@ -112,16 +125,26 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
   const openings = usePlanStore((s) => s.openings);
   const selectedCornerId = useUiStore((s) => s.selectedCornerId);
   const selectedOpeningId = useUiStore((s) => s.selectedOpeningId);
+  const selectedWallId = useUiStore((s) => s.selectedWallId);
   const roomTool = useUiStore((s) => s.roomTool);
   const selectCorner = useUiStore((s) => s.selectCorner);
   const selectOpening = useUiStore((s) => s.selectOpening);
+  const selectWall = useUiStore((s) => s.selectWall);
   const beginDrag = useRoomModeDrag();
   const layerRef = useRef<HTMLDivElement>(null);
+  // Whether each of the last two primary presses on a wall slid it or placed (or tried to place) an
+  // opening. A browser fires dblclick after any two quick presses, so a double-click adds a corner
+  // only when neither of the two presses it is made of did anything else.
+  const wallPressesActedRef = useRef<[boolean, boolean]>([false, false]);
 
-  const onCornerDown = (corner: Corner, e: React.PointerEvent<HTMLElement>): void => {
+  // Focus moves before the drag reads its start: moving focus can apply an open length field, and
+  // a start read earlier would have the drag's first move undo that length.
+  const onCornerDown = (id: string, e: React.PointerEvent<HTMLElement>): void => {
     if (!isPrimaryPress(e)) return;
     focusPressed(e);
-    selectCorner(corner.id);
+    const corner = usePlanStore.getState().room.outline.find((c) => c.id === id);
+    if (corner === undefined) return;
+    selectCorner(id);
     const { scale } = layout;
     const start = { x: corner.x, y: corner.y };
     const opts = { angleSnap: !e.altKey, toleranceIn: CONFIG.angleSnapTolerancePx / scale };
@@ -133,35 +156,100 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
     window.addEventListener('pointermove', trackAlt, true);
     beginDrag(
       e,
-      (dx, dy) => dragCornerTo(corner.id, { x: start.x + dx / scale, y: start.y + dy / scale }, { ...opts }),
+      (dx, dy) => dragCornerTo(id, { x: start.x + dx / scale, y: start.y + dy / scale }, { ...opts }),
       { freeze: layout, onEnd: () => window.removeEventListener('pointermove', trackAlt, true) },
     );
   };
 
-  // The opening slides by the pointer movement's component along its wall (unit direction u).
-  const onOpeningDown = (opening: Opening, u: Point, e: React.PointerEvent<HTMLElement>): void => {
+  // The opening slides by the pointer movement's component along its wall (unit direction u). Its
+  // starting offset is read from the store after focus has moved, as for a corner.
+  const onOpeningDown = (id: string, u: Point, e: React.PointerEvent<HTMLElement>): void => {
     if (!isPrimaryPress(e)) return;
     focusPressed(e);
-    selectOpening(opening.id);
+    const opening = usePlanStore.getState().openings.find((o) => o.id === id);
+    if (opening === undefined) return;
+    selectOpening(id);
     const { scale } = layout;
     const start = opening.offset;
-    beginDrag(e, (dx, dy) => slideOpeningTo(opening.id, start + (dx * u.x + dy * u.y) / scale), { freeze: layout });
+    beginDrag(e, (dx, dy) => slideOpeningTo(id, start + (dx * u.x + dy * u.y) / scale), { freeze: layout });
   };
 
+  /** The plan point under a pointer event, measured from the plan view's box. */
+  const planPointOf = (e: React.MouseEvent): Point => {
+    const frame = layerRef.current?.parentElement?.getBoundingClientRect();
+    return toPlan({ x: e.clientX - (frame?.left ?? 0), y: e.clientY - (frame?.top ?? 0) }, layout);
+  };
+
+  /**
+   * Moves keyboard focus to the wall's length label, the control for a pressed wall: the band
+   * itself is not focusable, and the drag's pointer down prevents the default focus change. Returns
+   * false when the wall has no label (its length field is open in the label's place).
+   */
+  const focusWallLabel = (wallId: string): boolean => {
+    const labels = layerRef.current?.querySelectorAll<HTMLElement>('[data-wall-label-id]') ?? [];
+    let found = false;
+    for (const el of labels) {
+      if (el.dataset.wallLabelId === wallId) {
+        el.focus({ preventScroll: true });
+        found = true;
+      }
+    }
+    return found;
+  };
+
+  /** Takes focus out of the layer, so an open length field in it is left (applied or closed). */
+  const leaveLayerFocus = (): void => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && layerRef.current?.contains(active)) active.blur();
+  };
+
+  // With a tool armed the press places it; otherwise it selects the wall and a drag past the
+  // threshold slides it by the movement along its inward normal n. Focus moves first (to the wall's
+  // label, or out of the wall's own open length field), so a length applied by leaving a field is
+  // in the outline the slide starts from.
   const onWallDown = (wall: Wall, e: React.PointerEvent<HTMLElement>): void => {
     // Only the primary button edits; any other press on a wall does nothing at all.
-    e.stopPropagation();
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const frame = layerRef.current?.parentElement?.getBoundingClientRect();
-    const at = toPlan({ x: e.clientX - (frame?.left ?? 0), y: e.clientY - (frame?.top ?? 0) }, layout);
-    if (roomTool === 'corner') addCornerOnWall(wall.id, at);
-    else placeOpeningOnWall(wall.id, at);
+    if (!isPrimaryPress(e)) return;
+    const acted = wallPressesActedRef.current;
+    acted[0] = acted[1];
+    acted[1] = false;
+    if (roomTool !== 'corner') {
+      e.preventDefault();
+      acted[1] = true;
+      placeOpeningOnWall(wall.id, planPointOf(e));
+      return;
+    }
+    if (!focusWallLabel(wall.id)) leaveLayerFocus();
+    const slide = startWallSlide(wall.id);
+    if (slide === null) return;
+    selectWall(wall.id);
+    const { scale } = layout;
+    const n = slide.normal;
+    let sliding = false;
+    beginDrag(
+      e,
+      (dx, dy) => {
+        // Once past the threshold, the wall follows for the rest of the drag, back inside it too.
+        if (!sliding && Math.hypot(dx, dy) <= CONFIG.wallDragThresholdPx) return;
+        sliding = true;
+        acted[1] = true;
+        slideWallTo(slide, (dx * n.x + dy * n.y) / scale);
+      },
+      { freeze: layout },
+    );
+  };
+
+  // A double-click adds a corner only when no door or window tool is armed and neither of its two
+  // presses slid the wall or placed an opening.
+  const onWallDoubleClick = (wall: Wall, e: React.MouseEvent<HTMLElement>): void => {
+    if (roomTool !== 'corner' || wallPressesActedRef.current.some(Boolean)) return;
+    addCornerOnWall(wall.id, planPointOf(e));
   };
 
   const clearRoomSelection = (): void => {
     const ui = useUiStore.getState();
     ui.selectCorner(null);
+    ui.selectWall(null);
     ui.selectOpening(null);
     ui.selectObstacle(null);
   };
@@ -175,7 +263,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
         return (
           <div
             key={wall.id}
-            className="room-wall-hit"
+            className={wall.id === selectedWallId ? 'room-wall-hit is-selected' : 'room-wall-hit'}
             data-wall-id={wall.id}
             aria-hidden="true"
             style={{
@@ -186,9 +274,11 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
               transform: `rotate(${deg}deg)`,
             }}
             onPointerDown={(e) => onWallDown(wall, e)}
+            onDoubleClick={(e) => onWallDoubleClick(wall, e)}
           />
         );
       })}
+      <WallLengthLabels layout={layout} />
       {openings.map((opening) => {
         const span = openingSpan(outline, opening);
         if (span === null) return null;
@@ -201,7 +291,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
             aria-label={openingName(outline, openings, opening)}
             aria-pressed={opening.id === selectedOpeningId}
             style={{ left: p.x, top: p.y }}
-            onPointerDown={(e) => onOpeningDown(opening, span.u, e)}
+            onPointerDown={(e) => onOpeningDown(opening.id, span.u, e)}
             onClick={() => selectOpening(opening.id)}
           />
         );
@@ -216,7 +306,7 @@ export function RoomEditLayer({ layout }: { layout: PlanLayout }): JSX.Element {
             aria-label={`Corner ${i + 1}`}
             aria-pressed={corner.id === selectedCornerId}
             style={{ left: p.x, top: p.y }}
-            onPointerDown={(e) => onCornerDown(corner, e)}
+            onPointerDown={(e) => onCornerDown(corner.id, e)}
             onClick={() => selectCorner(corner.id)}
           />
         );

@@ -71,12 +71,12 @@ const SHAPES: readonly { shape: StartingShape; label: string }[] = [
 ];
 
 const ROOM_MODE_HELP =
-  'Drag a corner to reshape the room. Click a wall to add a corner. Hold Alt to turn off angle snapping.';
+  'Drag a wall to move it. Drag a corner to change an angle. Double-click a wall to add a corner. Click a length to type it. Hold Alt to turn off angle snapping.';
 
 /**
  * Replaces the outline with a starting shape sized and placed from the current outline's bounding
- * box (so the room stays under the furniture), with fresh corner ids, and clears the corner
- * selection. A shape that would not be a valid room (a bounding box too small for its walls), or
+ * box (so the room stays under the furniture), with fresh corner ids, and clears the corner and
+ * wall selection. A shape that would not be a valid room (a bounding box too small for its walls), or
  * any shape while the room has a door or window, is refused with its reason instead of being stored.
  */
 function applyStartingShape(shape: StartingShape): void {
@@ -90,7 +90,10 @@ function applyStartingShape(shape: StartingShape): void {
   const problem = usePlanStore.getState().applyOutline(invalid === null ? { ok: true, outline } : { ok: false, problem: invalid });
   const ui = useUiStore.getState();
   ui.setRoomProblem(problem === null ? null : ROOM_PROBLEM_TEXT[problem]);
-  if (problem === null) ui.selectCorner(null);
+  if (problem === null) {
+    ui.selectCorner(null);
+    ui.selectWall(null);
+  }
 }
 
 /**

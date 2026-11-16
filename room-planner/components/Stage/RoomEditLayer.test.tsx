@@ -132,7 +132,7 @@ describe('RoomEditLayer corner handles', () => {
   it('renders one button per corner, named Corner <n>, centred on the corner', () => {
     renderLayer();
     const outline = usePlanStore.getState().room.outline;
-    const buttons = screen.getAllByRole('button');
+    const buttons = [...document.querySelectorAll<HTMLElement>('button.room-corner')];
     expect(buttons.map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual([
       'Corner 1', 'Corner 2', 'Corner 3', 'Corner 4',
     ]);
@@ -344,7 +344,7 @@ describe('RoomEditLayer wall hit targets', () => {
     });
   });
 
-  it('pointer down on a wall adds a corner at the pointer position in plan inches and selects it', () => {
+  it('double-click on a wall adds a corner at the pointer position in plan inches and selects it', () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
     const onParent = vi.fn();
     const plan = renderLayer(onParent);
@@ -355,7 +355,7 @@ describe('RoomEditLayer wall hit targets', () => {
     const p = toPane({ x: 72.3, y: 1 }, layout);
     const top = wallHits()[0];
     if (!top) throw new Error('no top wall');
-    fireEvent.pointerDown(top, { clientX: p.x + 50, clientY: p.y + 20 });
+    fireEvent.doubleClick(top, { clientX: p.x + 50, clientY: p.y + 20 });
     expect(addCornerOnWall).toHaveBeenCalledTimes(1);
     const [wallId, at] = vi.mocked(addCornerOnWall).mock.calls[0] ?? [];
     expect(wallId).toBe('c1');
@@ -368,13 +368,13 @@ describe('RoomEditLayer wall hit targets', () => {
     expect(onParent).not.toHaveBeenCalled();
   });
 
-  it('pointer down on a wall within 6 in of its end adds nothing and gives the reason', () => {
+  it('double-click on a wall within 6 in of its end adds nothing and gives the reason', () => {
     renderLayer();
     const before = usePlanStore.getState().room;
     const p = toPane({ x: 140, y: 0 }, layout);
     const top = wallHits()[0];
     if (!top) throw new Error('no top wall');
-    fireEvent.pointerDown(top, { clientX: p.x, clientY: p.y });
+    fireEvent.doubleClick(top, { clientX: p.x, clientY: p.y });
     expect(usePlanStore.getState().room).toBe(before);
     expect(useUiStore.getState().roomProblem).toBe('That wall would be too short.');
     expect(wallHits()).toHaveLength(4);
@@ -635,6 +635,65 @@ describe('RoomEditLayer handles take focus on a primary press', () => {
     await user.keyboard('{ArrowRight}');
     expect(storedOpening('d1')?.offset).toBe(D1.offset + 1);
   });
+
+  it('a primary pointer down on a wall band moves keyboard focus to that wall\'s length label', () => {
+    renderLayer();
+    focusElsewhere();
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    expect(document.activeElement).toBe(document.querySelector('[data-wall-label-id="c1"]'));
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+  });
+
+  it('a secondary pointer down on a wall band leaves focus where it was', () => {
+    renderLayer();
+    const other = focusElsewhere();
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 2 });
+    expect(document.activeElement).toBe(other);
+  });
+
+  it.each(['door', 'window'] as const)('with the %s tool armed, a primary press on a wall band places it and moves focus to no wall label', (tool) => {
+    renderLayer();
+    act(() => useUiStore.getState().setRoomTool(tool));
+    focusElsewhere();
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    expect(placeOpeningOnWall).toHaveBeenCalledTimes(1);
+    expect(document.activeElement?.closest('[data-wall-label-id]')).toBeNull();
+    expect(useUiStore.getState().selectedWallId).toBeNull();
+  });
+
+  it('after a press on a wall band, ArrowDown slides the wall 1 in and does not change the radio', async () => {
+    function Shortcuts(): null {
+      useKeyboardShortcuts();
+      return null;
+    }
+    render(
+      <>
+        <Shortcuts />
+        <RoomEditLayer layout={layout} />
+      </>,
+    );
+    // A sidebar-style radio group, its first radio checked and focused.
+    const radios = ['start', 'end'].map((value) => {
+      const r = document.createElement('input');
+      r.type = 'radio';
+      r.name = 'hinge';
+      r.value = value;
+      document.body.append(r);
+      return r;
+    });
+    const [first, second] = radios;
+    if (!first || !second) throw new Error('no radios');
+    first.checked = true;
+    first.focus();
+    expect(document.activeElement).toBe(first);
+    const user = userEvent.setup();
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerUp(window);
+    await user.keyboard('{ArrowDown}');
+    expect(corner('c1')).toEqual({ id: 'c1', x: 0, y: 1 });
+    expect(corner('c2')).toEqual({ id: 'c2', x: 144, y: 1 });
+    expect([first.checked, second.checked]).toEqual([true, false]);
+  });
 });
 
 describe('RoomEditLayer opening drag', () => {
@@ -756,6 +815,20 @@ describe('RoomEditLayer background', () => {
     expect(backdrop().compareDocumentPosition(firstBand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('stacks backdrop, wall bands, length labels, opening handles and corner handles in that document order', () => {
+    loadOpenings([D1]);
+    renderLayer();
+    const layer = document.querySelector('.room-edit-layer');
+    const kinds = [...(layer?.children ?? [])].map((el) => el.className.split(' ')[0]);
+    expect(kinds).toEqual([
+      'room-edit-backdrop',
+      'room-wall-hit', 'room-wall-hit', 'room-wall-hit', 'room-wall-hit',
+      'room-wall-label', 'room-wall-label', 'room-wall-label', 'room-wall-label',
+      'room-opening',
+      'room-corner', 'room-corner', 'room-corner', 'room-corner',
+    ]);
+  });
+
   it.each([
     ['corner', () => useUiStore.getState().selectCorner('c2')],
     ['opening', () => useUiStore.getState().selectOpening('d1')],
@@ -790,6 +863,9 @@ describe('room editor stacking (stage.css)', () => {
     expect(order[0]).toBeGreaterThan(4);
     for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1] ?? Infinity);
     expect(order[order.length - 1]).toBeLessThan(9);
+    // Wall length labels share the wall bands' level and come after them in the document.
+    expect(zIndex('.room-wall-label')).toBe(6);
+    expect(zIndex('.room-wall-hit')).toBe(6);
   });
 
   it('opening handles are at least 24 px across and every new control has a focus-visible outline', () => {
@@ -799,5 +875,351 @@ describe('room editor stacking (stage.css)', () => {
     expect(css).toMatch(/\n\.room-opening:focus-visible \{[^}]*outline: 2px solid/);
     expect(css).toMatch(/\n\.plan-obstacle\.is-editable:focus-visible \{[^}]*outline: 2px solid/);
     expect(css).toMatch(/\n\.room-edit-layer\.is-placing \.room-wall-hit \{[^}]*cursor: crosshair/);
+  });
+});
+
+describe('RoomEditLayer wall select, drag and double-click', () => {
+  /** The stored outline as `id (x,y)` strings, for compact comparisons. */
+  function outlineText(): string[] {
+    return usePlanStore.getState().room.outline.map((c) => `${c.id} (${c.x},${c.y})`);
+  }
+
+  afterEach(() => {
+    fireEvent.pointerUp(window);
+  });
+
+  it('a primary press on a wall selects it, adds no corner and does not reach the plan background', () => {
+    const onParent = vi.fn();
+    renderLayer(onParent);
+    const before = usePlanStore.getState().room;
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+    expect(addCornerOnWall).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(onParent).not.toHaveBeenCalled();
+  });
+
+  it('a click (press then release, no move) leaves the outline unchanged', () => {
+    renderLayer();
+    const before = usePlanStore.getState().room;
+    const p = toPane({ x: 72, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerUp(window);
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+  });
+
+  it('a move within the threshold leaves the outline unchanged', () => {
+    renderLayer();
+    // Without the threshold, 3 px would slide the wall at least one grid step.
+    expect(3 / layout.scale).toBeGreaterThan(CONFIG.cornerSnap / 2);
+    expect(3).toBeLessThan(CONFIG.wallDragThresholdPx);
+    const before = usePlanStore.getState().room;
+    const p = toPane({ x: 72, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerMove(window, { clientX: p.x, clientY: p.y + 3 });
+    fireEvent.pointerUp(window);
+    expect(usePlanStore.getState().room).toBe(before);
+  });
+
+  it('dragging the top wall slides it by the movement along its normal over the scale, snapped', () => {
+    renderLayer();
+    const s = layout.scale;
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 100 + 12 * s + 0.4 });
+    expect(outlineText()).toEqual(['c1 (0,12)', 'c2 (144,12)', 'c3 (144,168)', 'c4 (0,168)']);
+  });
+
+  it('only the movement along the normal counts', () => {
+    renderLayer();
+    const s = layout.scale;
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 100 + 12 * s });
+    expect(outlineText()).toEqual(['c1 (0,12)', 'c2 (144,12)', 'c3 (144,168)', 'c4 (0,168)']);
+  });
+
+  it('dragging the right wall left slides it inward', () => {
+    renderLayer();
+    const s = layout.scale;
+    fireEvent.pointerDown(wallHit('c2'), { clientX: 300, clientY: 100, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 300 - 24 * s, clientY: 107 });
+    expect(outlineText()).toEqual(['c1 (0,0)', 'c2 (120,0)', 'c3 (120,168)', 'c4 (0,168)']);
+  });
+
+  it('once past the threshold the wall keeps following, back inside the threshold too', () => {
+    renderLayer();
+    const start = usePlanStore.getState().room.outline;
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 110 });
+    expect(usePlanStore.getState().room.outline).not.toEqual(start);
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 101 });
+    expect(usePlanStore.getState().room.outline).toEqual(start);
+  });
+
+  it('freezes the layout at pointer down and releases it at pointer up', () => {
+    const freeze = vi.fn();
+    render(
+      <FreezePlanLayoutContext value={freeze}>
+        <RoomEditLayer layout={layout} />
+      </FreezePlanLayoutContext>,
+    );
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    expect(freeze).toHaveBeenLastCalledWith(layout);
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 100 + 12 * layout.scale });
+    expect(freeze).toHaveBeenCalledTimes(1);
+    fireEvent.pointerUp(window);
+    expect(freeze).toHaveBeenLastCalledWith(null);
+  });
+
+  it('a refused step keeps the last accepted outline with the reason; a later valid move clears it', () => {
+    renderLayer();
+    const s = layout.scale;
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 100 + 12 * s });
+    const accepted = usePlanStore.getState().room;
+    expect(outlineText()).toEqual(['c1 (0,12)', 'c2 (144,12)', 'c3 (144,168)', 'c4 (0,168)']);
+    // 163 in down would leave each side wall 5 in long.
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 100 + 163 * s });
+    expect(usePlanStore.getState().room).toBe(accepted);
+    expect(useUiStore.getState().roomProblem).not.toBeNull();
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 100 + 20 * s });
+    expect(outlineText()).toEqual(['c1 (0,20)', 'c2 (144,20)', 'c3 (144,168)', 'c4 (0,168)']);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('once the mode is no longer room, later moves of the drag edit nothing', () => {
+    renderLayer();
+    const s = layout.scale;
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 100 + 12 * s });
+    expect(outlineText()).toEqual(['c1 (0,12)', 'c2 (144,12)', 'c3 (144,168)', 'c4 (0,168)']);
+    const moved = usePlanStore.getState().room;
+    useUiStore.getState().setMode('furnish');
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 100 + 30 * s });
+    expect(usePlanStore.getState().room).toBe(moved);
+  });
+
+  it('double-click on the top wall at plan (60, 0) adds a corner there and selects it', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    renderLayer();
+    const p = toPane({ x: 60, y: 0 }, layout);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y });
+    expect(corner(NEW_ID)).toEqual({ id: NEW_ID, x: 60, y: 0 });
+    expect(usePlanStore.getState().room.outline).toHaveLength(5);
+    expect(useUiStore.getState().selectedCornerId).toBe(NEW_ID);
+  });
+
+  it('double-click within 6 in of a wall end adds nothing and gives the short-wall reason', () => {
+    renderLayer();
+    const before = usePlanStore.getState().room;
+    const p = toPane({ x: 4, y: 0 }, layout);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y });
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(useUiStore.getState().roomProblem).toBe('That wall would be too short.');
+  });
+
+  it('with the door tool armed, a press places a door; the wall is not selected and a drag does not slide it', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    renderLayer();
+    act(() => useUiStore.getState().setRoomTool('door'));
+    const outline = usePlanStore.getState().room.outline;
+    const p = toPane({ x: 72, y: 5 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerMove(window, { clientX: p.x, clientY: p.y + 20 });
+    expect(storedOpening(NEW_ID)).toMatchObject({ kind: 'door', wallId: 'c1', offset: 56 });
+    expect(useUiStore.getState().selectedWallId).toBeNull();
+    expect(usePlanStore.getState().room.outline).toBe(outline);
+  });
+
+  it('with the door tool armed, a double-click adds no corner', () => {
+    renderLayer();
+    act(() => useUiStore.getState().setRoomTool('door'));
+    const p = toPane({ x: 60, y: 0 }, layout);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y });
+    expect(addCornerOnWall).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+  });
+
+  it('a secondary-button press selects nothing, freezes nothing, moves nothing and does not reach the plan background', () => {
+    const freeze = vi.fn();
+    const onParent = vi.fn();
+    render(
+      <div onPointerDown={onParent}>
+        <FreezePlanLayoutContext value={freeze}>
+          <RoomEditLayer layout={layout} />
+        </FreezePlanLayoutContext>
+      </div>,
+    );
+    const before = usePlanStore.getState().room;
+    fireEvent.pointerDown(wallHit('c1'), { clientX: 100, clientY: 100, button: 2 });
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 160 });
+    expect(useUiStore.getState().selectedWallId).toBeNull();
+    expect(freeze).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().room).toBe(before);
+    expect(onParent).not.toHaveBeenCalled();
+  });
+
+  // A browser counts two presses close together as a double-click and fires dblclick after the
+  // second release, whatever happened in between; these replay the full sequence.
+  it('a double-click made of two plain presses adds a corner', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    renderLayer();
+    const p = toPane({ x: 60, y: 0 }, layout);
+    for (let i = 0; i < 2; i++) {
+      fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+      fireEvent.pointerUp(window);
+    }
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y });
+    expect(corner(NEW_ID)).toEqual({ id: NEW_ID, x: 60, y: 0 });
+  });
+
+  it('a click then a press that slides the wall is not a double-click: no corner is added', () => {
+    renderLayer();
+    const s = layout.scale;
+    const p = toPane({ x: 60, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerUp(window);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerMove(window, { clientX: p.x, clientY: p.y + 12 * s });
+    fireEvent.pointerUp(window);
+    const slid = usePlanStore.getState().room;
+    expect(outlineText()).toEqual(['c1 (0,12)', 'c2 (144,12)', 'c3 (144,168)', 'c4 (0,168)']);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y + 12 * s });
+    expect(addCornerOnWall).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().room).toBe(slid);
+  });
+
+  it('a slide then a plain press is not a double-click either', () => {
+    renderLayer();
+    const s = layout.scale;
+    const p = toPane({ x: 60, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerMove(window, { clientX: p.x, clientY: p.y + 12 * s });
+    fireEvent.pointerUp(window);
+    const slid = usePlanStore.getState().room;
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y + 12 * s, button: 0 });
+    fireEvent.pointerUp(window);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y + 12 * s });
+    expect(addCornerOnWall).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().room).toBe(slid);
+  });
+
+  it('a double-click whose first press placed a door adds no corner and shows no problem', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    renderLayer();
+    act(() => useUiStore.getState().setRoomTool('door'));
+    const p = toPane({ x: 72, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerUp(window);
+    expect(useUiStore.getState().roomTool).toBe('corner');
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerUp(window);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y });
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+    expect(usePlanStore.getState().openings).toHaveLength(1);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('a double-click right after the press that placed a door adds no corner and shows no problem', () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+    renderLayer();
+    act(() => useUiStore.getState().setRoomTool('door'));
+    const p = toPane({ x: 72, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    fireEvent.pointerUp(window);
+    fireEvent.doubleClick(wallHit('c1'), { clientX: p.x, clientY: p.y });
+    expect(usePlanStore.getState().room.outline).toHaveLength(4);
+    expect(usePlanStore.getState().openings).toHaveLength(1);
+    expect(useUiStore.getState().roomProblem).toBeNull();
+  });
+
+  it('marks only the selected wall\'s band is-selected', () => {
+    useUiStore.getState().selectWall('c2');
+    renderLayer();
+    expect(wallHits().filter((el) => el.classList.contains('is-selected')).map((el) => el.dataset.wallId)).toEqual(['c2']);
+    expect(wallHit('c2')).toHaveClass('room-wall-hit');
+  });
+
+  it('pointer down on the backdrop clears a selected wall', () => {
+    useUiStore.getState().selectWall('c2');
+    renderLayer();
+    const backdrop = document.querySelector<HTMLElement>('.room-edit-backdrop');
+    if (!backdrop) throw new Error('no backdrop');
+    fireEvent.pointerDown(backdrop);
+    expect(useUiStore.getState().selectedWallId).toBeNull();
+  });
+});
+
+describe('wall band styles (stage.css)', () => {
+  const css = readFileSync(resolve(process.cwd(), 'room-planner/components/Stage/stage.css'), 'utf8');
+
+  it('a selected band is tinted, a band shows the grab cursor, and a placing band keeps the crosshair', () => {
+    expect(css).toMatch(
+      /\n\.room-wall-hit\.is-selected \{[^}]*background: color-mix\(in srgb, var\(--color-accent\) 40%, transparent\);/,
+    );
+    expect(css).toMatch(/\n\.room-wall-hit \{[^}]*cursor: grab;/);
+    expect(css).not.toMatch(/\n\.room-wall-hit \{[^}]*cursor: copy;/);
+    expect(css).toMatch(/\n\.room-edit-layer\.is-placing \.room-wall-hit \{[^}]*cursor: crosshair;/);
+  });
+});
+
+describe('RoomEditLayer: a press starts its drag after focus has moved', () => {
+  /** The length of wall `id` in the stored outline. */
+  function lengthOf(id: string): number {
+    const wall = wallsOf(usePlanStore.getState().room.outline).find((w) => w.id === id);
+    if (!wall) throw new Error(`no wall ${id}`);
+    return wall.length;
+  }
+
+  /** Opens wall `id`'s on-plan length field and types `text` (feet, the default units) without Enter. */
+  async function typeLengthWithoutEnter(id: string, text: string): Promise<void> {
+    const user = userEvent.setup();
+    const label = document.querySelector<HTMLElement>(`button.room-wall-label[data-wall-label-id="${id}"]`);
+    if (!label) throw new Error(`no label for wall ${id}`);
+    await user.click(label);
+    expect(document.querySelector('div.room-wall-editor')).not.toBeNull();
+    await user.keyboard(text);
+  }
+
+  afterEach(() => {
+    fireEvent.pointerUp(window);
+  });
+
+  it('a length typed into wall 1\'s field survives a drag of wall 4: the drag adds to it', async () => {
+    renderLayer();
+    expect(usePlanStore.getState().units).toBe('ft');
+    expect(useUiStore.getState().lengthAnchor).toBe('end');
+    // 11 ft is 132 in: 12 in shorter than 144.
+    await typeLengthWithoutEnter('c1', '11');
+    const s = layout.scale;
+    const p = toPane({ x: 0, y: 84 }, layout);
+    fireEvent.pointerDown(wallHit('c4'), { clientX: p.x, clientY: p.y, button: 0 });
+    // Wall 4's inward normal is +x: 6 in into the room.
+    fireEvent.pointerMove(window, { clientX: p.x + 6 * s + 0.4, clientY: p.y });
+    fireEvent.pointerUp(window);
+    expect(lengthOf('c1')).toBeCloseTo(144 - 12 - 6, 6);
+  });
+
+  it('a length typed into wall 2\'s field survives a drag of Corner 3', async () => {
+    renderLayer();
+    // 13 ft is 156 in: 12 in shorter than 168; the end anchor moves Corner 3 up to y 156.
+    await typeLengthWithoutEnter('c2', '13');
+    const p = toPane({ x: 144, y: 168 }, layout);
+    fireEvent.pointerDown(handle(3), { clientX: p.x, clientY: p.y, button: 0 });
+    // A move of a few pixels, angle snapping on (no Alt), as the component drags.
+    fireEvent.pointerMove(window, { clientX: p.x + 2, clientY: p.y + 3 });
+    fireEvent.pointerUp(window);
+    const y = corner('c3')?.y ?? Number.NaN;
+    expect(Math.abs(y - 156)).toBeLessThanOrEqual(2);
+  });
+
+  it('a press on the band of the wall whose field is open closes the field and applies the length first', async () => {
+    renderLayer();
+    await typeLengthWithoutEnter('c1', '11');
+    const p = toPane({ x: 72, y: 0 }, layout);
+    fireEvent.pointerDown(wallHit('c1'), { clientX: p.x, clientY: p.y, button: 0 });
+    expect(document.querySelector('div.room-wall-editor')).toBeNull();
+    expect(lengthOf('c1')).toBeCloseTo(132, 6);
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
   });
 });

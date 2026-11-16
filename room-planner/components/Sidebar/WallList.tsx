@@ -1,35 +1,29 @@
 import { type ChangeEvent, type JSX, useId, useState } from 'react';
-import { CONFIG } from '../../config';
-import { LIMIT_SLACK, type OutlineResult, setWallLength, type Wall, wallsOf } from '../../domain/outline';
+import { type LengthAnchor, type Wall, wallsOf } from '../../domain/outline';
 import type { RoomTool } from '../../domain/types';
 import { parseLengthInput, roomInputStep, roomInputStr, roomUnitLabel } from '../../domain/units';
-import { addCornerOnWall, placeOpeningOnWall } from '../../state/actions';
-import { ROOM_PROBLEM_TEXT, usePlanStore } from '../../state/planStore';
+import { addCornerOnWall, placeOpeningOnWall, setWallLengthTo } from '../../state/actions';
+import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
+import { Segmented, type SegmentedOption } from '../ui/Segmented';
 import './sidebar.css';
 
 /** A draft within this many inches of the stored length still counts as showing it. */
 const DRAFT_TOLERANCE_IN = 0.01;
 
-/**
- * Sets wall `wallId` of the current outline to `inches` and records the outcome: an accepted
- * length clears the room problem, a refused one (including one outside the wall limits, or one a
- * door or window cannot follow) leaves the outline unchanged and sets the problem to its reason.
- */
-function applyWallLength(wallId: string, inches: number): void {
-  const result: OutlineResult =
-    // LIMIT_SLACK absorbs unit-conversion noise at the upper limit (18.288 m is exactly 720 in).
-    inches > CONFIG.roomMax + LIMIT_SLACK
-      ? { ok: false, problem: 'too-large' }
-      : setWallLength(usePlanStore.getState().room.outline, wallId, inches);
-  const problem = usePlanStore.getState().applyOutline(result);
-  useUiStore.getState().setRoomProblem(problem === null ? null : ROOM_PROBLEM_TEXT[problem]);
-}
+/** The choices for which end of a wall a typed length moves. */
+const LENGTH_ANCHOR_OPTIONS: readonly SegmentedOption<LengthAnchor>[] = [
+  { value: 'start', label: 'Start' },
+  { value: 'both', label: 'Both' },
+  { value: 'end', label: 'End' },
+];
 
 /**
  * One wall's row: its length input and, in room mode, a button at the wall's midpoint that adds a
  * corner there, or, while a door or window tool is armed, places that opening there (the keyboard
- * path for placing). The input shows exactly what the user typed; the draft is re-seeded when units
+ * path for placing). A typed length is applied by setWallLengthTo, so it moves the end chosen in the
+ * which-end control. In room mode the input selects its wall when it takes focus, so the plan marks
+ * the end that will move. The input shows exactly what the user typed; the draft is re-seeded when units
  * change, or when the stored length changes, unless the input has focus and its text already parses to it.
  */
 function WallRow({ wall, roomMode, roomTool }: { wall: Wall; roomMode: boolean; roomTool: RoomTool }) {
@@ -53,7 +47,12 @@ function WallRow({ wall, roomMode, roomTool }: { wall: Wall; roomMode: boolean; 
     const raw = e.target.value;
     setDraft(raw);
     const inches = parseLengthInput(raw, units);
-    if (inches !== null) applyWallLength(wall.id, inches);
+    if (inches !== null) setWallLengthTo(wall.id, inches);
+  }
+
+  function onFocus() {
+    setFocused(true);
+    if (roomMode) useUiStore.getState().selectWall(wall.id);
   }
 
   const midpoint = { x: (wall.a.x + wall.b.x) / 2, y: (wall.a.y + wall.b.y) / 2 };
@@ -73,7 +72,7 @@ function WallRow({ wall, roomMode, roomTool }: { wall: Wall; roomMode: boolean; 
           step={roomInputStep(units)}
           value={draft}
           onChange={onChange}
-          onFocus={() => setFocused(true)}
+          onFocus={onFocus}
           onBlur={() => setFocused(false)}
         />
         <span className="input-suffix" aria-hidden="true">
@@ -96,13 +95,31 @@ function WallRow({ wall, roomMode, roomTool }: { wall: Wall; roomMode: boolean; 
   );
 }
 
-/** Every wall of the room in order, each with an editable length in the room units. */
+/**
+ * Every wall of the room in order, each with an editable length in the room units, under a control
+ * that chooses which end of a wall a typed length moves and a note saying how walls are numbered.
+ */
 export function WallList(): JSX.Element {
   const outline = usePlanStore((s) => s.room.outline);
   const roomMode = useUiStore((s) => s.mode === 'room');
   const roomTool = useUiStore((s) => s.roomTool);
+  const lengthAnchor = useUiStore((s) => s.lengthAnchor);
+  const setLengthAnchor = useUiStore((s) => s.setLengthAnchor);
   return (
     <div className="wall-list" role="group" aria-label="Wall lengths">
+      {/* Visible caption in the Room section's small-label style, hidden from assistive technology
+          because the control carries the same name in its own aria-label. */}
+      <span className="shape-buttons-label" aria-hidden="true">
+        A typed length moves
+      </span>
+      <Segmented
+        name="length-anchor"
+        aria-label="A typed length moves"
+        options={LENGTH_ANCHOR_OPTIONS}
+        value={lengthAnchor}
+        onChange={setLengthAnchor}
+      />
+      <p className="note wall-list-note">Wall N starts at corner N. In Edit room, the plan marks the end that moves.</p>
       {wallsOf(outline).map((wall) => (
         <WallRow key={wall.id} wall={wall} roomMode={roomMode} roomTool={roomTool} />
       ))}

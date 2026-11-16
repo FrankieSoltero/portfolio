@@ -1,8 +1,22 @@
+import { CONFIG } from '../config';
 import { addObstacle, newObstacle, updateObstacle } from '../domain/obstacles';
 import { addOpening, openingSpan, slideOpening, updateOpening } from '../domain/openings';
-import { insertCorner, moveCorner, type OutlineResult, removeCorner, snapCornerTarget } from '../domain/outline';
+import {
+  insertCorner,
+  LIMIT_SLACK,
+  moveCorner,
+  type OutlineResult,
+  removeCorner,
+  setWallLength,
+  slideWall,
+  snapCornerTarget,
+  snapSlideDistance,
+  wallFrame,
+  wallSlideStops,
+  wallsOf,
+} from '../domain/outline';
 import { interiorPoint } from '../domain/polygon';
-import type { Obstacle, Point } from '../domain/types';
+import type { Corner, Obstacle, Point } from '../domain/types';
 import { ROOM_PROBLEM_TEXT, type RoomProblem, usePlanStore } from './planStore';
 import { useUiStore } from './uiStore';
 
@@ -111,6 +125,77 @@ export function nudgeSelectedCorner(dx: number, dy: number): void {
   const corner = outline.find((c) => c.id === id);
   if (corner === undefined) return;
   applyRoomEdit(moveCorner(outline, corner.id, { x: corner.x + dx, y: corner.y + dy }));
+}
+
+/**
+ * One wall slide in progress (a drag): the outline as it was when the slide started, the ids any new
+ * step corners take, the distances at which a neighbour wall is used up, and the wall's inward normal.
+ * Every move of the slide is computed from this snapshot, so a step made and undone keeps its ids.
+ */
+export interface WallSlide { wallId: string; outline: readonly Corner[]; ids: { start: string; end: string }; stops: readonly number[]; normal: Point }
+
+/**
+ * Starts sliding wall `wallId`: snapshots the stored outline, takes two fresh ids for step corners,
+ * and works out the wall's stops and inward normal. Returns null for an unknown wall.
+ */
+export function startWallSlide(wallId: string): WallSlide | null {
+  const { outline } = usePlanStore.getState().room;
+  const wall = wallsOf(outline).find((w) => w.id === wallId);
+  if (wall === undefined) return null;
+  return {
+    wallId,
+    outline,
+    ids: { start: crypto.randomUUID(), end: crypto.randomUUID() },
+    stops: wallSlideStops(outline, wallId),
+    normal: wallFrame(wall).n,
+  };
+}
+
+/**
+ * Moves the wall of `slide` to `rawDistance` inches from where it started, along its inward normal
+ * (negative is outward), snapped to a stop within half a grid step or else to the corner grid. A
+ * refusal keeps the last accepted position and shows its reason; an accepted move clears it.
+ */
+export function slideWallTo(slide: WallSlide, rawDistance: number): void {
+  applyRoomEdit(slideWall(slide.outline, slide.wallId, snapSlideDistance(rawDistance, slide.stops), slide.ids));
+}
+
+/** Below this |direction · n| a direction runs along the wall and does not slide it. */
+const ALONG_THE_WALL = 1e-9;
+
+/**
+ * Slides the selected wall `step` inches the way `direction` (a plan-space vector, y down, such as an
+ * arrow key's) points across it: by sign(direction · n) × step, where n is the wall's inward normal,
+ * stopping short at the nearest stop on the way (where a neighbour wall is used up). No grid snapping.
+ * A direction along the wall (|direction · n| < 1e-9), no selected wall, or a selected wall not in the
+ * outline changes nothing, the room problem included.
+ */
+export function slideSelectedWallToward(direction: Point, step: number): void {
+  const id = useUiStore.getState().selectedWallId;
+  const { outline } = usePlanStore.getState().room;
+  const wall = wallsOf(outline).find((w) => w.id === id);
+  if (wall === undefined) return;
+  const { n } = wallFrame(wall);
+  const along = direction.x * n.x + direction.y * n.y;
+  if (Math.abs(along) < ALONG_THE_WALL) return;
+  let d = Math.sign(along) * step;
+  for (const s of wallSlideStops(outline, wall.id)) {
+    if (Math.sign(s) === Math.sign(d) && s !== 0 && Math.abs(s) < Math.abs(d)) d = s;
+  }
+  applyRoomEdit(slideWall(outline, wall.id, d, { start: crypto.randomUUID(), end: crypto.randomUUID() }));
+}
+
+/**
+ * Sets wall `wallId` to `inches` long, keeping every wall's direction; the end that moves is the
+ * length anchor in the UI store. A length above CONFIG.roomMax is refused as too-large, and any other
+ * refusal shows its reason. Returns true when accepted. An unknown wall returns false and changes
+ * nothing, the room problem included.
+ */
+export function setWallLengthTo(wallId: string, inches: number): boolean {
+  if (!hasCorner(wallId)) return false;
+  if (inches > CONFIG.roomMax + LIMIT_SLACK) return recordRoomOutcome('too-large');
+  const { outline } = usePlanStore.getState().room;
+  return applyRoomEdit(setWallLength(outline, wallId, inches, useUiStore.getState().lengthAnchor));
 }
 
 /** The fields updateSelectedOpening may change: those of updateOpening. */
