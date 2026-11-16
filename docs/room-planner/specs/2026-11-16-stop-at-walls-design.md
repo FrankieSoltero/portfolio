@@ -105,4 +105,11 @@ a few dozen). No measurable effect on dragging.
 
 - Along an angled wall the slide is made of small x and y moves, so it can lag the pointer
   slightly; the piece never crosses the wall.
+- Turning a piece near a wall is not pushed back; it can turn red.
+- Changing the room never moves furniture; a piece left outside turns red and drags freely
+  until it is wholly inside again.
+- A fast drag can carry a piece across an L-shape's cut-out to the other arm.
+- Furniture still overlaps other furniture and obstacles (red), by the owner's choice.
+- Cost grows with the number of angled walls: about 14 ms per pointer move was measured in a
+  unit probe for a 64-corner room; 7 ms worst case in the live check's L-shape room.
 - Safari and Firefox are not run, as for the rest of the planner.

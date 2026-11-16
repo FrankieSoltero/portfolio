@@ -754,3 +754,35 @@ Nine entries. Entries 1 to 4 are plan defects found while building (fixed by pla
   the browser the control is now 153 px wide in a 312 px list, ending at its last option.
 - **How to avoid:** When a control is placed in a column flex box, decide its width on
   purpose. When reading a screenshot, check each bordered control ends where its content ends.
+
+## 2026-11-16 — Stop at walls
+
+Four entries. Entry 1 is a decision of the first slice that the owner reversed. Entry 2 is a defect in the approved spec, found while writing the plan. Entry 3 was found by the Task 1 reviewer. Entry 4 is a process mistake in the plan's live-check rows. Items left as they are are listed under "Known limits of stop at walls" in `docs/room-planner/README.md`.
+
+### The first slice's "a footprint that leaves the room is a conflict, not a clamp" decision was reversed (found by the owner)
+- **Date:** 2026-11-16
+- **What happened:** Only a piece's centre was kept inside the room. A dragged piece crossed walls and turned red. Flush in a corner meant stopping on exactly the right 1 in grid step, and that was unreachable when the room or the piece was not a whole number of inches. The owner reported it after using the planner: "the conflict bordering is a bit too aggressive ... I should be able to put the bed in the top right corner".
+- **Root cause:** The first design treated leaving the room as information to show. Nobody tried the most common real action, pushing a bed into a corner, by hand.
+- **Fix:** Moves from inside the room stop flush at every wall (`room-planner/domain/wallStop.ts`). Spec: `specs/2026-11-16-stop-at-walls-design.md`.
+- **How to avoid:** For a direct-manipulation tool, try the three most common real actions by hand before fixing a rule in a spec.
+
+### The spec's first algorithm would have stuck on angled walls (found while writing the plan)
+- **Date:** 2026-11-16
+- **What happened:** The approved spec said "x as far as fits, then y". Pushing a piece straight into a 45° wall moves it neither in x nor in y, so it would stop instead of sliding. The plan author found this while writing the behavior table's angled-wall rows, before any code.
+- **Root cause:** The mechanism was approved without working a numeric example for the angled-wall case.
+- **Fix:** The plan adds a y-then-x try and a try along each angled wall's direction, and keeps the nearest result. The spec was updated.
+- **How to avoid:** Work one numeric example per row of a spec's behavior table before approving the mechanism.
+
+### "Round towards the start" moved a coordinate that had not changed (Task 1 fix round)
+- **Date:** 2026-11-16
+- **What happened:** The rounding helper used `Math.floor(v*100)/100`. For about 1,100 two-decimal values below 200 (72.57, 64.07, 40.05 and others), `v*100` is just under a whole number, so a coordinate equal to the start's moved 0.01 in sideways. It never moved outside the room. The task reviewer found it with a random-input comparison against an independent copy of the rule. No table row caught it.
+- **Root cause:** Flooring a decimal after multiplying by 100 is not exact in floating point.
+- **Fix:** Round to the nearest 0.01 and step back only when that passed the value.
+- **How to avoid:** Never floor or ceil a decimal after multiplying by 100. Round first, then compare. Test a fallback branch on purpose.
+
+### Two live-check rows were written wrongly (plan Amendment 1)
+- **Date:** 2026-11-16
+- **What happened:** W6 asked to type `12' 3.5"` into the sidebar wall field. That field is a number field read as decimal feet, so the text cannot be typed. W7 expected "not red" for a desk dragged into the L-shape's cut-out. In that starting shape the bed lies partly in the cut-out and the desk stopped overlapping it. The app was right both times.
+- **Root cause:** The plan author wrote the rows from memory of the UI, not from the page. This is the third slice in a row with a live-check row or script that was wrong while the app was right (slice D "stale scale", slice E row U4).
+- **Fix:** Plan Amendment 1: W6 types `12.2916666667` (147.5 in), W7 deletes the bed first. The whole table was run again.
+- **How to avoid:** Before a plan is reviewed, walk every live-check row once in the real page (or have an agent do it) and correct the rows.
