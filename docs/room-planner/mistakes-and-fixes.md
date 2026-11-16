@@ -741,3 +741,16 @@ Nine entries. Entries 1 to 4 are plan defects found while building (fixed by pla
 - **Root cause:** The script did not account for where keyboard focus was after the click. This is the same class as slice D's "stale scale" script mistake: the rows were right, the script was wrong.
 - **Fix:** The script removes focus from the option after choosing it.
 - **How to avoid:** In a script, after clicking a control, say where keyboard focus is before sending keys.
+
+### The which-end control was stretched across the sidebar (found by the owner)
+- **Date:** 2026-11-16
+- **What happened:** In the sidebar, the "A typed length moves" control (Start, Both, End) had
+  its border drawn across the full sidebar width, leaving empty bordered space after "End".
+  It shipped that way in the wall-editing slice; the owner noticed it while trying undo.
+- **Root cause:** The control sits in `.wall-list`, a column flex box. Children of a column
+  flex box stretch to its width unless told not to, and the control's own `inline-flex` does
+  not stop that. The slice D screenshots showed it, and nobody read them for this.
+- **Fix:** `.wall-list > .seg { align-self: flex-start; }` in `sidebar.css`, with a test. In
+  the browser the control is now 153 px wide in a 312 px list, ending at its last option.
+- **How to avoid:** When a control is placed in a column flex box, decide its width on
+  purpose. When reading a screenshot, check each bordered control ends where its content ends.

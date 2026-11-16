@@ -459,4 +459,9 @@ describe('wall list styles (sidebar.css)', () => {
   it('the note under the which-end control drops its paragraph margin', () => {
     expect(css).toContain('\n.wall-list-note { margin: 0; }');
   });
+
+  it('the which-end control is only as wide as its options, not stretched across the sidebar', () => {
+    // .wall-list is a column flex box, whose children stretch to its width unless told not to.
+    expect(css).toContain('\n.wall-list > .seg { align-self: flex-start; }');
+  });
 });
