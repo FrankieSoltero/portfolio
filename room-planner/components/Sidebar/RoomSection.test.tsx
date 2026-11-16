@@ -133,6 +133,23 @@ describe('Header', () => {
       expect(useHistoryStore.getState().lastAnnouncement).toBeNull();
     });
 
+    it('with nothing to undo, Enter and Space on a focused Undo change nothing and keep focus on it', async () => {
+      render(<Header />);
+      const user = userEvent.setup();
+      const before = usePlanStore.getState();
+      act(() => undoButton().focus());
+      await user.keyboard('{Enter}');
+      expect(undoButton()).toHaveFocus();
+      await user.keyboard(' ');
+      expect(undoButton()).toHaveFocus();
+      const after = usePlanStore.getState();
+      expect(after.room).toBe(before.room);
+      expect(after.items).toBe(before.items);
+      expect(after.openings).toBe(before.openings);
+      expect(after.obstacles).toBe(before.obstacles);
+      expect(useHistoryStore.getState().lastAnnouncement).toBeNull();
+    });
+
     it('enables Undo after one step; clicking it restores the earlier plan', async () => {
       render(<Header />);
       const before = oneStep();
