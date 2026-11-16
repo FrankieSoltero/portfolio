@@ -12,7 +12,8 @@ Three sections, three deliberately different design languages:
   client-side only. Source in `room-planner/`, mounted by `app/room-planner/`. Has its
   own design language (Industry), not the 8-bit theme. The room is an outline edited in
   "Edit room" mode, and furniture rotates to any angle. Walls can be dragged on the plan
-  and each shows its length, which can be typed there. The plan is saved in the browser
+  and each shows its length, which can be typed there. Undo and redo (Cmd/Ctrl+Z) cover every
+  plan edit. The plan is saved in the browser
   under `room-planner:plan:v1`, validated on load and never sent to a server.
 
 ## Run locally
@@ -47,7 +48,8 @@ byte-identical with zero build processing.
   `room-planner/styles/scoping.test.ts`). No backend: the plan is saved in the browser
   under `room-planner:plan:v1`, validated on load and never sent to a server; "Reset
   plan" erases it. The room carries doors, windows and fixed obstacles (boxes, raised
-  boxes, columns). Product lookup is a mock (`services/mockProductLookup.ts`).
+  boxes, columns). Undo and redo history is kept for the visit in
+  `room-planner/state/historyStore.ts`. Product lookup is a mock (`services/mockProductLookup.ts`).
 - `app/room-planner/` — the `/room-planner` route: `page.tsx`, `PlannerLoader.tsx`
   (loads the planner client-side only) and `error.tsx` (load-failure screen).
 - `docs/room-planner/` — specs, plans, plan reviews, verification notes, the read-only

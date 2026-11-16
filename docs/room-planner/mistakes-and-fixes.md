@@ -674,3 +674,70 @@ Seventeen entries. The first five are plan defects found while building (fixed b
 - **Root cause:** Two steps, each correct alone, ran in the wrong order.
 - **Fix:** A press moves focus first, then reads the drag's starting values (plan Amendment 10). A press on the wall whose own field is open leaves the field first.
 - **How to avoid:** When an action can trigger another edit as a side effect, read state after the side effect.
+
+## 2026-11-16 — Undo and redo
+
+Nine entries. Entries 1 to 4 are plan defects found while building (fixed by plan Amendments 1 to 4, or in Task 5's fix round). Entry 5 is a controller finding that prescribed the wrong mechanism (Task 7). Entry 6 was found in the final whole-branch review, and entries 7 to 9 are process mistakes. Items left as they are are listed under "Known limits of undo and redo (slice E)" in `docs/room-planner/README.md`.
+
+### The plan prescribed a screen-reader pattern that is often silent (plan Amendment 1)
+- **Date:** 2026-11-16
+- **What happened:** The plan said the "Undone" / "Redone" status element should be a new element on every announcement. Screen readers often skip a live region that is inserted together with its text, so the spec's "each undo and redo is announced" was not reliably met. Task 5's reviewer found it.
+- **Root cause:** The plan author wrote a mechanism from memory without checking how live regions behave.
+- **Fix:** Plan Amendment 1: one status element that is in the page from the first render. Only its text changes. A repeated word differs by a trailing non-breaking space.
+- **How to avoid:** For any accessibility mechanism in a plan, state the behaviour wanted and name the known-good pattern. A persistent live region whose text changes is the default.
+
+### Two different things shared one key (plan Amendment 2)
+- **Date:** 2026-11-16
+- **What happened:** The plan keyed a run of key presses by the selected thing's id. A wall's id is its starting corner's id, so a corner and the wall starting at it shared a key. A nudge of one followed within a second by a slide of the other became one undo step. Task 4's implementer found it.
+- **Root cause:** The plan forgot a convention the code base states in its own notes: wall id = start corner id.
+- **Fix:** Plan Amendment 2: the key includes the kind of thing (`'keys:' + kind + ':' + id`).
+- **How to avoid:** When ids are used as keys across kinds of things, check whether the kinds share an id space.
+
+### The undo keys only worked on Latin keyboard layouts (plan Amendment 3)
+- **Date:** 2026-11-16
+- **What happened:** The plan matched the letter typed (`e.key`). On a layout where the Z key types another letter, Cmd/Ctrl+Z did nothing. Task 4's reviewer found it.
+- **Root cause:** The plan did not say what a letter shortcut does on a non-Latin layout.
+- **Fix:** Plan Amendment 3: when the key typed is not a Latin letter, the physical key (`e.code`) decides. When it is a Latin letter, it alone decides, so Dvorak and AZERTY keep working by letter.
+- **How to avoid:** For a letter shortcut, decide up front what happens on non-Latin layouts.
+
+### The plan put the buttons "beside the title" without reading the header's layout (plan Amendment 4, Task 5 fix round)
+- **Date:** 2026-11-16
+- **What happened:** The brand has `margin-right: auto`, so buttons added after it landed at the far right, next to the units control. The implementer found it.
+- **Root cause:** The plan gave the new element's CSS without reading the header's existing layout rules.
+- **Fix:** Plan Amendment 4: one more rule that removes the brand's auto margin inside the header, and `margin-right: auto` on the button group.
+- **How to avoid:** When a plan places a new element in an existing bar, read that bar's layout rules first and list the CSS needed.
+
+### A deferred finding prescribed the wrong mechanism (Task 7, item 1)
+- **Date:** 2026-11-16
+- **What happened:** The controller's item said "skip the update whose references equal the restored plan". That is wrong when another listener was registered before the history. The implementer chose a rule that is right in both orders, and the reviewer confirmed it with a probe.
+- **Root cause:** The finding named a mechanism instead of the behaviour wanted.
+- **Fix:** The implementer's rule, which holds whichever listener was registered first.
+- **How to avoid:** Write a finding as the behaviour wanted and how to check it. Leave the mechanism to the person who has the code open.
+
+### A typing step stayed open after its field was removed from the page (final review, plan Amendment 5)
+- **Date:** 2026-11-16
+- **What happened:** The step for a text field was closed only when the field lost focus. A focused field that is removed from the page (the on-plan length editor after Enter or Escape) fires no "focus left" event, so its step stayed open and every later key press joined it. Type a length, press Enter, slide the wall with an arrow key, and one Undo took back both. No task review could see it: the hook's review saw only the hook, and the editor is from an earlier slice. The first two live-check runs missed it too, because row U9 undid only once.
+- **Root cause:** The plan assumed leaving a field always fires `focusout`.
+- **Fix:** Plan Amendment 5: the step is closed whenever focus is found on something that is not a text field (on focus moving to another element, and on any press or key while no text field is focused). Covered by flow test F19 and live-check row X1.
+- **How to avoid:** For anything tied to focus, list the ways focus can end without an event (the element is removed, disabled or hidden). Make live-check rows continue past the first undo.
+
+### The plan review blocked round 1 for the same reason as slice D's
+- **Date:** 2026-11-16
+- **What happened:** Round 1 scored 84.7 (pass is 85). The causes were live-check rows without a measurable result and a deferred-findings task with no bounds. Slice D's round 1 was blocked on a vague deferred task too.
+- **Root cause:** The new plan did not start from the previous plan's final wording for those two parts.
+- **Fix:** The rows were given values and the task was bounded.
+- **How to avoid:** Start the next plan's deferred-findings task and live-check rows from the previous plan's final wording.
+
+### The plan's task blocks did not use the format the structure checker reads
+- **Date:** 2026-11-16
+- **What happened:** The file lists were written as a sentence. The checker expects one `- Create:` / `- Modify:` / `- Test:` line per file, and it reported 27 "file drift" warnings.
+- **Root cause:** The task blocks were not copied from a plan the checker had accepted.
+- **Fix:** The blocks were reformatted before the review.
+- **How to avoid:** Copy a task block from the last plan that passed the checker.
+
+### The live-check script failed a row that the app passed (row U4)
+- **Date:** 2026-11-16
+- **What happened:** The script clicked the `Side by side` layout option, a radio button, which kept keyboard focus. Arrow keys belong to a focused radio, so they never reached the selected bed. Row U4 failed in run 1.
+- **Root cause:** The script did not account for where keyboard focus was after the click. This is the same class as slice D's "stale scale" script mistake: the rows were right, the script was wrong.
+- **Fix:** The script removes focus from the option after choosing it.
+- **How to avoid:** In a script, after clicking a control, say where keyboard focus is before sending keys.
