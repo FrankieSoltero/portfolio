@@ -99,6 +99,20 @@ describe('stopAtWalls', () => {
     expect(stopAtWalls(rect(60, 80), { x: 72, y: 84 }, { x: 90.004, y: 90.006 }, R)).toEqual({ x: 90, y: 90.01 });
   });
 
+  it('rounds towards the start when the nearest 0.01 is over the wall', () => {
+    // The wall at x = 143.996 puts the flush centre at 113.996: 114 is over it, 113.99 is not.
+    const room = [{ x: 0, y: 0 }, { x: 143.996, y: 0 }, { x: 143.996, y: 168 }, { x: 0, y: 168 }];
+    expect(stopAtWalls(rect(60, 80), { x: 72, y: 64.07 }, { x: 200, y: 64.07 }, room)).toEqual({ x: 113.99, y: 64.07 });
+  });
+
+  it('keeps an unchanged on-grid coordinate when a turned piece stops at a wall', () => {
+    // A 10 × 10 piece turned 30° reaches 6.83 below its centre, so it stops at y = 161.16.
+    const room = [{ x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 100 }, { x: 72, y: 100 }, { x: 72, y: 168 }, { x: 0, y: 168 }];
+    for (const x of [64.07, 64.1, 64.21, 64.24, 64.32, 40.05, 40.12]) {
+      expect(stopAtWalls(rect(10, 10, 30), { x: 110, y: 60 }, { x, y: 200 }, room)).toEqual({ x, y: 161.16 });
+    }
+  });
+
   it('returns the start when there is no move', () => {
     expect(stopAtWalls(rect(60, 80), { x: 114, y: 84 }, { x: 114, y: 84 }, R)).toEqual({ x: 114, y: 84 });
   });

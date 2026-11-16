@@ -16,10 +16,16 @@ function roundPoint(p: Point): Point {
   return { x: round2(p.x), y: round2(p.y) };
 }
 
-/** v rounded to 0.01 in the direction of target (down when v is above it, up when below). */
+/**
+ * v rounded to 0.01 in the direction of target: the nearest 0.01, stepped back 0.01 when that
+ * passes v going away from target. A v already on the 0.01 grid comes back unchanged (flooring
+ * v * 100 would not do that, as 64.07 * 100 is just under 6407).
+ */
 function roundTowards(v: number, target: number): number {
-  const scaled = v * 100;
-  return round2((v >= target ? Math.floor(scaled) : Math.ceil(scaled)) / 100);
+  const nearest = round2(v);
+  if (v >= target && nearest > v) return round2(nearest - 0.01);
+  if (v < target && nearest < v) return round2(nearest + 0.01);
+  return nearest;
 }
 
 /**
