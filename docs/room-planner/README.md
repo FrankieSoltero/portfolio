@@ -151,7 +151,8 @@ Known limits of undo and redo (slice E):
   browser. Where a clicked button takes focus, the typed length is applied and then taken back.
   In Safari the step before is taken back and the field stays open.
 - A drag or typed edit that ends exactly where it started still counts as a step, so undoing it
-  shows no change.
+  shows no change (the design says an edit that changes nothing adds no step; this case is the
+  exception).
 - After a layout or units option is clicked it keeps keyboard focus. Arrow keys then change that
   option, not the selected furniture, until something else is clicked. This is older than this
   slice.
