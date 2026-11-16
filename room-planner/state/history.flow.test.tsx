@@ -166,6 +166,18 @@ describe('undo and redo, whole flows', () => {
     expect(undoAll()).toBe(1);
   });
 
+  it('F4b: a nudge that a wall blocks completely changes nothing and adds no step', () => {
+    render(<Shortcuts />);
+    // The seed bed is flush with the back wall (y = 0).
+    useUiStore.getState().select('seed-bed');
+    const before = doc();
+    const changes = countChanges();
+    fireEvent.keyDown(window, { key: 'ArrowUp' });
+    expect(changes()).toBe(0);
+    expect(doc()).toEqual(before);
+    expect(undoAll()).toBe(0);
+  });
+
   it('F5: dragging a wall in room mode (RoomEditLayer) is one step', () => {
     useUiStore.getState().setMode('room');
     const layout = seedLayout();

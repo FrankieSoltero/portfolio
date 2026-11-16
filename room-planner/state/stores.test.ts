@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import { findConflicts, findPlanIssues } from '../domain/conflicts';
+import { findConflicts, findPlanIssues, OUTSIDE_THE_ROOM } from '../domain/conflicts';
 import { addObstacle, newObstacle, OBSTACLE_PROBLEM_TEXT } from '../domain/obstacles';
 import { addOpening, OPENING_PROBLEM_TEXT } from '../domain/openings';
 import {
@@ -95,6 +95,12 @@ function itemById(id: string): Item {
   const item = usePlanStore.getState().items.find((i) => i.id === id);
   if (!item) throw new Error(`expected item ${id}`);
   return item;
+}
+
+/** Resets to the seeded plan with the seed bed centred on (x, y), there partly outside the room, so the walls do not stop it. */
+function withBedOutsideAt(x: number, y: number): void {
+  const doc = createInitialDocument();
+  usePlanStore.getState().reset({ ...doc, items: doc.items.map((i) => (i.id === 'seed-bed' ? { ...i, x, y } : i)) });
 }
 
 beforeEach(() => {
@@ -272,6 +278,7 @@ describe('planStore', () => {
   });
 
   it('moveItemTo keeps the centre inside the room bounds', () => {
+    withBedOutsideAt(140, 42.5);
     usePlanStore.getState().moveItemTo('seed-bed', -50, 900);
     expect(itemById('seed-bed')).toMatchObject({ x: 0, y: 168 });
   });
@@ -345,6 +352,7 @@ describe('planStore', () => {
   });
 
   it('moveItemBy keeps the centre inside the room bounds', () => {
+    withBedOutsideAt(72, 20);
     usePlanStore.getState().moveItemBy('seed-bed', 71.6, 0);
     expect(itemById('seed-bed').x).toBe(143.6);
     usePlanStore.getState().moveItemBy('seed-bed', 1, 0);
@@ -352,16 +360,38 @@ describe('planStore', () => {
   });
 
   it('moveItemBy that changes nothing, or with an unknown id, keeps the same state and notifies no one', () => {
-    usePlanStore.getState().moveItemBy('seed-bed', 100, 0); // centre clamped to x 144
+    usePlanStore.getState().moveItemBy('seed-bed', 100, 0); // stopped flush with the right wall, centre x 112
     const before = usePlanStore.getState();
     const listener = vi.fn();
     const unsubscribe = usePlanStore.subscribe(listener);
     usePlanStore.getState().moveItemBy('seed-bed', 0, 0);
-    usePlanStore.getState().moveItemBy('seed-bed', 5, 0); // already at the bounding box edge
+    usePlanStore.getState().moveItemBy('seed-bed', 5, 0); // already flush with the right wall
     usePlanStore.getState().moveItemBy('nope', 5, 5);
     unsubscribe();
     expect(usePlanStore.getState()).toBe(before);
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('moveItemBy into the wall a piece is flush against keeps the same items array', () => {
+    // The seed bed is flush with the back wall (y = 0).
+    const before = usePlanStore.getState().items;
+    usePlanStore.getState().moveItemBy('seed-bed', 0, -1);
+    expect(usePlanStore.getState().items).toBe(before);
+  });
+
+  it('moveItemTo far outside the room stops a piece that starts inside at the walls, not outside', () => {
+    usePlanStore.getState().removeItem('seed-desk');
+    usePlanStore.getState().moveItemTo('seed-bed', 400, 400);
+    expect(itemById('seed-bed')).toMatchObject({ x: 112, y: 125.5 });
+    const { items, room } = usePlanStore.getState();
+    expect(findConflicts(items, room)['seed-bed']).not.toBe(OUTSIDE_THE_ROOM);
+  });
+
+  it('rotateItemBy on a piece flush in a corner keeps its position', () => {
+    usePlanStore.getState().moveItemTo('seed-bed', -400, -400);
+    expect(itemById('seed-bed')).toMatchObject({ x: 32, y: 42.5 });
+    usePlanStore.getState().rotateItemBy('seed-bed', 30);
+    expect(itemById('seed-bed')).toMatchObject({ x: 32, y: 42.5, angle: 30 });
   });
 
   it('ignores a number that is not finite, so no NaN is ever stored', () => {
@@ -765,6 +795,7 @@ describe('actions', () => {
   });
 
   it('nudgeSelected at the bounding box edge clamps the centre', () => {
+    withBedOutsideAt(72, 20);
     useUiStore.getState().select('seed-bed');
     nudgeSelected(71.6, 0);
     expect(itemById('seed-bed').x).toBe(143.6);
@@ -773,6 +804,7 @@ describe('actions', () => {
   });
 
   it('nudgeSelected keeps the centre inside the room bounds', () => {
+    withBedOutsideAt(72, 20);
     useUiStore.getState().select('seed-bed');
     nudgeSelected(0, -500);
     expect(itemById('seed-bed').y).toBe(0);
@@ -1305,11 +1337,20 @@ describe('plan store: doors, windows and obstacles', () => {
   });
 
   it('moveObstacleTo and moveObstacleBy keep the centre inside the room bounds', () => {
-    withPlan({ obstacles: [BOX] });
+    // Partly outside the room (x 138–162), so the walls do not stop it.
+    withPlan({ obstacles: [{ ...BOX, x: 150 }] });
     usePlanStore.getState().moveObstacleTo('b1', -50, 900);
     expect(obstacleById('b1')).toMatchObject({ x: 0, y: 168 });
     usePlanStore.getState().moveObstacleBy('b1', 500, -500);
     expect(obstacleById('b1')).toMatchObject({ x: 144, y: 0 });
+  });
+
+  it('moveObstacleTo far outside the room stops an obstacle that starts inside at the wall, not outside', () => {
+    withPlan({ obstacles: [BOX] });
+    usePlanStore.getState().moveObstacleTo('b1', -400, 120);
+    expect(obstacleById('b1')).toMatchObject({ x: 12, y: 120 });
+    const { items, room, openings, obstacles } = usePlanStore.getState();
+    expect(findPlanIssues(items, room, openings, obstacles).conflicts.b1).not.toBe(OUTSIDE_THE_ROOM);
   });
 
   it('obstacle moves that change nothing, unknown ids and numbers that are not finite keep the same state', () => {

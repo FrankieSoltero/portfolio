@@ -60,9 +60,10 @@ afterEach(() => {
 
 describe('useKeyboardShortcuts', () => {
   beforeEach(() => {
-    // Lift the bed off the wall so every arrow direction has room to move: its centre goes from
-    // (72, 42.5) to exactly (40, 20), off the drag grid, so the rows also show a nudge never re-snaps.
-    usePlanStore.getState().moveItemBy(BED, -32, -22.5);
+    // Put the bed's centre at exactly (40, 20), off the drag grid, so the rows also show a nudge never
+    // re-snaps. There the bed is partly outside the room (y −22.5 to 62.5), so the walls stop no arrow.
+    const doc = createInitialDocument();
+    usePlanStore.getState().reset({ ...doc, items: doc.items.map((i) => (i.id === BED ? { ...i, x: 40, y: 20 } : i)) });
     renderHook(() => useKeyboardShortcuts());
   });
 
@@ -911,6 +912,14 @@ describe('useKeyboardShortcuts key runs', () => {
     expect(stepCount()).toBe(2);
   });
 
+  it('Into a wall: ArrowUp on the bed flush with the back wall leaves it there, prevents default and is no step', () => {
+    useUiStore.getState().select(BED);
+    const ev = press(document.body, 'ArrowUp');
+    expect(bed()).toMatchObject({ x: 72, y: 42.5 });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(stepCount()).toBe(0);
+  });
+
   it('Arrows then R: ArrowRight then R on the same item at once are 1 step', () => {
     useUiStore.getState().select(BED);
     press(document.body, 'ArrowRight');
@@ -921,6 +930,15 @@ describe('useKeyboardShortcuts key runs', () => {
   });
 
   it('Two things: ArrowRight on the bed, then on the desk at once, are 2 steps', () => {
+    // The seed desk is flush with the right wall; partly outside the room (x 127–153), ArrowRight moves it.
+    const doc = createInitialDocument();
+    usePlanStore.getState().reset({
+      ...doc,
+      openings: [D1],
+      obstacles: [BOX],
+      items: doc.items.map((i) => (i.id === 'seed-desk' ? { ...i, x: 140 } : i)),
+    });
+    clearHistory();
     useUiStore.getState().select(BED);
     press(document.body, 'ArrowRight');
     useUiStore.getState().select('seed-desk');

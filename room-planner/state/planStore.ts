@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import { moveItem, rotateItemBy, setItemAngle, shiftItem, storedAngle } from '../domain/geometry';
+import { moveItem, placeItem, rotateItemBy, setItemAngle, shiftItem, storedAngle } from '../domain/geometry';
 import {
   moveObstacle,
   OBSTACLE_PROBLEM_TEXT,
@@ -20,7 +20,7 @@ import {
 } from '../domain/openings';
 import { OUTLINE_PROBLEM_TEXT, type OutlineProblem, type OutlineResult } from '../domain/outline';
 import { interiorPoint, round2 } from '../domain/polygon';
-import { roomBounds } from '../domain/shape';
+import { roomBounds, roomOutline } from '../domain/shape';
 import type { Corner, Item, Obstacle, PlanDocument, ProductPreview, Units } from '../domain/types';
 import { capProductText } from '../services/productLookup';
 
@@ -63,16 +63,20 @@ export interface PlanState extends PlanDocument {
    * its problem. Each centre is only clamped to ±CONFIG.coordMax (the bound parsePlan enforces), never
    * into the room: an obstacle an outline edit left outside the room stays where it is when another
    * is edited. Every number is stored to 0.01. A centre that is not finite is refused
-   * (obstacle-size). Moves go through moveObstacleTo and moveObstacleBy, which keep it in the room.
+   * (obstacle-size). Moves go through moveObstacleTo and moveObstacleBy, which stop it at the walls.
    * Caller's duty: a new obstacle id is fresh (crypto.randomUUID()); parsePlan refuses a repeated id.
    */
   applyObstacles(result: ObstaclesResult): RoomProblem | null;
   /**
-   * Moves an obstacle's centre to (x, y), its bounding-box min corner on the furniture grid, kept
-   * inside the room bounds. Unknown ids are ignored.
+   * Moves an obstacle towards (x, y), its bounding-box min corner on the furniture grid, through
+   * moveObstacle: one wholly inside the room stops flush at a wall it would cross. Unknown ids are
+   * ignored.
    */
   moveObstacleTo(id: string, x: number, y: number): void;
-  /** Moves an obstacle's centre by exactly (dx, dy), kept inside the room bounds. Unknown ids are ignored. */
+  /**
+   * Moves an obstacle by (dx, dy) through shiftObstacle: one wholly inside the room moves the part of
+   * the step that fits and stops flush at the wall. Unknown ids are ignored.
+   */
   moveObstacleBy(id: string, dx: number, dy: number): void;
   /** Removes a door or window. Unknown ids are ignored. */
   removeOpening(id: string): void;
@@ -80,18 +84,20 @@ export interface PlanState extends PlanDocument {
   removeObstacle(id: string): void;
   /**
    * Appends the preview as a new unrotated item centred near the room's interior point, placed by
-   * the same grid rule as a move, its text capped by capProductText; returns its new id. When the
-   * plan already has CONFIG.maxItems items, changes nothing and returns null.
+   * placeItem (the grid rule of a move, without the stop at the walls), its text capped by
+   * capProductText; returns its new id. When the plan already has CONFIG.maxItems items, changes
+   * nothing and returns null.
    */
   addItem(preview: ProductPreview): string | null;
   /**
-   * Moves an item's centre to (x, y), placed so its footprint's bounding-box min corner is on the
-   * furniture grid, and kept inside the room bounds. Unknown ids are ignored.
+   * Moves an item towards (x, y), its footprint's bounding-box min corner on the furniture grid,
+   * through moveItem: a piece wholly inside the room stops flush at a wall it would cross. Unknown
+   * ids are ignored.
    */
   moveItemTo(id: string, x: number, y: number): void;
   /**
-   * Moves an item's centre by exactly (dx, dy), with no grid snapping, kept inside the room bounds.
-   * Unknown ids are ignored.
+   * Moves an item by (dx, dy), with no grid snapping, through shiftItem: a piece wholly inside the
+   * room moves the part of the step that fits and stops flush at the wall. Unknown ids are ignored.
    */
   moveItemBy(id: string, dx: number, dy: number): void;
   /** Turns an item `deg` degrees clockwise about its centre. Unknown ids are ignored. */
@@ -233,13 +239,13 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   moveObstacleTo: (id, x, y) =>
     set((s) =>
       Number.isFinite(x) && Number.isFinite(y)
-        ? changeObstacle(s, id, (o) => moveObstacle(o, x, y, roomBounds(s.room), CONFIG.furnitureSnap))
+        ? changeObstacle(s, id, (o) => moveObstacle(o, x, y, roomOutline(s.room), CONFIG.furnitureSnap))
         : s,
     ),
 
   moveObstacleBy: (id, dx, dy) =>
     set((s) =>
-      Number.isFinite(dx) && Number.isFinite(dy) ? changeObstacle(s, id, (o) => shiftObstacle(o, dx, dy, roomBounds(s.room))) : s,
+      Number.isFinite(dx) && Number.isFinite(dy) ? changeObstacle(s, id, (o) => shiftObstacle(o, dx, dy, roomOutline(s.room))) : s,
     ),
 
   removeOpening: (id) =>
@@ -269,7 +275,7 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
       angle: 0,
       model: { ...preview.model },
     };
-    const item = moveItem(unplaced, centre.x, centre.y, roomBounds(room), CONFIG.furnitureSnap);
+    const item = placeItem(unplaced, centre.x, centre.y, roomBounds(room), CONFIG.furnitureSnap);
     set((s) => ({ items: [...s.items, item] }));
     return id;
   },
@@ -278,14 +284,14 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   moveItemTo: (id, x, y) =>
     set((s) =>
       Number.isFinite(x) && Number.isFinite(y)
-        ? changeItem(s, id, (item) => moveItem(item, x, y, roomBounds(s.room), CONFIG.furnitureSnap))
+        ? changeItem(s, id, (item) => moveItem(item, x, y, roomOutline(s.room), CONFIG.furnitureSnap))
         : s,
     ),
 
   moveItemBy: (id, dx, dy) =>
     set((s) =>
       Number.isFinite(dx) && Number.isFinite(dy)
-        ? changeItem(s, id, (item) => shiftItem(item, dx, dy, roomBounds(s.room)))
+        ? changeItem(s, id, (item) => shiftItem(item, dx, dy, roomOutline(s.room)))
         : s,
     ),
 

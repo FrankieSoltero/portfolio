@@ -53,8 +53,9 @@ export function placePreview(): string | null {
 }
 
 /**
- * Moves the selected item's centre by exactly (dx, dy) inches, with no grid snapping, kept inside
- * the room bounds; no-op when nothing is selected.
+ * Moves the selected item by (dx, dy) inches, with no grid snapping, through moveItemBy: a piece
+ * wholly inside the room moves the part of the step that fits and stops flush at the wall; no-op
+ * when nothing is selected.
  */
 export function nudgeSelected(dx: number, dy: number): void {
   const id = useUiStore.getState().selectedId;
@@ -295,8 +296,9 @@ export function addObstacleAtCentre(shape: 'box' | 'cylinder'): void {
 }
 
 /**
- * Moves obstacle `id`'s centre to (x, y) inches, its bounding box on the furniture grid, kept inside
- * the room bounds, and clears the room problem. An unknown id changes nothing, the room problem included.
+ * Moves obstacle `id` towards (x, y) inches, its bounding box on the furniture grid, through
+ * moveObstacleTo (one wholly inside the room stops flush at a wall it would cross), and clears the
+ * room problem. An unknown id changes nothing, the room problem included.
  */
 export function dragObstacleTo(id: string, x: number, y: number): void {
   if (findObstacle(id) === undefined) return;
@@ -305,8 +307,9 @@ export function dragObstacleTo(id: string, x: number, y: number): void {
 }
 
 /**
- * Moves the selected obstacle's centre by exactly (dx, dy) inches, kept inside the room bounds, and
- * clears the room problem; no-op when no known obstacle is selected.
+ * Moves the selected obstacle by (dx, dy) inches through moveObstacleBy (one wholly inside the room
+ * moves the part of the step that fits and stops flush at the wall), and clears the room problem;
+ * no-op when no known obstacle is selected.
  */
 export function nudgeSelectedObstacle(dx: number, dy: number): void {
   const obstacle = findObstacle(useUiStore.getState().selectedObstacleId);

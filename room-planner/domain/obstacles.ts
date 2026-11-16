@@ -1,9 +1,10 @@
 import { CONFIG } from '../config';
 import { footprintHalfExtents, snapCentreInto, storedAngle } from './geometry';
 import { inLimits } from './outline';
-import { round2 } from './polygon';
+import { boundsOf, round2 } from './polygon';
 import { footprintCorners, type Footprint } from './shape';
-import type { Bounds, Obstacle, Point } from './types';
+import type { Obstacle, Point } from './types';
+import { stopAtWalls } from './wallStop';
 
 /**
  * Pure operations on a room's fixed obstacles: boxes (columns, radiators, built-ins, raised units
@@ -93,7 +94,7 @@ export function obstaclePolygon(o: Obstacle): Point[] {
 
 /**
  * Half the width and half the length of the obstacle's axis-aligned bounding box: a box's from its
- * turned footprint (the rule moveItem uses), a cylinder's the radius on both axes.
+ * turned footprint (the rule placeItem uses), a cylinder's the radius on both axes.
  */
 function halfExtents(o: Obstacle): { hx: number; hy: number } {
   if (o.shape === 'cylinder') return { hx: o.width / 2, hy: o.width / 2 };
@@ -129,26 +130,43 @@ export function addObstacle(obstacles: readonly Obstacle[], obstacle: Obstacle):
   return settle([...obstacles, obstacle]);
 }
 
+/** Returns a copy of the obstacle centred on the point stopAtWalls gives for a move from its centre to `to`. */
+function stopObstacleAtWalls(o: Obstacle, to: Point, outline: readonly Point[]): Obstacle {
+  const shapeAt = (c: Point): readonly Point[] => obstaclePolygon({ ...o, x: c.x, y: c.y });
+  const p = stopAtWalls(shapeAt, { x: o.x, y: o.y }, to, outline);
+  return { ...o, x: p.x, y: p.y };
+}
+
 /**
- * Returns a copy of the obstacle with its centre moved to (x, y), placed so the min corner of its
- * axis-aligned bounding box is on the `snap` grid, then clamped into the bounds (as moveItem does).
+ * Returns a copy of the obstacle moved towards (x, y): the place is first found with the min corner
+ * of its axis-aligned bounding box on the `snap` grid, its centre clamped into the outline's bounding
+ * box, and the obstacle then stops at the room's walls (stopAtWalls), as moveItem does. One wholly
+ * inside the room stays wholly inside, flush against a wall it would cross; one that starts partly
+ * outside goes to the place unchanged.
  */
-export function moveObstacle(o: Obstacle, x: number, y: number, bounds: Bounds, snap: number): Obstacle {
+export function moveObstacle(o: Obstacle, x: number, y: number, outline: readonly Point[], snap: number): Obstacle {
   const { hx, hy } = halfExtents(o);
-  return {
-    ...o,
+  const bounds = boundsOf(outline);
+  const place = {
     x: snapCentreInto(x, hx, snap, bounds.minX, bounds.maxX),
     y: snapCentreInto(y, hy, snap, bounds.minY, bounds.maxY),
   };
+  return stopObstacleAtWalls(o, place, outline);
 }
 
-/** Returns a copy of the obstacle moved by exactly (dx, dy), clamped into the bounds, stored to 0.01. */
-export function shiftObstacle(o: Obstacle, dx: number, dy: number, bounds: Bounds): Obstacle {
-  return {
-    ...o,
+/**
+ * Returns a copy of the obstacle moved by (dx, dy): the place is its centre moved by exactly the
+ * step, clamped into the outline's bounding box and stored to 0.01, and the obstacle then stops at
+ * the room's walls (stopAtWalls), as shiftItem does. One wholly inside the room moves the part of
+ * the step that fits; one that starts partly outside goes to the place unchanged.
+ */
+export function shiftObstacle(o: Obstacle, dx: number, dy: number, outline: readonly Point[]): Obstacle {
+  const bounds = boundsOf(outline);
+  const place = {
     x: round2(Math.min(Math.max(o.x + dx, bounds.minX), bounds.maxX)),
     y: round2(Math.min(Math.max(o.y + dy, bounds.minY), bounds.maxY)),
   };
+  return stopObstacleAtWalls(o, place, outline);
 }
 
 /**

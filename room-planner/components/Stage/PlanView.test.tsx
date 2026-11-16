@@ -433,12 +433,21 @@ describe('PlanView', () => {
     expect(item('seed-desk')).toMatchObject({ x: 121, y: 121.5, angle: 90 });
   });
 
-  it('clamps a drag to the room bounds: the centre stops at x = room width', () => {
+  it('stops a drag at the wall: the 64 in bed ends flush with the right wall, centre x 112', () => {
     render(<PlanView pane={MAIN} />);
     fireEvent.pointerDown(itemEl('seed-bed'), { clientX: 100, clientY: 100 });
     fireEvent.pointerMove(window, { clientX: 5000, clientY: 100 });
     fireEvent.pointerUp(window);
-    expect(item('seed-bed')?.x).toBe(144);
+    expect(item('seed-bed')?.x).toBe(112);
+  });
+
+  it('a piece dragged far past a corner stops flush in it and is not marked is-conflict', () => {
+    render(<PlanView pane={MAIN} />);
+    fireEvent.pointerDown(itemEl('seed-bed'), { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: -5000, clientY: -5000 });
+    fireEvent.pointerUp(window);
+    expect(item('seed-bed')).toMatchObject({ x: 32, y: 42.5 });
+    expect(itemEl('seed-bed')).not.toHaveClass('is-conflict');
   });
 
   it('pointerdown on the pane background deselects', () => {
