@@ -12,12 +12,12 @@ import './sidebar.css';
  *
  * Order matters. The saved key is cleared first and awaited. The plan store is reset next; that
  * changes the document, so the autosave writes the seeded plan back after its debounce; the undo
- * history is cleared right after it, so the reset cannot be undone. The UI
- * store is reset last, which clears any notice and lifts `saveBlocked` (so a session that found a
- * plan from a newer planner saves again: the visitor has confirmed erasing it). If clearing
- * failed, the storage notice is set after the UI reset so the reset does not wipe it. What the
- * browser can do is kept: if WebGL was found unavailable, it is marked unavailable again after the
- * UI reset, so the 3D view does not try WebGL again. Never rejects.
+ * history is cleared right after it, so the reset cannot be undone. The UI store is reset last,
+ * which clears any notice and lifts `saveBlocked` (so a session that found a plan from a newer
+ * planner saves again: the visitor has confirmed erasing it). If clearing failed, the storage
+ * notice is set after the UI reset so the reset does not wipe it. What the browser can do is kept:
+ * if WebGL was found unavailable, it is marked unavailable again after the UI reset, so the 3D view
+ * does not try WebGL again. Never rejects.
  */
 async function resetPlan(planStore: PlanStore): Promise<void> {
   let cleared = true;
