@@ -217,8 +217,13 @@ describe('Header', () => {
         return css.slice(css.indexOf('{', at) + 1, css.indexOf('}', at)).replace(/\s+/g, ' ').trim();
       };
 
-      it('lays the two buttons out in a row with a small gap', () => {
-        expect(rule('.header-history')).toBe('display: flex; gap: var(--space-2);');
+      it('lays the two buttons out in a row with a small gap, pushing the units control to the far right', () => {
+        expect(rule('.header-history')).toBe('display: flex; gap: var(--space-2); margin-right: auto;');
+      });
+
+      it('sits the buttons beside the title: in the header the brand no longer takes the free space', () => {
+        // Beats industry.css `.nav-brand { margin-right: auto }` by specificity (two classes to one).
+        expect(rule('.app-header > .nav-brand')).toBe('margin-right: var(--space-4);');
       });
 
       it('hides the status element visually', () => {
