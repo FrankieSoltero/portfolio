@@ -179,7 +179,7 @@ Changed behaviour (slice D, wall editing). These are on purpose:
   `+` button in the sidebar).
 - In room mode the overall dimension lines sit further from the room.
 
-The checks on the final code: `npm run check` passes with 58 test files and 2245 tests, and the
+The checks on the final code: `npm run check` passes with 58 test files and 2246 tests, and the
 build shows `/room-planner` at 105 kB First Load JS.
 
 Open questions for the owner (slice C):
