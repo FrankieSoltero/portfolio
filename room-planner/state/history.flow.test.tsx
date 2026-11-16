@@ -10,6 +10,7 @@ import { PlanView } from '../components/Stage/PlanView';
 import { RoomEditLayer } from '../components/Stage/RoomEditLayer';
 import { WallLengthLabels } from '../components/Stage/WallLengthLabels';
 import { useHistoryFieldGroups } from '../hooks/useHistoryFieldGroups';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { createMockProductLookup, SAMPLE_LINKS } from '../services/mockProductLookup';
 import type { PaneRect } from '../view/panes';
 import { computePlanLayout, type PlanLayout, toPane } from '../view/planLayout';
@@ -70,6 +71,12 @@ function countChanges(): () => number {
 /** Mounts the text-field groups the app mounts in App.tsx. */
 function FieldGroups(): null {
   useHistoryFieldGroups();
+  return null;
+}
+
+/** Mounts the keyboard shortcuts the app mounts in App.tsx. */
+function Shortcuts(): null {
+  useKeyboardShortcuts();
   return null;
 }
 
@@ -501,5 +508,72 @@ describe('undo and redo, whole flows', () => {
     expect(doc()).toEqual(added);
     expect(undoAll()).toBe(1);
     expect(useHistoryStore.getState().canUndo).toBe(false);
+  });
+
+  it('F19: a length typed in the on-plan editor, then an arrow slide of the wall, is two steps', async () => {
+    useUiStore.getState().setMode('room');
+    const user = userEvent.setup();
+    render(
+      <>
+        <FieldGroups />
+        <Shortcuts />
+        <WallLengthLabels layout={seedLayout()} />
+      </>,
+    );
+    const label = (id: string): HTMLElement => {
+      const el = document.querySelector<HTMLElement>(`button.room-wall-label[data-wall-label-id="${id}"]`);
+      if (!el) throw new Error(`no label for wall ${id}`);
+      return el;
+    };
+    const wallLength = (): number => {
+      const { outline } = usePlanStore.getState().room;
+      const a = outline.find((c) => c.id === 'c1');
+      const b = outline.find((c) => c.id === 'c2');
+      if (!a || !b) throw new Error('no top wall');
+      return Math.hypot(b.x - a.x, b.y - a.y);
+    };
+
+    // Enter: the editor is removed while its input has focus, and focus returns to the label.
+    const before = doc();
+    await user.click(label('c1'));
+    await user.keyboard('13{Enter}');
+    const typed = doc();
+    expect(wallLength()).toBe(156);
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+    await user.keyboard('{ArrowDown}');
+    const slid = doc();
+    expect(slid).not.toEqual(typed);
+    expect(wallLength()).toBe(156);
+    // One undo takes back only the slide; the typed length stays.
+    expect(undo()).toBe(true);
+    expect(doc()).toEqual(typed);
+    expect(wallLength()).toBe(156);
+    expect(undo()).toBe(true);
+    expect(doc()).toEqual(before);
+    expect(undo()).toBe(false);
+
+    // Escape: nothing typed is applied; the slide after it, and a slide of another wall, are a step each.
+    act(() => {
+      usePlanStore.getState().reset();
+      useUiStore.getState().reset();
+      useUiStore.getState().setMode('room');
+    });
+    clearHistory();
+    const seeded = doc();
+    await user.click(label('c1'));
+    await user.keyboard('13{Escape}');
+    expect(doc()).toEqual(seeded);
+    expect(useUiStore.getState().selectedWallId).toBe('c1');
+    await user.keyboard('{ArrowDown}');
+    const slidTop = doc();
+    expect(slidTop).not.toEqual(seeded);
+    act(() => useUiStore.getState().selectWall('c2'));
+    await user.keyboard('{ArrowLeft}');
+    expect(doc()).not.toEqual(slidTop);
+    expect(undo()).toBe(true);
+    expect(doc()).toEqual(slidTop);
+    expect(undo()).toBe(true);
+    expect(doc()).toEqual(seeded);
+    expect(undo()).toBe(false);
   });
 });

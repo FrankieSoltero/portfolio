@@ -38,7 +38,7 @@ export function Header() {
           aria-disabled={canUndo ? undefined : 'true'}
           aria-keyshortcuts="Control+Z Meta+Z"
           onClick={() => {
-            if (canUndo) undo();
+            undo();
           }}
         >
           Undo
@@ -49,7 +49,7 @@ export function Header() {
           aria-disabled={canRedo ? undefined : 'true'}
           aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
           onClick={() => {
-            if (canRedo) redo();
+            redo();
           }}
         >
           Redo

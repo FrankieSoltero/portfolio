@@ -34,6 +34,11 @@ function pointerDown(target: Element): void {
   target.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
 }
 
+/** Dispatches a bubbling keydown on `target`, the way a key press does on the focused element. */
+function keyDown(target: EventTarget): void {
+  target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+}
+
 beforeEach(() => {
   usePlanStore.getState().reset();
   useUiStore.getState().reset();
@@ -183,6 +188,64 @@ describe('useHistoryFieldGroups', () => {
     change();
     pointerDown(button);
     field.blur();
+    change();
+    expect(undoAll()).toBe(1);
+  });
+
+  it('Typing with keys: focus a field, keydown, change, keydown, change make one step', () => {
+    renderHook(() => useHistoryFieldGroups());
+    const field = add('input', 'text');
+    field.focus();
+    keyDown(field);
+    change();
+    keyDown(field);
+    change();
+    expect(undoAll()).toBe(1);
+  });
+
+  it('Removed field, then keys: two changes each after a keydown on the document make two steps', () => {
+    renderHook(() => useHistoryFieldGroups());
+    const field = add('input', 'text');
+    field.focus();
+    // A removed focused field fires no focusout.
+    field.remove();
+    expect(document.activeElement).not.toBe(field);
+    keyDown(document);
+    change();
+    keyDown(document);
+    change();
+    expect(undoAll()).toBe(2);
+  });
+
+  it('Removed field, then focus on a button: a change after it is a step of its own', () => {
+    renderHook(() => useHistoryFieldGroups());
+    const field = add('input', 'text');
+    const button = add('button');
+    field.focus();
+    change();
+    field.remove();
+    button.focus();
+    change();
+    expect(undoAll()).toBe(2);
+  });
+
+  it('Removed field, then a press anywhere: two changes after it make two steps', () => {
+    renderHook(() => useHistoryFieldGroups());
+    const field = add('input', 'text');
+    field.focus();
+    field.remove();
+    pointerDown(document.body);
+    change();
+    change();
+    expect(undoAll()).toBe(2);
+  });
+
+  it('Unmount: the keydown listener is removed', () => {
+    const { unmount } = renderHook(() => useHistoryFieldGroups());
+    unmount();
+    openGroup('field');
+    change();
+    keyDown(document);
     change();
     expect(undoAll()).toBe(1);
   });
