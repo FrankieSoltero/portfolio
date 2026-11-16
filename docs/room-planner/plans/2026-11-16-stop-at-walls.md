@@ -239,8 +239,8 @@ again, and the recorded table is a run on the final commit.
 | W3 | Click `Undo` once | bed at its fresh position; `Undo` greyed out (the blocked presses added no step) |
 | W4 | Fresh. Drag the desk 400 px below the bottom wall | stored desk `y = 168 − hy`; `x` within 1 in of where the pointer's x asked; not red |
 | W5 | Bed in the top right corner (as W1). Press on it, move the pointer 200 px right of the wall and 80 px down, release | stored `x = 144 − hx`; `y` greater than `hy` by the 80 px in plan inches, within 1 in |
-| W6 | Fresh, `Edit room`. Type `12' 3.5"` into sidebar wall 1, `Done`. Drag the bed 300 px past the right wall | room 147.5 wide; stored bed `x = 147.5 − hx` exactly; not red |
-| W7 | Fresh, `Edit room`, starting shape `L-shape`, `Done`. Drag the desk to the middle of the cut-out (the script computes that point from the stored outline) | every corner of the desk's footprint is inside the stored outline within 0.01 in; at least one footprint side is within 0.01 in of a cut-out wall; not red |
+| W6 | Fresh, `Edit room`. Type `12.2916666667` (decimal feet, 147.5 in; see Amendment 1) into sidebar wall 1, `Done`. Drag the bed 300 px past the right wall | room 147.5 wide; stored bed `x = 147.5 − hx` exactly; not red |
+| W7 | Fresh, `Edit room`, starting shape `L-shape`, `Done`. Delete the bed (see Amendment 1). Drag the desk to the middle of the cut-out (the script computes that point from the stored outline) | every corner of the desk's footprint is inside the stored outline within 0.01 in; at least one footprint side is within 0.01 in of a cut-out wall; not red |
 | W8 | Fresh, `Edit room`. Add a box obstacle and drag it 300 px past the left wall | stored obstacle `x = 12` (half its 24 in width); no conflict text for it |
 | W9 | Fresh. Bed into the top right corner. `Edit room`, drag the right wall 24 in left, `Done` | the bed's stored position is unchanged and it is red (`Outside the room`) |
 | W10 | Continue W9: drag the bed 5 px left | it moves (stored `x` smaller) and is still red |
@@ -296,3 +296,21 @@ The plan is done when all of these hold on the final commit of `undo-redo`:
   Important finding.
 
 Pull request #3 is then updated. It is merged only when the owner says so.
+
+---
+
+## Amendments
+
+### Amendment 1 (2026-11-16, after live-check run 1)
+
+Two live-check rows were written wrongly; the app was right in both.
+
+- **W6** asked to type `12' 3.5"` into the sidebar wall field. That field is a number field
+  read as decimal feet, so the text cannot be typed. The row now types `12.2916666667`
+  (147.5 in).
+- **W7** expected the desk to be "not red" after a drag into the L-shape's cut-out. In the
+  L-shape room the starting bed lies partly in the cut-out, and the desk stopped overlapping
+  it ("Overlaps …", an existing rule this plan does not change). The row now deletes the bed
+  first.
+
+The whole table is run again after this amendment.
