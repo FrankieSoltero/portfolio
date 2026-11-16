@@ -922,6 +922,22 @@ describe('useKeyboardShortcuts key runs', () => {
     expect([after.room, after.openings, after.obstacles]).toEqual([before.room, before.openings, before.obstacles]);
   });
 
+  it('Corner then wall: an arrow on corner c1, then on wall c1 (which starts at it) at once, are 2 steps', () => {
+    useUiStore.getState().setMode('room');
+    const before = usePlanStore.getState().room;
+    useUiStore.getState().selectCorner('c1');
+    press(document.body, 'ArrowRight');
+    const afterCorner = usePlanStore.getState().room;
+    expect(afterCorner).not.toBe(before);
+    useUiStore.getState().selectWall('c1');
+    press(document.body, 'ArrowDown');
+    expect(usePlanStore.getState().room).not.toBe(afterCorner);
+    expect(undo()).toBe(true);
+    expect(usePlanStore.getState().room).toBe(afterCorner);
+    expect(stepCount()).toBe(1);
+    expect(usePlanStore.getState().room).toBe(before);
+  });
+
   it('Delete is its own step: ArrowRight then Delete at once are 2 steps', () => {
     useUiStore.getState().select(BED);
     press(document.body, 'ArrowRight');

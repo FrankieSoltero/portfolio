@@ -32,12 +32,15 @@ function inFormField(target: EventTarget | null, includeRadio: boolean): boolean
   return false;
 }
 
+/** The kinds of thing a key press acts on. A wall's id is its starting corner's id, so the key names the kind too. */
+type KeyedKind = 'item' | 'corner' | 'wall' | 'opening' | 'obstacle';
+
 /**
- * Runs a nudge, slide or turn of the thing with `id` keyed to it, so a quick run of key presses
- * on one thing is one undo step.
+ * Runs a nudge, slide or turn of the thing of `kind` with `id` keyed to it, so a quick run of key
+ * presses on one thing is one undo step.
  */
-function keyed(id: string, change: () => void): void {
-  runKeyed('keys:' + id, change);
+function keyed(kind: KeyedKind, id: string, change: () => void): void {
+  runKeyed('keys:' + kind + ':' + id, change);
 }
 
 /**
@@ -72,13 +75,13 @@ function onRoomKeyDown(e: KeyboardEvent): void {
     e.preventDefault();
     const step = e.shiftKey ? CONFIG.nudgeStepLarge : CONFIG.nudgeStep;
     if (selectedCornerId !== null) {
-      keyed(selectedCornerId, () => nudgeSelectedCorner(arrow[0] * step, arrow[1] * step));
+      keyed('corner', selectedCornerId, () => nudgeSelectedCorner(arrow[0] * step, arrow[1] * step));
     } else if (selectedWallId !== null) {
-      keyed(selectedWallId, () => slideSelectedWallToward({ x: arrow[0], y: arrow[1] }, step));
+      keyed('wall', selectedWallId, () => slideSelectedWallToward({ x: arrow[0], y: arrow[1] }, step));
     } else if (selectedOpeningId !== null) {
-      keyed(selectedOpeningId, () => slideSelectedOpeningToward({ x: arrow[0], y: arrow[1] }, step));
+      keyed('opening', selectedOpeningId, () => slideSelectedOpeningToward({ x: arrow[0], y: arrow[1] }, step));
     } else if (selectedObstacleId !== null) {
-      keyed(selectedObstacleId, () => nudgeSelectedObstacle(arrow[0] * step, arrow[1] * step));
+      keyed('obstacle', selectedObstacleId, () => nudgeSelectedObstacle(arrow[0] * step, arrow[1] * step));
     }
     return;
   }
@@ -86,7 +89,7 @@ function onRoomKeyDown(e: KeyboardEvent): void {
   if (inFormField(e.target, false)) return;
   if (e.key === 'r' || e.key === 'R') {
     if (selectedObstacleId !== null) {
-      keyed(selectedObstacleId, () => rotateSelectedObstacle(e.shiftKey ? ROTATE_STEP_FINE : ROTATE_STEP_COARSE));
+      keyed('obstacle', selectedObstacleId, () => rotateSelectedObstacle(e.shiftKey ? ROTATE_STEP_FINE : ROTATE_STEP_COARSE));
     }
   } else if (e.key === 'Delete' || e.key === 'Backspace') {
     if (anySelected) removeSelectedRoomThing();
@@ -126,7 +129,7 @@ function onKeyDown(e: KeyboardEvent): void {
     if (inFormField(e.target, true)) return;
     e.preventDefault();
     const step = e.shiftKey ? CONFIG.nudgeStepLarge : CONFIG.nudgeStep;
-    keyed(selectedId, () => nudgeSelected(arrow[0] * step, arrow[1] * step));
+    keyed('item', selectedId, () => nudgeSelected(arrow[0] * step, arrow[1] * step));
     return;
   }
 
@@ -134,7 +137,7 @@ function onKeyDown(e: KeyboardEvent): void {
   if (inFormField(e.target, false)) return;
   // Shift decides the step, not the letter's case: caps-lock R without Shift is a coarse turn.
   if (e.key === 'r' || e.key === 'R') {
-    keyed(selectedId, () => rotateSelected(e.shiftKey ? ROTATE_STEP_FINE : ROTATE_STEP_COARSE));
+    keyed('item', selectedId, () => rotateSelected(e.shiftKey ? ROTATE_STEP_FINE : ROTATE_STEP_COARSE));
   } else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
   else if (e.key === 'Escape') useUiStore.getState().select(null);
 }
