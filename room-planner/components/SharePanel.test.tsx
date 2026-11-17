@@ -177,6 +177,74 @@ describe('SharePanel: opening and closing', () => {
   });
 });
 
+describe('SharePanel: keys inside the panel', () => {
+  /** Moves and selects the desk (so there is a step to undo), then opens the panel in the Harness. */
+  function openWithDeskSelected(): void {
+    clearHistory();
+    render(<Harness />);
+    act(() => {
+      usePlanStore.getState().moveItemTo('seed-desk', 100, 100);
+      useUiStore.getState().select('seed-desk');
+    });
+    expect(useHistoryStore.getState().canUndo).toBe(true);
+    openPanel();
+    expect(screen.getByRole('button', { name: 'Copy link' })).toHaveFocus();
+  }
+
+  it.each([
+    ['ArrowRight', { key: 'ArrowRight' }],
+    ['Delete', { key: 'Delete' }],
+    ['Backspace', { key: 'Backspace' }],
+    ['r', { key: 'r' }],
+    ['Cmd+Z', { key: 'z', metaKey: true }],
+    ['Ctrl+Z', { key: 'z', ctrlKey: true }],
+  ])('%s on Copy link does not reach the planner shortcuts', (_, init) => {
+    openWithDeskSelected();
+    const before = currentDocument();
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Copy link' }), init);
+    expect(currentDocument()).toEqual(before);
+    expect(useUiStore.getState().selectedId).toBe('seed-desk');
+    expect(useHistoryStore.getState().canUndo).toBe(true);
+    expect(panel()).toBeInTheDocument();
+  });
+
+  it('Tab still moves focus through the panel and reaches the page', async () => {
+    openWithDeskSelected();
+    const seen: string[] = [];
+    const listen = (e: KeyboardEvent) => seen.push(e.key);
+    window.addEventListener('keydown', listen);
+    try {
+      const user = userEvent.setup();
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Download floor plan' })).toHaveFocus();
+      await user.tab({ shift: true });
+      expect(screen.getByRole('button', { name: 'Copy link' })).toHaveFocus();
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Copy link' }), { key: 'ArrowRight' });
+    } finally {
+      window.removeEventListener('keydown', listen);
+    }
+    expect(seen).toEqual(['Tab', 'Tab']);
+  });
+
+  it('the fallback link field still takes keys: arrows move the cursor, Ctrl+A selects all', async () => {
+    setClipboard(undefined);
+    openWithDeskSelected();
+    const before = currentDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    await flush();
+    const field = screen.getByRole('textbox', { name: 'Share link' }) as HTMLInputElement;
+    expect(field).toHaveFocus();
+    const user = userEvent.setup();
+    await user.keyboard('{ArrowLeft}{ArrowRight}{ArrowRight}');
+    expect([field.selectionStart, field.selectionEnd]).toEqual([2, 2]);
+    await user.keyboard('{Control>}a{/Control}');
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
+    expect(fireEvent.keyDown(field, { key: 'ArrowRight' })).toBe(true);
+    expect(currentDocument()).toEqual(before);
+    expect(panel()).toBeInTheDocument();
+  });
+});
+
 describe('SharePanel: Copy link', () => {
   it('encodes the current document and copies its share address; reads Copied for 2000 ms', async () => {
     const writeText = vi.fn(() => Promise.resolve());
@@ -268,7 +336,9 @@ describe('SharePanel: Copy link', () => {
     setClipboard(vi.fn(() => Promise.resolve()));
     const { unmount } = render(<SharePanel />);
     openPanel();
-    vi.useFakeTimers();
+    // Only setTimeout is faked, so the count is the component's own timers: jsdom starts a
+    // setInterval of its own (focus fixup) when the focused button is removed on unmount.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
     await flush();
     expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
@@ -449,74 +519,6 @@ describe('SharePanel: Download 3D view', () => {
     pending.resolve(new Blob(['x']));
     await flush();
     expect(downloadBlob).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('SharePanel: keys inside the panel', () => {
-  /** Moves and selects the desk (so there is a step to undo), then opens the panel in the Harness. */
-  function openWithDeskSelected(): void {
-    clearHistory();
-    render(<Harness />);
-    act(() => {
-      usePlanStore.getState().moveItemTo('seed-desk', 100, 100);
-      useUiStore.getState().select('seed-desk');
-    });
-    expect(useHistoryStore.getState().canUndo).toBe(true);
-    openPanel();
-    expect(screen.getByRole('button', { name: 'Copy link' })).toHaveFocus();
-  }
-
-  it.each([
-    ['ArrowRight', { key: 'ArrowRight' }],
-    ['Delete', { key: 'Delete' }],
-    ['Backspace', { key: 'Backspace' }],
-    ['r', { key: 'r' }],
-    ['Cmd+Z', { key: 'z', metaKey: true }],
-    ['Ctrl+Z', { key: 'z', ctrlKey: true }],
-  ])('%s on Copy link does not reach the planner shortcuts', (_, init) => {
-    openWithDeskSelected();
-    const before = currentDocument();
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Copy link' }), init);
-    expect(currentDocument()).toEqual(before);
-    expect(useUiStore.getState().selectedId).toBe('seed-desk');
-    expect(useHistoryStore.getState().canUndo).toBe(true);
-    expect(panel()).toBeInTheDocument();
-  });
-
-  it('Tab still moves focus through the panel and reaches the page', async () => {
-    openWithDeskSelected();
-    const seen: string[] = [];
-    const listen = (e: KeyboardEvent) => seen.push(e.key);
-    window.addEventListener('keydown', listen);
-    try {
-      const user = userEvent.setup();
-      await user.tab();
-      expect(screen.getByRole('button', { name: 'Download floor plan' })).toHaveFocus();
-      await user.tab({ shift: true });
-      expect(screen.getByRole('button', { name: 'Copy link' })).toHaveFocus();
-      fireEvent.keyDown(screen.getByRole('button', { name: 'Copy link' }), { key: 'ArrowRight' });
-    } finally {
-      window.removeEventListener('keydown', listen);
-    }
-    expect(seen).toEqual(['Tab', 'Tab']);
-  });
-
-  it('the fallback link field still takes keys: arrows move the cursor, Ctrl+A selects all', async () => {
-    setClipboard(undefined);
-    openWithDeskSelected();
-    const before = currentDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
-    await flush();
-    const field = screen.getByRole('textbox', { name: 'Share link' }) as HTMLInputElement;
-    expect(field).toHaveFocus();
-    const user = userEvent.setup();
-    await user.keyboard('{ArrowLeft}{ArrowRight}{ArrowRight}');
-    expect([field.selectionStart, field.selectionEnd]).toEqual([2, 2]);
-    await user.keyboard('{Control>}a{/Control}');
-    expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
-    expect(fireEvent.keyDown(field, { key: 'ArrowRight' })).toBe(true);
-    expect(currentDocument()).toEqual(before);
-    expect(panel()).toBeInTheDocument();
   });
 });
 
