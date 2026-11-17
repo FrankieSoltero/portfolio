@@ -2,6 +2,8 @@
 
 - **Date:** 2026-11-17
 - **Status:** approved by the owner on 2026-11-17
+- **Amended during the build:** see the plan's Amendments 1 to 3
+  ([`../plans/2026-11-17-sharing.md`](../plans/2026-11-17-sharing.md)).
 - **Delivery:** its own pull request (branch `sharing`), slice F.
 
 ## The problem
@@ -29,6 +31,10 @@ actions:
 | Download floor plan | Saves `room-plan.png`. |
 | Download 3D view | Saves `room-3d.png`. Greyed out, with the reason shown, when the 3D view is not on screen (the "Tabs" layout on its plan tab). Without WebGL the planner already shows the blueprint view there, and that is what is saved. |
 
+If an action fails, the panel shows `This plan is too large to share as a link.` (Copy link) or
+`The picture could not be made.` (a download). A key pressed inside the panel does not reach the
+planner's shortcuts, except Tab; Escape closes the panel.
+
 The panel closes on Escape, on a click outside it, and returns focus to the Share button.
 
 ### The link
@@ -53,9 +59,12 @@ The panel closes on Escape, on a click outside it, and returns focus to the Shar
 | "Back to my plan" | The visitor's saved plan is loaded. The banner goes and the address is cleaned the same way. |
 | Visitor has no saved plan | The shared plan opens as their plan and is saved, with a notice: "Opened a shared plan." No banner. |
 | While previewing | The visitor can move things, undo and redo, and use Share. Nothing is saved until "Keep this plan". A reload shows the shared plan as it was in the link. |
-| The link is damaged or cut short | The visitor's own plan loads, with a notice: "This shared link could not be read." |
+| The link is damaged or cut short | The visitor's own plan loads, with a notice: "This shared link could not be read." The `#plan=` part is removed from the address. If the browser's storage is blocked or the saved plan is from a newer planner, that notice is shown instead. |
 | A share link arrives in the address of a planner that is already open (pasted into the same tab) | The page reloads and the link opens as above. (Added with the owner's approval on 2026-11-17.) |
-| The link was made by a newer planner | The visitor's own plan loads, with a notice: "This shared link was made with a newer version of the planner." |
+| The link was made by a newer planner | The visitor's own plan loads, with a notice: "This shared link was made with a newer version of the planner." The `#plan=` part is removed from the address. If the browser's storage is blocked or the saved plan is from a newer planner, that notice is shown instead. |
+| The visitor's saved plan is from a newer planner, and the link is good | The shared plan is previewed with the usual notice, without "Keep this plan", since nothing can be saved. |
+| The visitor's saved plan cannot be read | Treated like no saved plan. |
+| "Reset plan" during a preview | The preview ends, `#plan=` is removed from the address, and the starting plan is saved. |
 | The browser's storage is blocked | The shared plan is shown with the usual storage notice. "Keep this plan" is not offered, since nothing can be saved. |
 
 The undo history is cleared when a shared plan opens, on "Keep this plan" and on "Back to my
@@ -68,7 +77,8 @@ A PNG drawn for the purpose, not a screenshot of the screen:
 - White background, 2,000 px on its longer side, the room scaled to fit with a margin.
 - Walls, doors (with their swing), windows, obstacles and furniture, top down.
 - Each piece of furniture and each labelled obstacle carries its name.
-- Every wall carries its length, in the plan's units.
+- Every wall carries its length, in the plan's units. The length is drawn level and clear of
+  the wall, whatever the wall's direction.
 - Pieces in conflict are drawn red, as on screen. Nothing is drawn as selected.
 - A small line at the bottom: "Room Planner · frankiesoltero.com/room-planner".
 
@@ -123,6 +133,11 @@ blueprint mode it is the blueprint drawing.
 - Tests of the preview flow in the store and hook: has a plan, has none, keep, back,
   blocked storage, no save while previewing.
 - Tests of `drawPlanPicture` against a recording canvas.
+- A test of the link decoder's decompression: the inflater is fed in 1 KB slices, each write
+  awaited, so a cap bounds what is inflated, not only what is read. Node's stream respects
+  backpressure and hides a failure here, so it was also measured in Chromium: a 400 to 510 MB
+  bomb stops after 2,048 input bytes in 0.2 ms (before the slice feeding, it took the whole
+  input in 28 to 40 ms).
 - Component tests for the Share panel and the banner.
 - A live browser check: copy a link, open it in a fresh profile and in one with a saved
   plan, keep, back, a damaged link, both downloads opened and looked at.
@@ -134,5 +149,7 @@ blueprint mode it is the blueprint drawing.
 - Very large plans make links of several thousand characters, which some chat apps cut.
   A cut link shows "This shared link could not be read."
 - No short links, no PDF, no phone layout, no system share sheet.
+- With storage blocked or a saved plan from a newer planner, an unreadable link shows that
+  notice, not "This shared link could not be read." Those notices say work is not being saved.
 - Safari and Firefox are not run, as for the rest of the planner. Without
   `CompressionStream` (browsers before 2023) links are longer but still work.

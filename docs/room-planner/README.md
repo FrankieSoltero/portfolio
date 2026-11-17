@@ -119,6 +119,14 @@ lived in `src/`. That folder is `room-planner/` in this repository.
   on load (`room-planner/domain/planSchema.ts`). It is never sent to a server. "Reset plan"
   erases it. The stored document is `schemaVersion` 3 and carries `openings` and `obstacles`;
   a version 2 document loads with both lists empty. The key is unchanged.
+- **Sharing.** A `Share` button in the header, after Undo and Redo, opens a panel with `Copy link`,
+  `Download floor plan` (`room-plan.png`) and `Download 3D view` (`room-3d.png`). The link is
+  `/room-planner#plan=1.<data>`: the whole plan, compressed, after the `#`, so it is never sent
+  to a server. Opening a link shows the shared plan as a preview, with a banner and the buttons
+  `Keep this plan` and `Back to my plan`; the visitor's own plan is not changed until they keep it.
+  A visitor with no saved plan gets the shared plan directly. The link is read in
+  `room-planner/services/shareLink.ts` and goes through `parsePlan` like any stored plan. The
+  spec is [`specs/2026-11-17-sharing-design.md`](specs/2026-11-17-sharing-design.md).
 
 Known limits. The Blueprint approximation and the two-tabs overwrite are decisions 5 and 9 of
 the plan [`plans/2026-11-13-room-shape-and-saving.md`](plans/2026-11-13-room-shape-and-saving.md);
@@ -198,6 +206,42 @@ Known limits of stop at walls:
   room, most of it rendering.
 - Safari and Firefox were not run.
 
+Known limits of sharing (slice F). The first five are in the spec; the rest were found while
+building and are in the executor's ledger or the live check.
+
+- A link is a snapshot. Later edits need a new link.
+- Anyone who has the link has the plan. There is no way to take a link back.
+- Very large plans make links of several thousand characters, which some chat apps cut. A cut
+  link shows "This shared link could not be read."
+- No short links, no PDF, no phone layout, no system share sheet.
+- Safari and Firefox were not run. Without `CompressionStream` (browsers before 2023) links are
+  longer but still work.
+- The 3D picture includes the current selection (an outline in the realistic view, the piece's
+  tag in the blueprint view), since it is exactly what the camera shows.
+- Switching Realistic/Blueprint closes the Share panel (a click outside it).
+- A wall length is always drawn level; on a very short wall next to another its text can touch a
+  neighbouring wall or label.
+- Name shortening in the picture can cut an emoji made of several code points.
+- With storage blocked or a saved plan from a newer planner, an unreadable link shows the
+  storage or newer-planner notice, not "This shared link could not be read."
+- Turning a piece near a wall can still leave it partly outside (older behaviour, seen again
+  while setting up the live check).
+- `planPictureSize` divides by zero for a zero-size outline; callers never pass one.
+- There is no test for a zero-length wall in the floor-plan picture.
+- `SceneRenderer.capture()` has no try/catch of its own; only `captureView()` catches a throw
+  from render or `drawImage`.
+- In `download.ts`, `link?.remove()` in `finally` is outside the `try`.
+- The link decoder accepts base64url with non-canonical trailing bits.
+- Edits made while a keep's save is in flight are not scheduled until the next edit (one
+  microtask with the browser store).
+- No test throws from `window.location` or `history` to prove `shareLocation` never throws.
+- `document.fonts.ready` is awaited with no timeout before a picture is drawn.
+- The fallback link field is not refocused or reselected on a repeat `Copy link`, and stays after
+  a later successful copy.
+- Some comment lines in `App.tsx` and `Header.tsx` are over-long.
+- `Copy link`'s catch shows the too-large message for any throw (none can happen today).
+- `clearStaleSelections` is duplicated in `usePlanPersistence.ts` and `historyStore.ts`.
+
 Changed behaviour (slice D, wall editing). These are on purpose:
 
 - A typed wall length keeps every angle. It used to move only the end corner and tilt the next
@@ -219,8 +263,9 @@ Changed behaviour (stop at walls). This is on purpose:
   kept inside, and turned red. It now stops flush against the wall. This reverses a decision of
   the first slice.
 
-The checks on the final code: `npm run check` passes with 59 test files and 2296 tests, and the
-build shows `/room-planner` at 105 kB First Load JS.
+The checks on the final code: `npm run check` passes with 67 test files and 2,557 tests, and the
+build shows `/room-planner` at 105 kB First Load JS. `npm audit --omit=dev` reports 4 low
+severity findings (the KaTeX chain), the same as before the sharing work.
 
 Open questions for the owner (slice C):
 
@@ -242,7 +287,8 @@ when editing and when loading, so an edit can never produce a saved plan that fa
   The undo and redo spec is
   [`specs/2026-11-16-undo-redo-design.md`](specs/2026-11-16-undo-redo-design.md). The stop at
   walls spec is
-  [`specs/2026-11-16-stop-at-walls-design.md`](specs/2026-11-16-stop-at-walls-design.md).
+  [`specs/2026-11-16-stop-at-walls-design.md`](specs/2026-11-16-stop-at-walls-design.md). The
+  sharing spec is [`specs/2026-11-17-sharing-design.md`](specs/2026-11-17-sharing-design.md).
 - `plans/` — implementation plans, one per spec. The room shape and saving work is in
   [`plans/2026-11-13-room-shape-and-saving.md`](plans/2026-11-13-room-shape-and-saving.md). The
   doors, windows and obstacles work is in
@@ -251,7 +297,8 @@ when editing and when loading, so an edit can never produce a saved plan that fa
   [`plans/2026-11-14-wall-editing.md`](plans/2026-11-14-wall-editing.md) (Amendments 1 to 9). The
   undo and redo work is in [`plans/2026-11-16-undo-redo.md`](plans/2026-11-16-undo-redo.md)
   (Amendments 1 to 5). The stop at walls work is in
-  [`plans/2026-11-16-stop-at-walls.md`](plans/2026-11-16-stop-at-walls.md) (Amendment 1).
+  [`plans/2026-11-16-stop-at-walls.md`](plans/2026-11-16-stop-at-walls.md) (Amendment 1). The sharing work is in
+  [`plans/2026-11-17-sharing.md`](plans/2026-11-17-sharing.md) (Amendments 1 to 3).
 - `plan-reviews/` — plan-review verdicts for those plans. The review of the room shape and
   saving plan is
   [`plan-reviews/2026-11-13-room-shape-and-saving-review.md`](plan-reviews/2026-11-13-room-shape-and-saving-review.md).
@@ -263,6 +310,8 @@ when editing and when loading, so an edit can never produce a saved plan that fa
   [`plan-reviews/2026-11-16-undo-redo-review.md`](plan-reviews/2026-11-16-undo-redo-review.md).
   The review of the stop at walls plan is
   [`plan-reviews/2026-11-16-stop-at-walls-review.md`](plan-reviews/2026-11-16-stop-at-walls-review.md).
+  The review of the sharing plan is
+  [`plan-reviews/2026-11-17-sharing-review.md`](plan-reviews/2026-11-17-sharing-review.md).
 - `verification/` — live-check notes and the captures they cite. The room shape and saving
   check is
   [`verification/2026-11-13-room-shape-live-check.md`](verification/2026-11-13-room-shape-live-check.md).
@@ -278,6 +327,10 @@ when editing and when loading, so an edit can never produce a saved plan that fa
   The stop at walls check has 14 rows plus a drag-cost row (X1); run 1 failed W6 and W7
   because the rows were written wrongly, and run 2, on the final commit, passed all of them
   ([`verification/2026-11-16-stop-at-walls-live-check.md`](verification/2026-11-16-stop-at-walls-live-check.md)).
+  The sharing check has 18 rows (S1 to S18) plus X1 to X4; run 1 failed S11 because the row was
+  written wrongly and also showed the wall-length defect, and runs 2 and 3, on the final code,
+  passed all of them
+  ([`verification/2026-11-17-sharing-live-check.md`](verification/2026-11-17-sharing-live-check.md)).
 - `design_handoff/` — the original design reference (prototype, design system, README).
   It is read-only: it is not built or served.
 - `mistakes-and-fixes.md` — running log of mistakes and how they were fixed.
