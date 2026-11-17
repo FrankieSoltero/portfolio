@@ -364,6 +364,20 @@ describe('decodePlan', () => {
     expect(await decodePlan(data)).toEqual({ status: 'invalid' });
   });
 
+  it('an empty version 1 payload is refused before any inflating', async () => {
+    const inflates = countInflates();
+    expect(await decodePlan('1.')).toEqual({ status: 'invalid' });
+    expect(inflates()).toBe(0);
+  });
+
+  it('leading zeros in the version are read as its number (accepted behavior)', async () => {
+    const doc = createInitialDocument();
+    const data = await encoded(doc);
+    expect(data.startsWith('1.')).toBe(true);
+    expect(await decodePlan('0' + data)).toEqual({ status: 'ok', doc: accepted(doc) });
+    expect(await decodePlan('002.AAAA')).toEqual({ status: 'newer' });
+  });
+
   it('version 0, bytes that are not valid UTF-8, is invalid', async () => {
     expect(await decodePlan('0.' + b64url(new Uint8Array([0xff, 0xfe])))).toEqual({ status: 'invalid' });
     // A plan that would be accepted if the stray byte were read as a replacement character.
@@ -453,6 +467,88 @@ describe('decodePlan', () => {
     expect(read).toBeLessThan(600000);
   });
 
+  it('version 1 feeds the inflater in small slices, so a bomb is never written whole', async () => {
+    const writes: number[] = [];
+    const Real = realGlobals.DecompressionStream as typeof DecompressionStream;
+    // Records every chunk written to the inflater, in front of the real one.
+    replaceGlobal('DecompressionStream', class {
+      readonly writable: WritableStream<BufferSource>;
+      readonly readable: ReadableStream<Uint8Array>;
+      constructor(format: CompressionFormat) {
+        const inner = new Real(format);
+        const writer = inner.writable.getWriter();
+        this.readable = inner.readable;
+        this.writable = new WritableStream<BufferSource>({
+          write(chunk) {
+            writes.push(chunk.byteLength);
+            return writer.write(chunk);
+          },
+          close() {
+            return writer.close();
+          },
+          abort(reason) {
+            return writer.abort(reason);
+          },
+        });
+      }
+    });
+    // 40 MB of zeros: about 40 KB of raw deflate, well under MAX_DATA_CHARS.
+    const bomb = deflateRawSync(Buffer.alloc(40 * 1024 * 1024));
+    const data = '1.' + b64url(bomb);
+    expect(data.length).toBeLessThanOrEqual(MAX_DATA_CHARS);
+    expect(await decodePlan(data)).toEqual({ status: 'invalid' });
+    expect(writes.length).toBeGreaterThan(0);
+    expect(Math.max(...writes)).toBeLessThanOrEqual(16 * 1024);
+  });
+
+  it('version 1 stops feeding the inflater once its output passes MAX_BYTES', async () => {
+    // Node's inflater buffers ahead of its reader, so this models the Compression Streams spec (and
+    // Chromium): a TransformStream with default queues whose transform turns each written chunk into
+    // all of its output at once, here 1000 output bytes per input byte, as a deflate bomb would.
+    let transformed = 0;
+    replaceGlobal('DecompressionStream', class {
+      readonly writable: WritableStream<BufferSource>;
+      readonly readable: ReadableStream<Uint8Array>;
+      constructor() {
+        const t = new TransformStream<BufferSource, Uint8Array>({
+          transform(chunk, controller) {
+            transformed += chunk.byteLength;
+            controller.enqueue(new Uint8Array(chunk.byteLength * 1000));
+          },
+        });
+        this.writable = t.writable;
+        this.readable = t.readable;
+      }
+    });
+    const payloadBytes = 64 * 1024;
+    const data = '1.' + b64url(new Uint8Array(payloadBytes));
+    expect(await decodePlan(data)).toEqual({ status: 'invalid' });
+    expect(transformed).toBeGreaterThan(0);
+    expect(transformed).toBeLessThanOrEqual(payloadBytes / 8);
+  });
+
+  it('a plan whose compressed data spans many slices still round-trips', async () => {
+    // Deterministic, poorly compressible names.
+    let seed = 7;
+    const noise = (n: number) =>
+      Array.from({ length: n }, () => {
+        // xorshift32
+        seed ^= seed << 13;
+        seed ^= seed >>> 17;
+        seed ^= seed << 5;
+        return 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[(seed >>> 0) % 62];
+      }).join('');
+    const doc: PlanDocument = {
+      ...createInitialDocument(),
+      items: Array.from({ length: 200 }, (_, i) => item(`n-${i}`, { name: noise(200), host: noise(100) })),
+    };
+    const data = await encoded(doc);
+    expect(data.startsWith('1.')).toBe(true);
+    expect(inflateRawSync(Buffer.from(data.slice(2), 'base64url')).toString('utf8')).toBe(JSON.stringify(doc));
+    expect(Buffer.from(data.slice(2), 'base64url').length).toBeGreaterThan(16 * 1024);
+    expect(await decodePlan(data)).toEqual({ status: 'ok', doc: accepted(doc) });
+  });
+
   it('a __proto__ key in the JSON is never copied and pollutes nothing', async () => {
     const json = JSON.stringify(createInitialDocument()).replace('{', '{"__proto__":{"polluted":true},');
     expect(Object.prototype.hasOwnProperty.call(JSON.parse(json), '__proto__')).toBe(true);
@@ -468,10 +564,12 @@ describe('decodePlan', () => {
   });
 
   it('never rejects on any of the refused inputs', async () => {
-    const inputs = ['', 'abc', '.', '..', '1..', '0.A.B', '999.', '0.' + '_'.repeat(8), '1.' + '-'.repeat(8)];
+    const inputs = [
+      '', 'abc', '.', '..', '1..', '0.A.B', '999.', '0.' + '_'.repeat(8), '1.' + '-'.repeat(8),
+      '0.\uD800', '1.\uDC00AB', '\uD800.AAAA', '1.é', '0.寝室', '1.AAAA🛋️',
+    ];
     for (const data of inputs) {
-      const result = await decodePlan(data);
-      expect(['invalid', 'newer']).toContain(result.status);
+      await expect(decodePlan(data)).resolves.toEqual({ status: data === '999.' ? 'newer' : 'invalid' });
     }
   });
 });

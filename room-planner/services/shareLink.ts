@@ -27,6 +27,13 @@ const MAX_DATA_CHARS = 2 + Math.ceil((MAX_BYTES * 4) / 3);
 const FORMAT: CompressionFormat = 'deflate-raw';
 const VERSION_PATTERN = /^[0-9]{1,3}$/;
 const PAYLOAD_PATTERN = /^[A-Za-z0-9_-]+$/;
+/**
+ * The input is written to a (de)compression stream this many bytes at a time. A stream may turn a
+ * whole written chunk into output at once, whatever the reader has taken, so a small slice bounds
+ * the output made ahead of the MAX_BYTES check: raw deflate expands at most about 1032 times, so
+ * about 1 MB per slice.
+ */
+const SLICE_BYTES = 1024;
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 /** Each alphabet character's 6-bit value, keyed by the character. */
@@ -66,18 +73,30 @@ function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
 }
 
 /**
+ * Writes the input in SLICE_BYTES slices, each only after the stream has taken the one before, then
+ * closes. The stream takes a slice only as its output is read, so writing stops when reading does;
+ * a cancelled or errored stream rejects the pending write, which ends the loop.
+ */
+async function feed(writer: WritableStreamDefaultWriter<BufferSource>, input: Uint8Array<ArrayBuffer>): Promise<void> {
+  for (let at = 0; at < input.length; at += SLICE_BYTES) {
+    await writer.write(input.subarray(at, at + SLICE_BYTES));
+  }
+  await writer.close();
+}
+
+/**
  * Feeds the input through a compression or decompression stream and collects its output, or null as
- * soon as the output passes `limit` bytes (reading stops there). Rejects when the stream errors.
+ * soon as the output passes `limit` bytes (reading stops there, and so does writing). Rejects when
+ * the stream errors.
  */
 async function pump(
   stream: { readonly writable: WritableStream<BufferSource>; readonly readable: ReadableStream<Uint8Array> },
   input: Uint8Array<ArrayBuffer>,
   limit: number,
 ): Promise<Uint8Array | null> {
-  const writer = stream.writable.getWriter();
-  // A stream error surfaces through the reader below; these are observed so they never go unhandled.
-  writer.write(input).catch(() => undefined);
-  writer.close().catch(() => undefined);
+  // Writing runs alongside the reading below, which drives it. A stream error surfaces through the
+  // reader; the writing's own rejection is observed so it never goes unhandled.
+  feed(stream.writable.getWriter(), input).catch(() => undefined);
   const reader = stream.readable.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
