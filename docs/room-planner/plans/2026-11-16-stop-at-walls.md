@@ -328,8 +328,11 @@ weakness. All three are fixed in one fix commit. Room A below is Task 1's room A
    an optional `whenOutside` point. The move functions pass the snapped place clamped only to
    ±2·`CONFIG.coordMax` as `to`, and the bounding-box-clamped place (today's result) as
    `whenOutside`; `stopAtWalls` returns `whenOutside` (rounded) in step 2 when it is given.
-   Row: room A, 20×20 item at (100,100), `moveItem` to (220,220), snap 1 → (112,112). Same
-   for a box obstacle of 20×20.
+   Row (corrected after the fix: a single call straight at the 45° wall ends at (124,100),
+   because the slide along the wall has zero length; the piece reaches (112,112) over a
+   drag): room A, 20×20 item at (100,100), a 60-frame drag of the pointer along (1,1) to
+   (220,220), `moveItem` each frame, snap 1 → ends at (112,112). Same for a 20×20 box
+   obstacle.
 2. **A nudge never changes the other coordinate.** The spec says a nudge into a wall "moves
    the part of the step that fits and stops flush. More presses do nothing." With the slide
    candidates, ArrowRight against a 45° wall moved the piece diagonally on every press.
