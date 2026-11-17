@@ -4,11 +4,18 @@ import { SelectionBar } from '../components/SelectionBar';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
 import type { Corner, Door, Item, Obstacle } from '../domain/types';
+import { clearHistory, redo, runKeyed, undo, useHistoryStore } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { startDrag } from './startDrag';
 import { useElementSize } from './useElementSize';
 import { ROTATE_STEP_COARSE, ROTATE_STEP_FINE, useKeyboardShortcuts } from './useKeyboardShortcuts';
+
+// undo, redo and runKeyed are spies that call the real functions, so a test can count the calls the hook makes.
+vi.mock('../state/historyStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../state/historyStore')>();
+  return { ...actual, undo: vi.fn(actual.undo), redo: vi.fn(actual.redo), runKeyed: vi.fn(actual.runKeyed) };
+});
 
 const BED = 'seed-bed';
 
@@ -42,6 +49,7 @@ function focused<K extends 'input' | 'textarea' | 'select'>(tag: K, type?: strin
 beforeEach(() => {
   usePlanStore.getState().reset();
   useUiStore.getState().reset();
+  clearHistory();
 });
 
 // Vitest globals are off, so Testing Library cannot register its own cleanup.
@@ -52,9 +60,10 @@ afterEach(() => {
 
 describe('useKeyboardShortcuts', () => {
   beforeEach(() => {
-    // Lift the bed off the wall so every arrow direction has room to move: its centre goes from
-    // (72, 42.5) to exactly (40, 20), off the drag grid, so the rows also show a nudge never re-snaps.
-    usePlanStore.getState().moveItemBy(BED, -32, -22.5);
+    // Put the bed's centre at exactly (40, 20), off the drag grid, so the rows also show a nudge never
+    // re-snaps. There the bed is partly outside the room (y −22.5 to 62.5), so the walls stop no arrow.
+    const doc = createInitialDocument();
+    usePlanStore.getState().reset({ ...doc, items: doc.items.map((i) => (i.id === BED ? { ...i, x: 40, y: 20 } : i)) });
     renderHook(() => useKeyboardShortcuts());
   });
 
@@ -160,6 +169,16 @@ describe('useKeyboardShortcuts', () => {
     const ev = press(document.body, key);
     expect(bed()).toMatchObject({ x, y });
     expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it('an arrow nudges a piece wholly inside the room freely by one step and prevents default', () => {
+    // The seed desk (quarter-turned, x 118–144, y 104–159) starts wholly inside the room.
+    useUiStore.getState().select('seed-desk');
+    const left = press(document.body, 'ArrowLeft');
+    expect(desk()).toMatchObject({ x: 130, y: 131.5 });
+    expect(left.defaultPrevented).toBe(true);
+    press(document.body, 'ArrowDown');
+    expect(desk()).toMatchObject({ x: 130, y: 132.5 });
   });
 
   it('Shift+ArrowRight nudges by the large step (12 in)', () => {
@@ -678,6 +697,330 @@ describe('useKeyboardShortcuts lifecycle', () => {
   });
 });
 
+describe('useKeyboardShortcuts undo and redo keys', () => {
+  type Case = { key: string; init: KeyboardEventInit };
+  type Mode = 'furnish' | 'room';
+
+  /** Each case once in furnish mode and once in room mode. */
+  function inBothModes(cases: Case[]): (Case & { mode: Mode })[] {
+    return (['furnish', 'room'] as const).flatMap((mode) => cases.map((c) => ({ ...c, mode })));
+  }
+
+  /** Appends a focused button to the body, like a wall length label; removed again in afterEach. */
+  function focusedButton(): HTMLButtonElement {
+    const el = document.createElement('button');
+    document.body.appendChild(el);
+    appended.push(el);
+    el.focus();
+    return el;
+  }
+
+  beforeEach(() => {
+    renderHook(() => useKeyboardShortcuts());
+    vi.mocked(undo).mockClear();
+    vi.mocked(redo).mockClear();
+  });
+
+  it.each(
+    inBothModes([
+      { key: 'z', init: { metaKey: true } },
+      { key: 'Z', init: { metaKey: true } },
+      { key: 'z', init: { ctrlKey: true } },
+      { key: 'Z', init: { ctrlKey: true } },
+    ]),
+  )('Undo: $key with $init in $mode mode calls undo once and prevents default', ({ key, init, mode }) => {
+    useUiStore.getState().setMode(mode);
+    const ev = press(document.body, key, init);
+    expect(undo).toHaveBeenCalledTimes(1);
+    expect(redo).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it.each(
+    inBothModes([
+      { key: 'Z', init: { metaKey: true, shiftKey: true } },
+      { key: 'z', init: { metaKey: true, shiftKey: true } },
+      { key: 'Z', init: { ctrlKey: true, shiftKey: true } },
+      { key: 'z', init: { ctrlKey: true, shiftKey: true } },
+    ]),
+  )('Redo: $key with $init in $mode mode calls redo once and prevents default', ({ key, init, mode }) => {
+    useUiStore.getState().setMode(mode);
+    const ev = press(document.body, key, init);
+    expect(redo).toHaveBeenCalledTimes(1);
+    expect(undo).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it.each(
+    inBothModes([
+      { key: 'y', init: { ctrlKey: true } },
+      { key: 'Y', init: { ctrlKey: true } },
+    ]),
+  )('Redo with Y: $key with $init in $mode mode calls redo once and prevents default', ({ key, init, mode }) => {
+    useUiStore.getState().setMode(mode);
+    const ev = press(document.body, key, init);
+    expect(redo).toHaveBeenCalledTimes(1);
+    expect(undo).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it.each(
+    inBothModes([
+      { key: 'y', init: { metaKey: true } },
+      { key: 'Y', init: { metaKey: true } },
+      { key: 'y', init: { ctrlKey: true, metaKey: true } },
+      { key: 'Y', init: { ctrlKey: true, shiftKey: true } },
+    ]),
+  )('Meta+Y: $key with $init in $mode mode does nothing and is not prevented', ({ key, init, mode }) => {
+    useUiStore.getState().setMode(mode);
+    const ev = press(document.body, key, init);
+    expect(undo).not.toHaveBeenCalled();
+    expect(redo).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it.each(
+    inBothModes([
+      { key: 'z', init: { metaKey: true, altKey: true } },
+      { key: 'z', init: { ctrlKey: true, altKey: true } },
+      { key: 'Z', init: { ctrlKey: true, altKey: true, shiftKey: true } },
+      { key: 'y', init: { ctrlKey: true, altKey: true } },
+    ]),
+  )('With Alt: $key with $init in $mode mode does nothing and is not prevented', ({ key, init, mode }) => {
+    useUiStore.getState().setMode(mode);
+    const ev = press(document.body, key, init);
+    expect(undo).not.toHaveBeenCalled();
+    expect(redo).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it.each([
+    ['input', 'text', { ctrlKey: true }],
+    ['input', 'text', { metaKey: true, shiftKey: true }],
+    ['textarea', undefined, { metaKey: true }],
+    ['textarea', undefined, { ctrlKey: true, shiftKey: true }],
+  ] as const)('In a text field: z with focus in %s %s and %o does nothing and is not prevented', (tag, type, init) => {
+    for (const mode of ['furnish', 'room'] as const) {
+      useUiStore.getState().setMode(mode);
+      const ev = press(focused(tag, type), 'z', init);
+      expect(ev.defaultPrevented).toBe(false);
+    }
+    expect(undo).not.toHaveBeenCalled();
+    expect(redo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a radio', () => focused('input', 'radio')],
+    ['a button', focusedButton],
+  ] as const)('On a radio or button: Ctrl+Z with focus on %s calls undo', (_name, target) => {
+    const ev = press(target(), 'z', { ctrlKey: true });
+    expect(undo).toHaveBeenCalledTimes(1);
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it.each(['furnish', 'room'] as const)('Nothing selected: Ctrl+Z in %s mode with nothing selected calls undo', (mode) => {
+    useUiStore.getState().setMode(mode);
+    press(document.body, 'z', { ctrlKey: true });
+    expect(undo).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['r', { ctrlKey: true }],
+    ['ArrowLeft', { metaKey: true }],
+    ['ArrowLeft', { ctrlKey: true }],
+    ['Delete', { ctrlKey: true }],
+    ['Delete', { metaKey: true }],
+  ] as const)('Other mod keys: %s with %o changes nothing in either mode and is not prevented', (key, init) => {
+    useUiStore.getState().select(BED);
+    const furnishEv = press(document.body, key, init);
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().selectCorner('c2');
+    const roomEv = press(document.body, key, init);
+    expect(bed()).toMatchObject({ x: 72, y: 42.5, angle: 0 });
+    expect(usePlanStore.getState().room.outline.find((c) => c.id === 'c2')).toEqual({ id: 'c2', x: 144, y: 0 });
+    expect([furnishEv.defaultPrevented, roomEv.defaultPrevented]).toEqual([false, false]);
+    expect(undo).not.toHaveBeenCalled();
+    expect(redo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ key: 'я', code: 'KeyZ', ctrlKey: true }, 'undo'],
+    [{ key: 'Я', code: 'KeyZ', ctrlKey: true, shiftKey: true }, 'redo'],
+    [{ key: 'н', code: 'KeyY', ctrlKey: true }, 'redo'],
+    [{ key: 'w', code: 'KeyZ', ctrlKey: true }, 'nothing'],
+    [{ key: 'z', code: 'KeyW', ctrlKey: true }, 'undo'],
+  ] as const)('Physical key: %o does %s (e.code counts only when e.key is not a Latin letter)', (init, wanted) => {
+    const { key, ...rest } = init;
+    const ev = press(document.body, key, rest);
+    expect(vi.mocked(undo).mock.calls.length).toBe(wanted === 'undo' ? 1 : 0);
+    expect(vi.mocked(redo).mock.calls.length).toBe(wanted === 'redo' ? 1 : 0);
+    expect(ev.defaultPrevented).toBe(wanted !== 'nothing');
+  });
+
+  it.each([
+    ['z', { metaKey: true }],
+    ['z', { ctrlKey: true }],
+  ] as const)('Nothing to undo: %s with %o still prevents default', (key, init) => {
+    expect(useHistoryStore.getState().canUndo).toBe(false);
+    const ev = press(document.body, key, init);
+    expect(vi.mocked(undo).mock.results).toEqual([{ type: 'return', value: false }]);
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it('Ctrl+Z takes back a nudge and Ctrl+Shift+Z puts it back', () => {
+    useUiStore.getState().select(BED);
+    press(document.body, 'ArrowRight');
+    expect(bed()).toMatchObject({ x: 73, y: 42.5 });
+    press(document.body, 'z', { ctrlKey: true });
+    expect(bed()).toMatchObject({ x: 72, y: 42.5 });
+    press(document.body, 'Z', { ctrlKey: true, shiftKey: true });
+    expect(bed()).toMatchObject({ x: 73, y: 42.5 });
+  });
+});
+
+describe('useKeyboardShortcuts key runs', () => {
+  const D1: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
+  const BOX: Obstacle = { id: 'o1', shape: 'box', label: 'Radiator', x: 30, y: 100, rotation: 0, width: 30, depth: 8, height: 30, elevation: 0 };
+
+  /** Undoes every step and returns how many there were. */
+  function stepCount(): number {
+    let n = 0;
+    while (undo()) n++;
+    return n;
+  }
+
+  beforeEach(() => {
+    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1], obstacles: [BOX] });
+    renderHook(() => useKeyboardShortcuts());
+    clearHistory();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-16T12:00:00Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('Arrow run, furnish: 3 ArrowRight presses each 1000 ms apart are 1 step that moved the item 3 in', () => {
+    expect(CONFIG.historyMergeMs).toBe(1000);
+    useUiStore.getState().select(BED);
+    press(document.body, 'ArrowRight');
+    vi.advanceTimersByTime(1000);
+    press(document.body, 'ArrowRight');
+    vi.advanceTimersByTime(1000);
+    press(document.body, 'ArrowRight');
+    expect(bed()).toMatchObject({ x: 75, y: 42.5 });
+    expect(stepCount()).toBe(1);
+    expect(bed()).toMatchObject({ x: 72, y: 42.5 });
+  });
+
+  it('Arrow run, slow: 2 presses 1001 ms apart are 2 steps', () => {
+    useUiStore.getState().select(BED);
+    press(document.body, 'ArrowRight');
+    vi.advanceTimersByTime(1001);
+    press(document.body, 'ArrowRight');
+    expect(stepCount()).toBe(2);
+  });
+
+  it('Into a wall: ArrowUp on the bed flush with the back wall leaves it there, prevents default and is no step', () => {
+    useUiStore.getState().select(BED);
+    const ev = press(document.body, 'ArrowUp');
+    expect(bed()).toMatchObject({ x: 72, y: 42.5 });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(stepCount()).toBe(0);
+  });
+
+  it('Arrows then R: ArrowRight then R on the same item at once are 1 step', () => {
+    useUiStore.getState().select(BED);
+    press(document.body, 'ArrowRight');
+    press(document.body, 'r');
+    expect(bed()).toMatchObject({ x: 73, angle: 90 });
+    expect(stepCount()).toBe(1);
+    expect(bed()).toMatchObject({ x: 72, angle: 0 });
+  });
+
+  it('Two things: ArrowRight on the bed, then on the desk at once, are 2 steps', () => {
+    // The seed desk is flush with the right wall; partly outside the room (x 127–153), ArrowRight moves it.
+    const doc = createInitialDocument();
+    usePlanStore.getState().reset({
+      ...doc,
+      openings: [D1],
+      obstacles: [BOX],
+      items: doc.items.map((i) => (i.id === 'seed-desk' ? { ...i, x: 140 } : i)),
+    });
+    clearHistory();
+    useUiStore.getState().select(BED);
+    press(document.body, 'ArrowRight');
+    useUiStore.getState().select('seed-desk');
+    press(document.body, 'ArrowRight');
+    expect(stepCount()).toBe(2);
+  });
+
+  it.each([
+    ['a corner', 'ArrowRight', () => useUiStore.getState().selectCorner('c2')],
+    ['a wall', 'ArrowDown', () => useUiStore.getState().selectWall('c1')],
+    ['a door', 'ArrowRight', () => useUiStore.getState().selectOpening('d1')],
+    ['an obstacle', 'ArrowRight', () => useUiStore.getState().selectObstacle('o1')],
+    ['an obstacle', 'r', () => useUiStore.getState().selectObstacle('o1')],
+  ] as const)('Room mode runs: two presses at once on %s (%s) are 1 step', (_thing, key, selectIt) => {
+    useUiStore.getState().setMode('room');
+    selectIt();
+    const before = usePlanStore.getState();
+    press(document.body, key);
+    press(document.body, key);
+    expect(usePlanStore.getState()).not.toBe(before);
+    expect(stepCount()).toBe(1);
+    const after = usePlanStore.getState();
+    expect([after.room, after.openings, after.obstacles]).toEqual([before.room, before.openings, before.obstacles]);
+  });
+
+  it('Corner then wall: an arrow on corner c1, then on wall c1 (which starts at it) at once, are 2 steps', () => {
+    useUiStore.getState().setMode('room');
+    const before = usePlanStore.getState().room;
+    useUiStore.getState().selectCorner('c1');
+    press(document.body, 'ArrowRight');
+    const afterCorner = usePlanStore.getState().room;
+    expect(afterCorner).not.toBe(before);
+    useUiStore.getState().selectWall('c1');
+    press(document.body, 'ArrowDown');
+    expect(usePlanStore.getState().room).not.toBe(afterCorner);
+    expect(undo()).toBe(true);
+    expect(usePlanStore.getState().room).toBe(afterCorner);
+    expect(stepCount()).toBe(1);
+    expect(usePlanStore.getState().room).toBe(before);
+  });
+
+  it('Backspace is its own step: ArrowRight then Backspace at once are 2 steps', () => {
+    useUiStore.getState().select(BED);
+    press(document.body, 'ArrowRight');
+    press(document.body, 'Backspace');
+    expect(bed()).toBeUndefined();
+    expect(stepCount()).toBe(2);
+    expect(bed()).toMatchObject({ x: 72, y: 42.5 });
+  });
+
+  it.each([
+    ['furnish', () => useUiStore.getState().select(BED)],
+    ['room', () => useUiStore.getState().selectCorner('c2')],
+  ] as const)('Escape in %s mode adds no step and is not keyed', (mode, selectIt) => {
+    useUiStore.getState().setMode(mode);
+    selectIt();
+    vi.mocked(runKeyed).mockClear();
+    press(document.body, 'Escape');
+    expect(runKeyed).not.toHaveBeenCalled();
+    expect(useHistoryStore.getState().canUndo).toBe(false);
+  });
+
+  it('Delete is its own step: ArrowRight then Delete at once are 2 steps', () => {
+    useUiStore.getState().select(BED);
+    press(document.body, 'ArrowRight');
+    press(document.body, 'Delete');
+    expect(bed()).toBeUndefined();
+    expect(stepCount()).toBe(2);
+    expect(bed()).toMatchObject({ x: 72, y: 42.5 });
+  });
+});
+
 describe('startDrag', () => {
   function DragTarget(props: { onMove: (dx: number, dy: number) => void; onEnd?: () => void; onParent: () => void }) {
     return (
@@ -696,6 +1039,7 @@ describe('startDrag', () => {
     expect(onParent).not.toHaveBeenCalled();
     fireEvent.pointerMove(window, { clientX: 15, clientY: 32 });
     expect(onMove).toHaveBeenLastCalledWith(5, 12);
+    fireEvent.pointerUp(window);
   });
 
   it.each(['pointerUp', 'pointerCancel'] as const)('%s ends the drag, calls onEnd once and removes listeners', (end) => {

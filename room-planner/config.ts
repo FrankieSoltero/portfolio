@@ -26,6 +26,11 @@ export const CONFIG = {
   minPlanScale: 0.2,
   minSafeWidth: 200,
   conflictEpsilon: 0.01,
+  // Stopping a moved piece at the walls: a piece fits when it is inside within wallStopEpsilon
+  // (conflictEpsilon when it starts up to that much over a wall), and the furthest fit along a
+  // path is found by halving the path wallStopIterations times.
+  wallStopEpsilon: 1e-6,
+  wallStopIterations: 26,
   cornerSnap: 1,
   angleSnapDeg: 15,
   angleSnapTolerancePx: 8,
@@ -59,6 +64,10 @@ export const CONFIG = {
   planStorageKey: 'room-planner:plan:v1',
   maxStoredChars: 524288,
   saveDebounceMs: 300,
+  // Undo history (in memory only): at most historyLimit steps are kept, and a keyed change joins
+  // the latest step when it comes within historyMergeMs of that step's latest change.
+  historyLimit: 100,
+  historyMergeMs: 1000,
   // Limits for doors, windows and obstacles; planSchema reads them, so edits and loading agree.
   maxOpenings: 64,
   maxObstacles: 64,

@@ -2,6 +2,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialDocument } from '../../domain/catalog';
+import { clearHistory, undo, useHistoryStore } from '../../state/historyStore';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { createFakePlanStore, type FakePlanStore, type Pending } from '../../test/fakePlanStore';
@@ -211,5 +212,31 @@ describe('PlanSection', () => {
     expectSeededPlanAndFreshUi();
     expect(useUiStore.getState().saveBlocked).toBe(false);
     expect(useUiStore.getState().notice).toBeNull();
+  });
+});
+
+describe('PlanSection: undo history', () => {
+  beforeEach(() => {
+    clearHistory();
+  });
+
+  it('reset leaves nothing to undo or redo', async () => {
+    const store = createFakePlanStore();
+    render(<PlanSection planStore={store} />);
+    act(() => {
+      usePlanStore.getState().moveItemTo('seed-bed', 100, 100);
+      usePlanStore.getState().moveItemTo('seed-bed', 110, 110);
+      undo();
+    });
+    expect(useHistoryStore.getState().canUndo).toBe(true);
+    expect(useHistoryStore.getState().canRedo).toBe(true);
+
+    await act(async () => {
+      await confirmReset();
+    });
+    expect(store.clearCalls).toBe(1);
+    expectSeededPlanAndFreshUi();
+    expect(useHistoryStore.getState().canUndo).toBe(false);
+    expect(useHistoryStore.getState().canRedo).toBe(false);
   });
 });

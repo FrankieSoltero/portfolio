@@ -674,3 +674,146 @@ Seventeen entries. The first five are plan defects found while building (fixed b
 - **Root cause:** Two steps, each correct alone, ran in the wrong order.
 - **Fix:** A press moves focus first, then reads the drag's starting values (plan Amendment 10). A press on the wall whose own field is open leaves the field first.
 - **How to avoid:** When an action can trigger another edit as a side effect, read state after the side effect.
+
+## 2026-11-16 — Undo and redo
+
+Nine entries. Entries 1 to 4 are plan defects found while building (fixed by plan Amendments 1 to 4, or in Task 5's fix round). Entry 5 is a controller finding that prescribed the wrong mechanism (Task 7). Entry 6 was found in the final whole-branch review, and entries 7 to 9 are process mistakes. Items left as they are are listed under "Known limits of undo and redo (slice E)" in `docs/room-planner/README.md`.
+
+### The plan prescribed a screen-reader pattern that is often silent (plan Amendment 1)
+- **Date:** 2026-11-16
+- **What happened:** The plan said the "Undone" / "Redone" status element should be a new element on every announcement. Screen readers often skip a live region that is inserted together with its text, so the spec's "each undo and redo is announced" was not reliably met. Task 5's reviewer found it.
+- **Root cause:** The plan author wrote a mechanism from memory without checking how live regions behave.
+- **Fix:** Plan Amendment 1: one status element that is in the page from the first render. Only its text changes. A repeated word differs by a trailing non-breaking space.
+- **How to avoid:** For any accessibility mechanism in a plan, state the behaviour wanted and name the known-good pattern. A persistent live region whose text changes is the default.
+
+### Two different things shared one key (plan Amendment 2)
+- **Date:** 2026-11-16
+- **What happened:** The plan keyed a run of key presses by the selected thing's id. A wall's id is its starting corner's id, so a corner and the wall starting at it shared a key. A nudge of one followed within a second by a slide of the other became one undo step. Task 4's implementer found it.
+- **Root cause:** The plan forgot a convention the code base states in its own notes: wall id = start corner id.
+- **Fix:** Plan Amendment 2: the key includes the kind of thing (`'keys:' + kind + ':' + id`).
+- **How to avoid:** When ids are used as keys across kinds of things, check whether the kinds share an id space.
+
+### The undo keys only worked on Latin keyboard layouts (plan Amendment 3)
+- **Date:** 2026-11-16
+- **What happened:** The plan matched the letter typed (`e.key`). On a layout where the Z key types another letter, Cmd/Ctrl+Z did nothing. Task 4's reviewer found it.
+- **Root cause:** The plan did not say what a letter shortcut does on a non-Latin layout.
+- **Fix:** Plan Amendment 3: when the key typed is not a Latin letter, the physical key (`e.code`) decides. When it is a Latin letter, it alone decides, so Dvorak and AZERTY keep working by letter.
+- **How to avoid:** For a letter shortcut, decide up front what happens on non-Latin layouts.
+
+### The plan put the buttons "beside the title" without reading the header's layout (plan Amendment 4, Task 5 fix round)
+- **Date:** 2026-11-16
+- **What happened:** The brand has `margin-right: auto`, so buttons added after it landed at the far right, next to the units control. The implementer found it.
+- **Root cause:** The plan gave the new element's CSS without reading the header's existing layout rules.
+- **Fix:** Plan Amendment 4: one more rule that removes the brand's auto margin inside the header, and `margin-right: auto` on the button group.
+- **How to avoid:** When a plan places a new element in an existing bar, read that bar's layout rules first and list the CSS needed.
+
+### A deferred finding prescribed the wrong mechanism (Task 7, item 1)
+- **Date:** 2026-11-16
+- **What happened:** The controller's item said "skip the update whose references equal the restored plan". That is wrong when another listener was registered before the history. The implementer chose a rule that is right in both orders, and the reviewer confirmed it with a probe.
+- **Root cause:** The finding named a mechanism instead of the behaviour wanted.
+- **Fix:** The implementer's rule, which holds whichever listener was registered first.
+- **How to avoid:** Write a finding as the behaviour wanted and how to check it. Leave the mechanism to the person who has the code open.
+
+### A typing step stayed open after its field was removed from the page (final review, plan Amendment 5)
+- **Date:** 2026-11-16
+- **What happened:** The step for a text field was closed only when the field lost focus. A focused field that is removed from the page (the on-plan length editor after Enter or Escape) fires no "focus left" event, so its step stayed open and every later key press joined it. Type a length, press Enter, slide the wall with an arrow key, and one Undo took back both. No task review could see it: the hook's review saw only the hook, and the editor is from an earlier slice. The first two live-check runs missed it too, because row U9 undid only once.
+- **Root cause:** The plan assumed leaving a field always fires `focusout`.
+- **Fix:** Plan Amendment 5: the step is closed whenever focus is found on something that is not a text field (on focus moving to another element, and on any press or key while no text field is focused). Covered by flow test F19 and live-check row X1.
+- **How to avoid:** For anything tied to focus, list the ways focus can end without an event (the element is removed, disabled or hidden). Make live-check rows continue past the first undo.
+
+### The plan review blocked round 1 for the same reason as slice D's
+- **Date:** 2026-11-16
+- **What happened:** Round 1 scored 84.7 (pass is 85). The causes were live-check rows without a measurable result and a deferred-findings task with no bounds. Slice D's round 1 was blocked on a vague deferred task too.
+- **Root cause:** The new plan did not start from the previous plan's final wording for those two parts.
+- **Fix:** The rows were given values and the task was bounded.
+- **How to avoid:** Start the next plan's deferred-findings task and live-check rows from the previous plan's final wording.
+
+### The plan's task blocks did not use the format the structure checker reads
+- **Date:** 2026-11-16
+- **What happened:** The file lists were written as a sentence. The checker expects one `- Create:` / `- Modify:` / `- Test:` line per file, and it reported 27 "file drift" warnings.
+- **Root cause:** The task blocks were not copied from a plan the checker had accepted.
+- **Fix:** The blocks were reformatted before the review.
+- **How to avoid:** Copy a task block from the last plan that passed the checker.
+
+### The live-check script failed a row that the app passed (row U4)
+- **Date:** 2026-11-16
+- **What happened:** The script clicked the `Side by side` layout option, a radio button, which kept keyboard focus. Arrow keys belong to a focused radio, so they never reached the selected bed. Row U4 failed in run 1.
+- **Root cause:** The script did not account for where keyboard focus was after the click. This is the same class as slice D's "stale scale" script mistake: the rows were right, the script was wrong.
+- **Fix:** The script removes focus from the option after choosing it.
+- **How to avoid:** In a script, after clicking a control, say where keyboard focus is before sending keys.
+
+### The which-end control was stretched across the sidebar (found by the owner)
+- **Date:** 2026-11-16
+- **What happened:** In the sidebar, the "A typed length moves" control (Start, Both, End) had
+  its border drawn across the full sidebar width, leaving empty bordered space after "End".
+  It shipped that way in the wall-editing slice; the owner noticed it while trying undo.
+- **Root cause:** The control sits in `.wall-list`, a column flex box. Children of a column
+  flex box stretch to its width unless told not to, and the control's own `inline-flex` does
+  not stop that. The slice D screenshots showed it, and nobody read them for this.
+- **Fix:** `.wall-list > .seg { align-self: flex-start; }` in `sidebar.css`, with a test. In
+  the browser the control is now 153 px wide in a 312 px list, ending at its last option.
+- **How to avoid:** When a control is placed in a column flex box, decide its width on
+  purpose. When reading a screenshot, check each bordered control ends where its content ends.
+
+## 2026-11-16 — Stop at walls
+
+Six entries. Entry 1 is a decision of the first slice that the owner reversed. Entry 2 is a defect in the approved spec, found while writing the plan. Entry 3 was found by the Task 1 reviewer. Entry 4 is a process mistake in the plan's live-check rows. Entries 5 and 6 were found by the whole-change review (plan Amendment 2). Items left as they are are listed under "Known limits of stop at walls" in `docs/room-planner/README.md`.
+
+### The first slice's "a footprint that leaves the room is a conflict, not a clamp" decision was reversed (found by the owner)
+- **Date:** 2026-11-16
+- **What happened:** Only a piece's centre was kept inside the room. A dragged piece crossed walls and turned red. Flush in a corner meant stopping on exactly the right 1 in grid step, and that was unreachable when the room or the piece was not a whole number of inches. The owner reported it after using the planner: "the conflict bordering is a bit too aggressive ... I should be able to put the bed in the top right corner".
+- **Root cause:** The first design treated leaving the room as information to show. Nobody tried the most common real action, pushing a bed into a corner, by hand.
+- **Fix:** Moves from inside the room stop flush at every wall (`room-planner/domain/wallStop.ts`). Spec: `specs/2026-11-16-stop-at-walls-design.md`.
+- **How to avoid:** For a direct-manipulation tool, try the three most common real actions by hand before fixing a rule in a spec.
+
+### The spec's first algorithm would have stuck on angled walls (found while writing the plan)
+- **Date:** 2026-11-16
+- **What happened:** The approved spec said "x as far as fits, then y". Pushing a piece straight into a 45° wall moves it neither in x nor in y, so it would stop instead of sliding. The plan author found this while writing the behavior table's angled-wall rows, before any code.
+- **Root cause:** The mechanism was approved without working a numeric example for the angled-wall case.
+- **Fix:** The plan adds a y-then-x try and a try along each angled wall's direction, and keeps the nearest result. The spec was updated.
+- **How to avoid:** Work one numeric example per row of a spec's behavior table before approving the mechanism.
+
+### "Round towards the start" moved a coordinate that had not changed (Task 1 fix round)
+- **Date:** 2026-11-16
+- **What happened:** The rounding helper used `Math.floor(v*100)/100`. For about 1,100 two-decimal values below 200 (72.57, 64.07, 40.05 and others), `v*100` is just under a whole number, so a coordinate equal to the start's moved 0.01 in sideways. It never moved outside the room. The task reviewer found it with a random-input comparison against an independent copy of the rule. No table row caught it.
+- **Root cause:** Flooring a decimal after multiplying by 100 is not exact in floating point.
+- **Fix:** Round to the nearest 0.01 and step back only when that passed the value.
+- **How to avoid:** Never floor or ceil a decimal after multiplying by 100. Round first, then compare. Test a fallback branch on purpose.
+
+### Two live-check rows were written wrongly (plan Amendment 1)
+- **Date:** 2026-11-16
+- **What happened:** W6 asked to type `12' 3.5"` into the sidebar wall field. That field is a number field read as decimal feet, so the text cannot be typed. W7 expected "not red" for a desk dragged into the L-shape's cut-out. In that starting shape the bed lies partly in the cut-out and the desk stopped overlapping it. The app was right both times.
+- **Root cause:** The plan author wrote the rows from memory of the UI, not from the page. This is the third slice in a row with a live-check row or script that was wrong while the app was right (slice D "stale scale", slice E row U4).
+- **Fix:** Plan Amendment 1: W6 types `12.2916666667` (147.5 in), W7 deletes the bed first. The whole table was run again.
+- **How to avoid:** Before a plan is reviewed, walk every live-check row once in the real page (or have an agent do it) and correct the rows.
+
+### The asked-for place was clamped to the room's bounding box before the wall stop (whole-change review)
+- **Date:** 2026-11-16
+- **What happened:** The move functions first clamped the asked-for centre into the room's bounding box, as before, and then stopped the piece at the walls. Beyond an angled wall that cuts a corner off the box, the clamped place lies in another direction from the pointer, so a piece dragged straight at the wall ran along it away from the pointer: in room A a 20 in square dragged from (100, 100) towards (220, 220) ended at (100, 124) instead of (112, 112). The whole-change review found it with a fuzz of 72,000 frames.
+- **Root cause:** The plan said "compute the place it returns today, then stop at walls". The old bounding-box clamp was a limit the new rule replaced, but it stayed on the path in front of it.
+- **Fix:** `stopAtWalls` takes an optional `whenOutside` place. The move functions pass the asked-for place clamped only to ±2·`CONFIG.coordMax` as the target, and the old bounding-box-clamped place as `whenOutside`, which is used only for a piece that starts outside (plan Amendment 2, item 1).
+- **How to avoid:** When a new rule replaces an old limit, remove the old limit on that path instead of stacking the new one after it.
+
+### An arrow-key nudge slid sideways along an angled wall (whole-change review)
+- **Date:** 2026-11-16
+- **What happened:** ArrowRight on a piece against a 45° wall moved it diagonally along the wall on every press, although the spec says a nudge into a wall "moves the part of the step that fits and stops flush. More presses do nothing."
+- **Root cause:** The plan gave drags and nudges the same candidates (x then y, y then x, a slide along each angled wall), although the spec row said a nudge stops. No test or live-check row had an angled wall with a nudge.
+- **Fix:** `stopAtWalls` takes `straight: true`, which keeps only the furthest fit along the step; `shiftItem` and `shiftObstacle` pass it (plan Amendment 2, item 2).
+- **How to avoid:** Every spec behaviour row gets a test in each room shape the feature names.
+
+### Stopping the dev server "by port" also stopped an editor process
+
+- **Date:** 2026-11-16
+- **What happened:** Before the final `npm run check`, the controller ran
+  `lsof -ti tcp:3478 | xargs kill`. `lsof -ti tcp:<port>` lists every process with a
+  connection on that port, clients included. The owner's code editor had a connection to the
+  dev server, so one of its helper processes was stopped together with the server.
+- **Root cause:** The rule "stop the server by port, never by name" was written as a command
+  that selects by port but not by role. It was used all session without looking at what it
+  matched; the listing printed just before the kill showed the editor's process and was not
+  read.
+- **Fix:** The command is now `lsof -ti tcp:3478 -sTCP:LISTEN | xargs kill`, which matches
+  only the process listening on the port.
+- **How to avoid:** Select the listener (`-sTCP:LISTEN`), print what will be stopped, and
+  read it before stopping anything.
+

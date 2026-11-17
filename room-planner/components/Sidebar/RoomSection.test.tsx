@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -5,6 +7,7 @@ import { rectangleSize, setRectangleSize, startingShape } from '../../domain/out
 import { createInitialDocument } from '../../domain/catalog';
 import { boundsOf } from '../../domain/polygon';
 import type { Door } from '../../domain/types';
+import { clearHistory, useHistoryStore } from '../../state/historyStore';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { Header } from '../Header';
@@ -77,6 +80,187 @@ describe('Header', () => {
     expect(usePlanStore.getState().units).toBe('m');
     expect(usePlanStore.getState().room).toEqual(before);
     expect(screen.getByRole('radio', { name: 'm / cm' })).toBeChecked();
+  });
+
+  describe('Undo and Redo', () => {
+    beforeEach(() => {
+      clearHistory();
+    });
+
+    /** Makes one undo step (the room becomes 180 in wide) and returns the room before it. */
+    function oneStep() {
+      const before = usePlanStore.getState().room;
+      act(() => setWidth(180));
+      return before;
+    }
+
+    const undoButton = () => screen.getByRole('button', { name: 'Undo' });
+    const redoButton = () => screen.getByRole('button', { name: 'Redo' });
+
+    it('renders Undo then Redo as btn buttons after the brand and before the units control', () => {
+      render(<Header />);
+      const header = screen.getByRole('banner');
+      const buttons = within(header).getAllByRole('button');
+      expect(buttons.map((b) => b.textContent)).toEqual(['Undo', 'Redo']);
+      for (const b of buttons) {
+        expect(b).toHaveAttribute('type', 'button');
+        expect(b).toHaveClass('btn');
+      }
+      const wrapper = buttons[0].parentElement;
+      expect(wrapper).toHaveClass('header-history');
+      expect(buttons[1].parentElement).toBe(wrapper);
+      const children = [...header.children];
+      const brand = screen.getByText('Room planner');
+      const unitsNote = screen.getByText('Units');
+      const units = screen.getByRole('radiogroup', { name: 'Units' });
+      expect(children.indexOf(brand)).toBe(0);
+      expect(children.indexOf(wrapper as Element)).toBe(1);
+      expect(children.indexOf(unitsNote)).toBe(2);
+      expect(children.indexOf(units)).toBeGreaterThan(children.indexOf(unitsNote));
+    });
+
+    it('greys out Undo with nothing to undo, keeps it focusable, and a click changes nothing', async () => {
+      render(<Header />);
+      const before = usePlanStore.getState();
+      const undo = undoButton();
+      expect(undo).toHaveAttribute('aria-disabled', 'true');
+      expect(undo).not.toHaveAttribute('disabled');
+      act(() => undo.focus());
+      expect(undo).toHaveFocus();
+      await userEvent.setup().click(undo);
+      expect(usePlanStore.getState().room).toBe(before.room);
+      expect(usePlanStore.getState().items).toBe(before.items);
+      expect(useHistoryStore.getState().lastAnnouncement).toBeNull();
+    });
+
+    it('with nothing to undo, Enter and Space on a focused Undo change nothing and keep focus on it', async () => {
+      render(<Header />);
+      const user = userEvent.setup();
+      const before = usePlanStore.getState();
+      act(() => undoButton().focus());
+      await user.keyboard('{Enter}');
+      expect(undoButton()).toHaveFocus();
+      await user.keyboard(' ');
+      expect(undoButton()).toHaveFocus();
+      const after = usePlanStore.getState();
+      expect(after.room).toBe(before.room);
+      expect(after.items).toBe(before.items);
+      expect(after.openings).toBe(before.openings);
+      expect(after.obstacles).toBe(before.obstacles);
+      expect(useHistoryStore.getState().lastAnnouncement).toBeNull();
+    });
+
+    it('enables Undo after one step; clicking it restores the earlier plan', async () => {
+      render(<Header />);
+      const before = oneStep();
+      expect(undoButton()).not.toHaveAttribute('aria-disabled');
+      await userEvent.setup().click(undoButton());
+      expect(usePlanStore.getState().room).toBe(before);
+      expect(undoButton()).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('greys out Redo until an undo, then clicking it puts the step back', async () => {
+      render(<Header />);
+      const user = userEvent.setup();
+      expect(redoButton()).toHaveAttribute('aria-disabled', 'true');
+      expect(redoButton()).not.toHaveAttribute('disabled');
+      oneStep();
+      const after = usePlanStore.getState().room;
+      expect(redoButton()).toHaveAttribute('aria-disabled', 'true');
+      await user.click(undoButton());
+      expect(redoButton()).not.toHaveAttribute('aria-disabled');
+      await user.click(redoButton());
+      expect(usePlanStore.getState().room).toBe(after);
+      expect(redoButton()).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('a greyed-out Redo click changes nothing', async () => {
+      render(<Header />);
+      oneStep();
+      const before = usePlanStore.getState().room;
+      await userEvent.setup().click(redoButton());
+      expect(usePlanStore.getState().room).toBe(before);
+      expect(useHistoryStore.getState().lastAnnouncement).toBeNull();
+    });
+
+    it('keeps focus on Undo after clicking it undoes the only step', async () => {
+      render(<Header />);
+      oneStep();
+      act(() => undoButton().focus());
+      await userEvent.setup().click(undoButton());
+      expect(undoButton()).toHaveFocus();
+      expect(undoButton()).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('hints the keyboard shortcuts on both buttons', () => {
+      render(<Header />);
+      expect(undoButton()).toHaveAttribute('aria-keyshortcuts', 'Control+Z Meta+Z');
+      expect(redoButton()).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+Z Meta+Shift+Z Control+Y');
+    });
+
+    it('has an empty, visually hidden status element before any undo', () => {
+      render(<Header />);
+      const status = within(screen.getByRole('banner')).getByRole('status');
+      expect(status).toHaveClass('visually-hidden');
+      expect(status).toBeEmptyDOMElement();
+    });
+
+    it('announces Undone then Redone in one lasting status element, so two undos in a row are both announced', async () => {
+      render(<Header />);
+      const user = userEvent.setup();
+      /** The text for `word` at the current count: a trailing U+00A0 when announceCount is odd. */
+      const expected = (word: string) => (useHistoryStore.getState().announceCount % 2 === 1 ? `${word}\u00a0` : word);
+      const status = within(screen.getByRole('banner')).getByRole('status');
+      expect(status.textContent).toBe('');
+      oneStep();
+      act(() => setWidth(200));
+      await user.click(undoButton());
+      expect(screen.getByRole('status')).toBe(status);
+      expect(status.textContent).toBe(expected('Undone'));
+      const firstText = status.textContent;
+      await user.click(undoButton());
+      expect(screen.getByRole('status')).toBe(status);
+      expect(status.textContent).toBe(expected('Undone'));
+      // The same word twice is still a change of text, so a screen reader says it again.
+      expect(status.textContent).not.toBe(firstText);
+      expect([firstText, status.textContent].sort()).toEqual(['Undone', 'Undone\u00a0']);
+      await user.click(redoButton());
+      expect(screen.getByRole('status')).toBe(status);
+      expect(status.textContent).toBe(expected('Redone'));
+      expect(status.textContent?.startsWith('Redone')).toBe(true);
+      expect(status).toHaveClass('visually-hidden');
+    });
+
+    describe('styles (sidebar.css)', () => {
+      // Vitest runs from the repo root; under jsdom import.meta.url is not a file URL.
+      const css = readFileSync(resolve(process.cwd(), 'room-planner/components/Sidebar/sidebar.css'), 'utf8');
+      /** The declarations of the rule for `selector`, whitespace collapsed. */
+      const rule = (selector: string): string => {
+        const at = css.indexOf(`\n${selector} {`);
+        if (at < 0) throw new Error(`no rule ${selector}`);
+        return css.slice(css.indexOf('{', at) + 1, css.indexOf('}', at)).replace(/\s+/g, ' ').trim();
+      };
+
+      it('lays the two buttons out in a row with a small gap, pushing the units control to the far right', () => {
+        expect(rule('.header-history')).toBe('display: flex; gap: var(--space-2); margin-right: auto;');
+      });
+
+      it('sits the buttons beside the title: in the header the brand no longer takes the free space', () => {
+        // Beats industry.css `.nav-brand { margin-right: auto }` by specificity (two classes to one).
+        expect(rule('.app-header > .nav-brand')).toBe('margin-right: var(--space-4);');
+      });
+
+      it('hides the status element visually', () => {
+        expect(rule('.visually-hidden')).toBe(
+          'position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; ' +
+            'clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;',
+        );
+      });
+
+      it('greys out an aria-disabled button like .btn:disabled', () => {
+        expect(rule('.btn[aria-disabled="true"]')).toBe('opacity: 0.45; cursor: not-allowed;');
+      });
+    });
   });
 });
 

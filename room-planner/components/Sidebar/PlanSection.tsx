@@ -1,6 +1,7 @@
 import { type JSX, useRef } from 'react';
 import { STORAGE_NOTICE } from '../../hooks/usePlanPersistence';
 import type { PlanStore } from '../../services/planStorage';
+import { clearHistory } from '../../state/historyStore';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { ConfirmButton } from '../ui/ConfirmButton';
@@ -10,12 +11,13 @@ import './sidebar.css';
  * Starts over: erases the saved plan, then restores the seeded plan and the initial UI state.
  *
  * Order matters. The saved key is cleared first and awaited. The plan store is reset next; that
- * changes the document, so the autosave writes the seeded plan back after its debounce. The UI
- * store is reset last, which clears any notice and lifts `saveBlocked` (so a session that found a
- * plan from a newer planner saves again: the visitor has confirmed erasing it). If clearing
- * failed, the storage notice is set after the UI reset so the reset does not wipe it. What the
- * browser can do is kept: if WebGL was found unavailable, it is marked unavailable again after the
- * UI reset, so the 3D view does not try WebGL again. Never rejects.
+ * changes the document, so the autosave writes the seeded plan back after its debounce; the undo
+ * history is cleared right after it, so the reset cannot be undone. The UI store is reset last,
+ * which clears any notice and lifts `saveBlocked` (so a session that found a plan from a newer
+ * planner saves again: the visitor has confirmed erasing it). If clearing failed, the storage
+ * notice is set after the UI reset so the reset does not wipe it. What the browser can do is kept:
+ * if WebGL was found unavailable, it is marked unavailable again after the UI reset, so the 3D view
+ * does not try WebGL again. Never rejects.
  */
 async function resetPlan(planStore: PlanStore): Promise<void> {
   let cleared = true;
@@ -25,6 +27,7 @@ async function resetPlan(planStore: PlanStore): Promise<void> {
     cleared = false;
   }
   usePlanStore.getState().reset();
+  clearHistory();
   const webglAvailable = useUiStore.getState().webglAvailable;
   useUiStore.getState().reset();
   if (!webglAvailable) useUiStore.getState().markWebglUnavailable();

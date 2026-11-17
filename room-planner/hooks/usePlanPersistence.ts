@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CONFIG } from '../config';
 import type { PlanDocument } from '../domain/types';
 import type { LoadResult, PlanStore } from '../services/planStorage';
+import { clearHistory } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 
@@ -38,28 +39,34 @@ function documentChanged(a: PlanDocument, b: PlanDocument): boolean {
 
 /**
  * Puts the result of a load into the stores: the saved document, or the seeded one and a notice.
- * Unavailable storage is reported through `reportStorageProblem`.
+ * Unavailable storage is reported through `reportStorageProblem`. The undo history is cleared after
+ * the reset, so the first step is never taking back the load.
  */
 function applyLoad(result: LoadResult, reportStorageProblem: () => void): void {
   const ui = useUiStore.getState();
   switch (result.status) {
     case 'loaded':
       usePlanStore.getState().reset(result.doc);
+      clearHistory();
       return;
     case 'empty':
       usePlanStore.getState().reset();
+      clearHistory();
       return;
     case 'invalid':
       usePlanStore.getState().reset();
+      clearHistory();
       ui.setNotice(INVALID_NOTICE);
       return;
     case 'newer':
       usePlanStore.getState().reset();
+      clearHistory();
       ui.setSaveBlocked(true);
       ui.setNotice(NEWER_NOTICE);
       return;
     case 'unavailable':
       usePlanStore.getState().reset();
+      clearHistory();
       reportStorageProblem();
       return;
   }

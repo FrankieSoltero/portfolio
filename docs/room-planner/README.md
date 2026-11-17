@@ -38,6 +38,34 @@ lived in `src/`. That folder is `room-planner/` in this repository.
     dimension lines stay and sit further from the room in room mode, clear of the wall labels.
     Door or window tools armed: a click on a wall places the opening and a wall is not dragged,
     and the length labels ignore the pointer.
+- **Undo and redo.** Cmd/Ctrl+Z undoes. Shift+Cmd/Ctrl+Z and Ctrl+Y redo. The header has
+  an `Undo` and a `Redo` button beside the title, and each undo or redo is announced as
+  "Undone" or "Redone". One step is one thing the visitor did:
+  - a whole drag, from press to release;
+  - a run of arrow-key or R presses on the same thing, until 1 second passes without a key or
+    something else is changed;
+  - everything typed in one sidebar field, until focus leaves it;
+  - one length typed on the plan and applied with Enter;
+  - one add or remove of furniture, a corner, a door, a window or an obstacle;
+  - one change of starting shape.
+
+  A refused action, or one that changes nothing, adds no step. Undo covers everything saved in
+  the plan. It does not cover the units, the selection, the mode, the layout, the camera or the
+  product link field. A selection that points at something undo removed is cleared. Undo and
+  redo work the same in both modes and follow one timeline. The history lasts for the visit and
+  holds 100 steps. A reload clears it, and so does `Reset plan`. While the cursor is in a text
+  field, the keys leave the browser's own text undo alone.
+- **Furniture and obstacles stop at walls.** A piece that is wholly inside the room, moved by
+  a drag or by the arrow keys, stops flush against every wall, including an L-shape's cut-out
+  and angled walls. It slides along the wall as the drag goes on, and a piece pushed into a
+  corner stops flush against both walls, even when the room or the piece is not a whole number of
+  inches. An arrow-key nudge moves straight and stops: it goes the part of the step that fits and
+  never slides sideways along a wall. A drag past the room's bounding box beyond an angled wall
+  still goes towards the pointer. The rule is in `room-planner/domain/wallStop.ts`. Some things are not pushed back:
+  turning a piece (R, Shift+R, the Angle field), changing the room (a wall drag, a typed
+  length, a starting shape), typed sizes, and a piece that is already partly outside. Such a
+  piece is flagged as usual and moves freely until it is wholly inside again. Furniture can
+  still overlap other furniture and obstacles, which stays a red conflict.
 - **Furniture rotates to any angle.** R turns the selected piece by 90°, Shift+R by 15°, and
   the Angle field takes any value.
 - **Doors, windows and obstacles are added in "Edit room" mode.** The Room section of the sidebar
@@ -115,7 +143,7 @@ Known limits of wall editing (slice D):
 
 - Double-tap to add a corner is not verified on a touch device (it relies on the browser's
   `dblclick`).
-- There are no alignment guides, no locked lengths and no undo.
+- There are no alignment guides and no locked lengths.
 - On very short walls neighbouring length labels touch or overlap.
 - A wall dragged towards a door or window stops at the last pointer position before it, not
   exactly at its edge.
@@ -126,6 +154,49 @@ Known limits of wall editing (slice D):
   the result.
 - A typed length still applies on each keystroke in the sidebar (the on-plan field applies on
   Enter).
+
+Known limits of undo and redo (slice E):
+
+- Undo and redo were not run in Safari or Firefox, and no screen reader was run.
+- With a length being typed on the plan, the header's Undo button behaves differently by
+  browser. Where a clicked button takes focus, the typed length is applied and then taken back.
+  In Safari the step before is taken back and the field stays open.
+- A drag or typed edit that ends exactly where it started still counts as a step, so undoing it
+  shows no change (the design says an edit that changes nothing adds no step; this case is the
+  exception).
+- After a layout or units option is clicked it keeps keyboard focus. Arrow keys then change that
+  option, not the selected furniture, until something else is clicked. This is older than this
+  slice.
+- A press on a focused field's own label or unit suffix splits one typing run into two undo
+  steps.
+- If a text field stays focused while the plan is loaded or reset, typing in it afterwards is
+  one step per keystroke until the field is focused again. This cannot happen today.
+- `Reset plan` cannot be undone, on purpose.
+- In development only: a hot reload of `state/historyStore.ts` leaves the old listener attached
+  until the page is reloaded.
+
+Known limits of stop at walls:
+
+- Along an angled wall the piece can lag the pointer slightly. The piece never crosses the wall.
+  Over 60 probe drags into angled walls (7,200 frames) the lag was 0.05 in or less on 92% of the
+  584 frames that lagged at all and more than 0.71 in on one frame only (1.26 in). Before the
+  whole-change review's fix it was typically 0.5 to 2 in, worst 5.3 in for two frames.
+- A column is checked as a 16-sided outline, so against an angled wall its true circle can reach
+  up to about 2% of its radius past the wall (0.23 in for a 24 in column). The conflict check
+  uses the same outline.
+- Turning a piece near a wall is not pushed back. It can turn red.
+- Changing the room never moves furniture. A piece left outside turns red and drags freely
+  until it is wholly inside again.
+- A fast drag can carry a piece across an L-shape's cut-out to the other arm.
+- Furniture still overlaps other furniture and obstacles (red), by the owner's choice.
+- Cost grows with the number of angled walls. About 0.1 ms per move in rooms of up to 6
+  corners; in a room where every wall is angled about 0.4 ms (box) to 1.1 ms (column) at 16
+  corners and 4.3 ms (box) to 12.4 ms (column) at 64 corners, the most the planner allows
+  (measured by a reviewer's probe on the development machine; the probe is not kept in the
+  repo), and about 0.5 to 1.7 ms and 6 to 17 ms when the pointer is beyond the room's bounding
+  box. The live check's longest pointer-move handling was 7.3 ms (mean 1.56 ms) in the L-shape
+  room, most of it rendering.
+- Safari and Firefox were not run.
 
 Changed behaviour (slice D, wall editing). These are on purpose:
 
@@ -142,7 +213,13 @@ Changed behaviour (slice D, wall editing). These are on purpose:
   `+` button in the sidebar).
 - In room mode the overall dimension lines sit further from the room.
 
-The checks on the final code: `npm run check` passes with 54 test files and 2061 tests, and the
+Changed behaviour (stop at walls). This is on purpose:
+
+- A piece moved from inside the room used to be allowed across a wall, with only its centre
+  kept inside, and turned red. It now stops flush against the wall. This reverses a decision of
+  the first slice.
+
+The checks on the final code: `npm run check` passes with 59 test files and 2296 tests, and the
 build shows `/room-planner` at 105 kB First Load JS.
 
 Open questions for the owner (slice C):
@@ -162,12 +239,19 @@ when editing and when loading, so an edit can never produce a saved plan that fa
 
 - `specs/` — design specs for the planner and for its move into the portfolio. The wall editing
   spec is [`specs/2026-11-14-wall-editing-design.md`](specs/2026-11-14-wall-editing-design.md).
+  The undo and redo spec is
+  [`specs/2026-11-16-undo-redo-design.md`](specs/2026-11-16-undo-redo-design.md). The stop at
+  walls spec is
+  [`specs/2026-11-16-stop-at-walls-design.md`](specs/2026-11-16-stop-at-walls-design.md).
 - `plans/` — implementation plans, one per spec. The room shape and saving work is in
   [`plans/2026-11-13-room-shape-and-saving.md`](plans/2026-11-13-room-shape-and-saving.md). The
   doors, windows and obstacles work is in
   [`plans/2026-11-14-openings-and-obstacles.md`](plans/2026-11-14-openings-and-obstacles.md)
   (Amendments 1 to 6, plus the inserted fix tasks 12b and 13b). The wall editing work is in
-  [`plans/2026-11-14-wall-editing.md`](plans/2026-11-14-wall-editing.md) (Amendments 1 to 9).
+  [`plans/2026-11-14-wall-editing.md`](plans/2026-11-14-wall-editing.md) (Amendments 1 to 9). The
+  undo and redo work is in [`plans/2026-11-16-undo-redo.md`](plans/2026-11-16-undo-redo.md)
+  (Amendments 1 to 5). The stop at walls work is in
+  [`plans/2026-11-16-stop-at-walls.md`](plans/2026-11-16-stop-at-walls.md) (Amendment 1).
 - `plan-reviews/` — plan-review verdicts for those plans. The review of the room shape and
   saving plan is
   [`plan-reviews/2026-11-13-room-shape-and-saving-review.md`](plan-reviews/2026-11-13-room-shape-and-saving-review.md).
@@ -175,6 +259,10 @@ when editing and when loading, so an edit can never produce a saved plan that fa
   [`plan-reviews/2026-11-14-openings-and-obstacles-review.md`](plan-reviews/2026-11-14-openings-and-obstacles-review.md).
   The review of the wall editing plan is
   [`plan-reviews/2026-11-14-wall-editing-review.md`](plan-reviews/2026-11-14-wall-editing-review.md).
+  The review of the undo and redo plan is
+  [`plan-reviews/2026-11-16-undo-redo-review.md`](plan-reviews/2026-11-16-undo-redo-review.md).
+  The review of the stop at walls plan is
+  [`plan-reviews/2026-11-16-stop-at-walls-review.md`](plan-reviews/2026-11-16-stop-at-walls-review.md).
 - `verification/` — live-check notes and the captures they cite. The room shape and saving
   check is
   [`verification/2026-11-13-room-shape-live-check.md`](verification/2026-11-13-room-shape-live-check.md).
@@ -184,6 +272,12 @@ when editing and when loading, so an edit can never produce a saved plan that fa
   The wall editing check has 22 rows over three runs: run 1 failed W3, W12 and W13, and run 3, on
   the final commit, passed all 22
   ([`verification/2026-11-14-wall-editing-live-check.md`](verification/2026-11-14-wall-editing-live-check.md)).
+  The undo and redo check has 20 rows plus one added after the final review (X1); run 1 failed
+  U4 because of the script, and run 3, on the final commit, passed all of them
+  ([`verification/2026-11-16-undo-redo-live-check.md`](verification/2026-11-16-undo-redo-live-check.md)).
+  The stop at walls check has 14 rows plus a drag-cost row (X1); run 1 failed W6 and W7
+  because the rows were written wrongly, and run 2, on the final commit, passed all of them
+  ([`verification/2026-11-16-stop-at-walls-live-check.md`](verification/2026-11-16-stop-at-walls-live-check.md)).
 - `design_handoff/` — the original design reference (prototype, design system, README).
   It is read-only: it is not built or served.
 - `mistakes-and-fixes.md` — running log of mistakes and how they were fixed.

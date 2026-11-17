@@ -30,7 +30,9 @@ without reading it — the visual language is strict and easy to break.
   and furniture rotates to any angle. The room also
   carries doors, windows and fixed obstacles. Every outline edit goes through
   `applyOutline`, so openings are re-homed onto their walls; never write `room.outline`
-  directly. Every value read from storage must pass through `parsePlan`. Views read room and
+  directly. Undo and redo run on `room-planner/state/historyStore.ts` (typing runs are grouped
+  by `hooks/useHistoryFieldGroups.ts`); a test that reads the history calls `clearHistory()`
+  in `beforeEach`. Every value read from storage must pass through `parsePlan`. Views read room and
   item geometry only through `room-planner/domain/shape.ts`. Run `npm run check` before
   committing. Docs in `docs/room-planner/`.
 

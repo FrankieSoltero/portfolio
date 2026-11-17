@@ -6,6 +6,7 @@ import { createInitialDocument } from '../domain/catalog';
 import type { Door, Obstacle, PlanDocument } from '../domain/types';
 import { createBrowserPlanStore } from '../services/browserPlanStore';
 import type { PlanStore } from '../services/planStorage';
+import { clearHistory, undo, useHistoryStore } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { createFakePlanStore, type FakePlanStore } from '../test/fakePlanStore';
@@ -618,5 +619,55 @@ describe('usePlanPersistence: StrictMode', () => {
     await settle();
     expect(result.current.ready).toBe(true);
     expect(useUiStore.getState().notice).toBe(INVALID_TEXT);
+  });
+});
+
+describe('usePlanPersistence: undo history', () => {
+  beforeEach(() => {
+    clearHistory();
+  });
+
+  it('leaves nothing to undo once a saved plan is loaded', async () => {
+    const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'loaded', doc: SAVED } } });
+    await mountReady(store);
+    expect(useHistoryStore.getState().canUndo).toBe(false);
+  });
+
+  it.each(['empty', 'invalid', 'newer', 'unavailable'] as const)(
+    'leaves nothing to undo once a %s load result is applied',
+    async (status) => {
+      const store = createFakePlanStore({ load: { type: 'resolve', value: { status } } });
+      await mountReady(store);
+      expect(useHistoryStore.getState().canUndo).toBe(false);
+    },
+  );
+
+  it('makes one change after a load one step, which undoes to the loaded plan', async () => {
+    const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'loaded', doc: SAVED } } });
+    await mountReady(store);
+    act(() => usePlanStore.getState().moveItemBy('saved-box', 5, 0));
+    const undone: boolean[] = [];
+    act(() => {
+      undone.push(undo());
+    });
+    expect(currentDoc()).toEqual(SAVED);
+    act(() => {
+      undone.push(undo());
+    });
+    expect(undone).toEqual([true, false]);
+  });
+
+  it('saves the plan an undo puts back', async () => {
+    const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'loaded', doc: SAVED } } });
+    await mountReady(store);
+    act(() => usePlanStore.getState().moveItemBy('saved-box', 5, 0));
+    advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toHaveLength(1);
+    act(() => {
+      undo();
+    });
+    advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toHaveLength(2);
+    expect(store.saveCalls[1]).toEqual(SAVED);
   });
 });

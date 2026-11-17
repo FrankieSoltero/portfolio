@@ -5,6 +5,7 @@ import App from './App';
 import { CONFIG } from './config';
 import { createInitialDocument } from './domain/catalog';
 import type { ProductLookup } from './services/productLookup';
+import { clearHistory, undo } from './state/historyStore';
 import { usePlanStore } from './state/planStore';
 import { useUiStore } from './state/uiStore';
 import { createFakePlanStore, type FakePlanStore } from './test/fakePlanStore';
@@ -107,6 +108,26 @@ describe('App', () => {
     expect(container.querySelectorAll('button.item-row')).toHaveLength(3);
     expect(screen.getByText('$2,600')).toBeInTheDocument();
     expect(screen.getByText('2 conflicts')).toHaveClass('tag-conflict');
+  });
+});
+
+describe('App: undo history', () => {
+  beforeEach(() => {
+    clearHistory();
+  });
+
+  it('wires the text-field groups: three changes while the product link field is focused make one step', async () => {
+    // Wait for the load (which clears the history) before the changes.
+    await renderApp();
+    screen.getByRole('textbox', { name: 'Product link' }).focus();
+    act(() => {
+      for (let i = 0; i < 3; i++) usePlanStore.getState().moveItemBy('seed-bed', 1, 0);
+    });
+    let steps = 0;
+    act(() => {
+      while (undo()) steps += 1;
+    });
+    expect(steps).toBe(1);
   });
 });
 

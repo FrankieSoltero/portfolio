@@ -17,7 +17,7 @@ import {
 import { moveItem } from './geometry';
 import { signedArea } from './polygon';
 import { footprintCorners } from './shape';
-import type { Bounds, Item, Obstacle } from './types';
+import type { Item, Obstacle, Point } from './types';
 
 function okObstacles(result: ObstaclesResult): Obstacle[] {
   if (!result.ok) throw new Error(`expected ok, got ${result.problem}`);
@@ -30,8 +30,8 @@ function frozen<T extends object>(list: T[]): readonly T[] {
   return Object.freeze(list);
 }
 
-/** The bounds of the brief's 144 × 168 room. */
-const BOUNDS: Bounds = { minX: 0, minY: 0, maxX: 144, maxY: 168, w: 144, l: 168 };
+/** The outline of the brief's 144 × 168 room. */
+const OUTLINE: Point[] = [{ x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 168 }, { x: 0, y: 168 }];
 
 /** The default box and the default column for a 96 in room, written out. */
 const BOX: Obstacle = { id: 'o1', shape: 'box', label: 'Box', x: 72, y: 84, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 };
@@ -177,26 +177,28 @@ describe('addObstacle', () => {
 
 describe('moveObstacle', () => {
   it('snaps the bounding-box minimum corner to the grid', () => {
-    const moved = moveObstacle(BOX, 30.4, 50.6, BOUNDS, 1);
+    const moved = moveObstacle(BOX, 30.4, 50.6, OUTLINE, 1);
     expect(moved).toEqual({ ...BOX, x: 30, y: 51 });
   });
 
   it('clamps the centre into the bounds', () => {
-    const moved = moveObstacle(BOX, -50, 900, BOUNDS, 1);
-    expect(moved).toEqual({ ...BOX, x: 0, y: 168 });
+    // Started partly outside the room (x 138–162), so the walls do not stop it.
+    const o = box({ x: 150 });
+    const moved = moveObstacle(o, -50, 900, OUTLINE, 1);
+    expect(moved).toEqual({ ...o, x: 0, y: 168 });
   });
 
   it('snaps a turned box by its turned bounding box', () => {
     // 20 × 11 turned 90: half extents 5.5 across and 10 down, so min corner (24.9, 40.6) → (25, 41).
     const o = box({ width: 20, depth: 11, rotation: 90 });
-    expect(moveObstacle(o, 30.4, 50.6, BOUNDS, 1)).toEqual({ ...o, x: 30.5, y: 51 });
+    expect(moveObstacle(o, 30.4, 50.6, OUTLINE, 1)).toEqual({ ...o, x: 30.5, y: 51 });
   });
 
   it('snaps a quarter-turned box exactly, as moveItem does, despite trig noise', () => {
     // 24 × 25 turned 270: half extents exactly 12.5 across and 12 down, so min corner (17.5, 18) → (18, 18).
     // At centre (30, 30) the raw corners put the half width at 12.500000000000004, which would snap to 17.
     const o = box({ x: 30, y: 30, width: 24, depth: 25, rotation: 270 });
-    expect(moveObstacle(o, 30, 30, BOUNDS, 1)).toEqual({ ...o, x: 30.5, y: 30 });
+    expect(moveObstacle(o, 30, 30, OUTLINE, 1)).toEqual({ ...o, x: 30.5, y: 30 });
   });
 
   it('places a box exactly where moveItem places the same footprint', () => {
@@ -207,8 +209,8 @@ describe('moveObstacle', () => {
     for (const [w, d, angle] of [[24, 25, 0], [24, 25, 90], [24, 25, 180], [24, 25, 270], [20, 11, 30], [7.5, 13, 135]]) {
       for (const [from, to] of [[[30, 30], [30, 30]], [[72, 84], [40.37, 61.5]], [[10, 160], [-5, 170]]]) {
         const o = box({ x: from[0], y: from[1], width: w, depth: d, rotation: angle });
-        const i = moveItem({ ...item, x: from[0], y: from[1], w, d, angle }, to[0], to[1], BOUNDS, 1);
-        const moved = moveObstacle(o, to[0], to[1], BOUNDS, 1);
+        const i = moveItem({ ...item, x: from[0], y: from[1], w, d, angle }, to[0], to[1], OUTLINE, 1);
+        const moved = moveObstacle(o, to[0], to[1], OUTLINE, 1);
         expect([moved.x, moved.y]).toEqual([i.x, i.y]);
       }
     }
@@ -217,18 +219,52 @@ describe('moveObstacle', () => {
   it('snaps a cylinder by its circle, whatever its rotation', () => {
     // Radius 6.5: min corner (23.9, 44.1) → (24, 44).
     const o: Obstacle = { ...COLUMN, width: 13, depth: 13, rotation: 45 };
-    expect(moveObstacle(o, 30.4, 50.6, BOUNDS, 1)).toEqual({ ...o, x: 30.5, y: 50.5 });
+    expect(moveObstacle(o, 30.4, 50.6, OUTLINE, 1)).toEqual({ ...o, x: 30.5, y: 50.5 });
   });
 });
 
 describe('shiftObstacle', () => {
   it('moves by exactly the step', () => {
     const o = box({ x: 30.4, y: 50.6 });
-    expect(shiftObstacle(o, 1, 0, BOUNDS)).toEqual({ ...o, x: 31.4 });
+    expect(shiftObstacle(o, 1, 0, OUTLINE)).toEqual({ ...o, x: 31.4 });
   });
 
   it('clamps into the bounds', () => {
-    expect(shiftObstacle(box({ x: 143.5, y: 0.5 }), 12, -12, BOUNDS)).toEqual(box({ x: 144, y: 0 }));
+    expect(shiftObstacle(box({ x: 143.5, y: 0.5 }), 12, -12, OUTLINE)).toEqual(box({ x: 144, y: 0 }));
+  });
+});
+
+describe('moveObstacle and shiftObstacle stop at the walls', () => {
+  it('stops a box moved past a wall flush against it', () => {
+    expect(moveObstacle(BOX, -30, 84, OUTLINE, 1)).toEqual({ ...BOX, x: 12, y: 84 });
+  });
+
+  it('stops a column nudged past a wall flush against it', () => {
+    const o: Obstacle = { ...COLUMN, x: 72, y: 84 };
+    expect(shiftObstacle(o, 100, 0, OUTLINE)).toEqual({ ...o, x: 138, y: 84 });
+  });
+});
+
+/** One angled wall, on the line x + y = 244. */
+const ANGLED: Point[] = [{ x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 100 }, { x: 76, y: 168 }, { x: 0, y: 168 }];
+
+describe('moveObstacle and shiftObstacle at an angled wall', () => {
+  it('stops a box dragged past the bounding box beyond an angled wall where the pointer points', () => {
+    // The pointer goes from (100, 100) to (220, 220), 2 in a frame, straight at the angled wall.
+    const start = box({ x: 100, y: 100, width: 20, depth: 20 });
+    let o = start;
+    for (let frame = 1; frame <= 60; frame++) o = moveObstacle(o, 100 + 2 * frame, 100 + 2 * frame, ANGLED, 1);
+    expect(o).toEqual({ ...start, x: 112, y: 112 });
+  });
+
+  it('nudges a column straight into an angled wall and stops: y never changes', () => {
+    // The 16-sided outline reaches 10 in towards the wall, so the column stops at x = 244 − 100 − 10√2.
+    let o: Obstacle = { ...COLUMN, x: 100, y: 100, width: 20, depth: 20 };
+    for (let i = 0; i < 40; i++) {
+      o = shiftObstacle(o, 1, 0, ANGLED);
+      expect(o.y).toBe(100);
+    }
+    expect(o.x).toBe(129.85);
   });
 });
 
@@ -277,7 +313,7 @@ describe('immutability', () => {
   it('never mutates its inputs', () => {
     const list = frozen([box(), { ...COLUMN }]);
     const one = Object.freeze(box({ x: 10, y: 10 }));
-    const bounds = Object.freeze({ ...BOUNDS });
+    const outline = Object.freeze(OUTLINE.map((p) => Object.freeze({ ...p })));
     const at = Object.freeze({ x: 5, y: 6 });
     expect(() => {
       newObstacle('box', at, 96, 'n');
@@ -286,8 +322,8 @@ describe('immutability', () => {
       obstaclePolygon(list[1]);
       validateObstacles(list);
       addObstacle(list, one);
-      moveObstacle(one, 50, 50, bounds, 1);
-      shiftObstacle(one, 1, 1, bounds);
+      moveObstacle(one, 50, 50, outline, 1);
+      shiftObstacle(one, 1, 1, outline);
       updateObstacle(list, 'o1', { width: 30, rotation: 400 });
       updateObstacle(list, 'c1', { width: 18 });
       updateObstacle(list, 'nope', { width: 18 });

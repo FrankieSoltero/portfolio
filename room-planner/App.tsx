@@ -5,6 +5,7 @@ import { SelectionBar } from './components/SelectionBar';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { Stage } from './components/Stage/Stage';
 import { TopBar } from './components/TopBar';
+import { useHistoryFieldGroups } from './hooks/useHistoryFieldGroups';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { usePlanPersistence } from './hooks/usePlanPersistence';
 import { createMockProductLookup } from './services/mockProductLookup';
@@ -14,13 +15,15 @@ import './styles/app.css';
 /**
  * The workspace shell: header, notice bar, then a sidebar and the main column (top bar, stage,
  * selection bar). The product lookup provider is created once per mount; keyboard shortcuts are
- * global. The plan is loaded from `planStore` and autosaved to it; until the load has been
- * applied only a loading message is shown, so the seeded plan never flashes before a saved one.
+ * global, and typing in a text field is one undo step. The plan is loaded from `planStore` and
+ * autosaved to it; until the load has been applied only a loading message is shown, so the seeded
+ * plan never flashes before a saved one.
  */
 export default function App({ planStore }: { planStore: PlanStore }): JSX.Element {
   const [lookup] = useState(() => createMockProductLookup());
   const { ready } = usePlanPersistence(planStore);
   useKeyboardShortcuts();
+  useHistoryFieldGroups();
 
   if (!ready) {
     return (
