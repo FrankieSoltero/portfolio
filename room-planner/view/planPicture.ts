@@ -49,8 +49,10 @@ const CREDIT_FONT = '400 22px Barlow, sans-serif';
 /** A name must be this many pixels narrower than its label box. */
 const NAME_INSET = 16;
 const ELLIPSIS = '…';
-/** A wall's length sits this many pixels outside the wall's midpoint. */
-const LENGTH_OFFSET = 34;
+/** A wall length's text box stays this many pixels from the wall line: half the wall's stroke plus a 14 px gap. */
+const LENGTH_CLEARANCE = 19;
+/** Half the wall-length font's size: the text box's half height. */
+const LENGTH_HALF_HEIGHT = 14;
 /** How far from a wall's midpoint, in inches, the inside of the room is probed. */
 const SIDE_PROBE = 1;
 /** The credit is written this many pixels above the bottom edge. */
@@ -131,9 +133,12 @@ function name(g: CanvasRenderingContext2D, text: string, fp: Footprint, layout: 
 }
 
 /**
- * Writes each wall's length level, LENGTH_OFFSET pixels from its midpoint on the side outside the
- * room. The outside is the normal whose point SIDE_PROBE in from the midpoint is not in the room,
- * so it does not depend on which way the corners run.
+ * Writes each wall's length level, outside the room, centred on the wall's outward normal `n` (unit
+ * length) at `LENGTH_CLEARANCE + |n.x| × textWidth / 2 + |n.y| × LENGTH_HALF_HEIGHT` pixels from its
+ * midpoint, so the nearest edge of the level text box is always LENGTH_CLEARANCE pixels from the wall
+ * line: 33 px for a level wall, 19 px plus half the text's width for an upright one. The outside is
+ * the normal whose point SIDE_PROBE in from the midpoint is not in the room, so it does not depend on
+ * which way the corners run.
  */
 function wallLengths(g: CanvasRenderingContext2D, outline: readonly Point[], units: Units, layout: PlanLayout): void {
   g.font = LENGTH_FONT;
@@ -150,7 +155,10 @@ function wallLengths(g: CanvasRenderingContext2D, outline: readonly Point[], uni
     const probe = { x: mid.x + n.x * SIDE_PROBE, y: mid.y + n.y * SIDE_PROBE };
     const out = pointInPolygon(probe, outline, 0) ? -1 : 1;
     const m = toPane(mid, layout);
-    g.fillText(fmtLen(len, units), m.x + n.x * out * LENGTH_OFFSET, m.y + n.y * out * LENGTH_OFFSET);
+    const label = fmtLen(len, units);
+    const offset = LENGTH_CLEARANCE + (Math.abs(n.x) * g.measureText(label).width) / 2
+      + Math.abs(n.y) * LENGTH_HALF_HEIGHT;
+    g.fillText(label, m.x + n.x * out * offset, m.y + n.y * out * offset);
   });
 }
 
@@ -207,5 +215,6 @@ export function drawPlanPicture(g: CanvasRenderingContext2D, input: PlanPictureI
   g.font = CREDIT_FONT;
   g.fillStyle = CREDIT_INK;
   g.textAlign = 'left';
+  g.textBaseline = 'middle';
   g.fillText(PLAN_PICTURE_CREDIT, MARGIN, height - CREDIT_BOTTOM);
 }

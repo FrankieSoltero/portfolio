@@ -22,8 +22,9 @@ type ShareAction = 'copy' | 'plan' | 'view';
  * The header's Share button and its panel. The button toggles the panel (`aria-expanded`); opening
  * it moves focus to `Copy link`. Escape anywhere in the panel or on the button closes it and returns
  * focus to the button; that Escape is stopped here, so it does not also reach the planner's global
- * shortcuts (which would clear the selection). A pointer down outside the panel and the button
- * closes it too. The panel is rendered only while open.
+ * shortcuts (which would clear the selection). Every other key pressed inside the panel, except
+ * Tab, is kept from those shortcuts too. A pointer down outside the panel and the button closes it
+ * too. The panel is rendered only while open.
  *
  * Which actions are pending is kept here, outside the panel, so closing and reopening the panel
  * while a copy or download is still running does not let it start a second time.
@@ -54,6 +55,16 @@ export function SharePanel(): JSX.Element {
     buttonRef.current?.focus();
   }
 
+  /**
+   * A key pressed inside the panel does not reach the planner's global shortcuts (an arrow would
+   * move the selected piece), except Tab. Its default action is kept, so focus moves and the link
+   * field still takes keys. Escape closes the panel as on the button.
+   */
+  function onDialogKeyDown(e: KeyboardEvent<HTMLElement>): void {
+    onKeyDown(e);
+    if (e.key !== 'Tab') e.stopPropagation();
+  }
+
   return (
     <>
       <button
@@ -67,7 +78,7 @@ export function SharePanel(): JSX.Element {
       >
         Share
       </button>
-      {open && <SharePanelDialog panelRef={panelRef} pending={pending} onKeyDown={onKeyDown} />}
+      {open && <SharePanelDialog panelRef={panelRef} pending={pending} onKeyDown={onDialogKeyDown} />}
     </>
   );
 }
@@ -119,13 +130,20 @@ function SharePanelDialog({
     linkRef.current?.select();
   }, [fallbackLink]);
 
-  /** Runs `action` unless the same action is still pending; clears the previous message first. */
+  /**
+   * Runs `action` unless the same action is still pending; clears the previous message first. A
+   * throw or rejection is caught and shown as the action's failure message (the too-large message
+   * for Copy link, the could-not-be-made message for a download), so it never fails silently and
+   * the returned promise never rejects.
+   */
   async function run(name: ShareAction, action: () => Promise<void>): Promise<void> {
     if (pending.current.has(name)) return;
     pending.current.add(name);
     setStatus('');
     try {
       await action();
+    } catch {
+      setStatus(name === 'copy' ? TOO_LARGE_TEXT : NO_PICTURE_TEXT);
     } finally {
       pending.current.delete(name);
     }

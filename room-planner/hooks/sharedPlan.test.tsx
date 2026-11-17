@@ -1,6 +1,7 @@
-import { act, render, renderHook } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { Activity, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PlanSection } from '../components/Sidebar/PlanSection';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
 import type { PlanDocument } from '../domain/types';
@@ -293,7 +294,7 @@ describe('opening a link: decodes invalid or newer', () => {
       expect(store.saveCalls).toHaveLength(0);
     });
 
-    it.each(['empty', 'invalid', 'unavailable'] as const)('own %s: the seeded plan, and the shared notice', async (own) => {
+    it.each(['empty', 'invalid'] as const)('own %s: the seeded plan, and the shared notice', async (own) => {
       shareLink(decoded);
       const store = ownStore(status(own));
       await mountReady(store);
@@ -304,13 +305,27 @@ describe('opening a link: decodes invalid or newer', () => {
       expect(clearFragment).toHaveBeenCalledTimes(1);
     });
 
-    it('own newer: the seeded plan with saving blocked, and the shared notice', async () => {
+    it.each([
+      ['unavailable', status('unavailable')],
+      ['rejected', { type: 'reject', error: new Error('offline') } as FakeOutcome<LoadResult>],
+    ])('own %s: the seeded plan, and the storage notice stays instead of the shared notice', async (_, load) => {
+      shareLink(decoded);
+      const store = ownStore(load);
+      await mountReady(store);
+      expect(currentDoc()).toEqual(createInitialDocument());
+      expect(useUiStore.getState().notice).toBe(STORAGE_TEXT);
+      expect(useUiStore.getState().saveBlocked).toBe(false);
+      expect(useUiStore.getState().sharedPreview).toBeNull();
+      expect(clearFragment).toHaveBeenCalledTimes(1);
+    });
+
+    it('own newer: the seeded plan with saving blocked, and the newer-plan notice stays instead of the shared notice', async () => {
       shareLink(decoded);
       const store = ownStore(status('newer'));
       await mountReady(store);
       expect(currentDoc()).toEqual(createInitialDocument());
       expect(useUiStore.getState().saveBlocked).toBe(true);
-      expect(useUiStore.getState().notice).toBe(notice);
+      expect(useUiStore.getState().notice).toBe(NEWER_TEXT);
       expect(useUiStore.getState().sharedPreview).toBeNull();
       expect(clearFragment).toHaveBeenCalledTimes(1);
     });
@@ -411,6 +426,28 @@ describe('while previewing a shared plan', () => {
       expect(redo()).toBe(true);
     });
     expect(sharedX()).toBe((start ?? 0) + 1);
+  });
+});
+
+describe('Reset plan during a preview', () => {
+  it('ends the preview, resets the plan, and the autosave saves the seeded plan after the debounce', async () => {
+    shareLink({ status: 'ok', doc: SHARED });
+    const store = ownStore(loaded());
+    const hook = await mountReady(store);
+    expect(useUiStore.getState().sharedPreview).toEqual({ canKeep: true });
+    const section = render(<PlanSection planStore={store} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset plan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Erase everything and start over' }));
+    await settle();
+    expect(store.clearCalls).toBe(1);
+    expect(clearFragment).toHaveBeenCalledTimes(1);
+    expect(useUiStore.getState().sharedPreview).toBeNull();
+    expect(currentDoc()).toEqual(createInitialDocument());
+    expect(store.saveCalls).toHaveLength(0);
+    advance(CONFIG.saveDebounceMs);
+    expect(store.saveCalls).toEqual([createInitialDocument()]);
+    section.unmount();
+    hook.unmount();
   });
 });
 
@@ -598,6 +635,50 @@ describe('leaveSharedPlan', () => {
       expect(store.saveCalls).toHaveLength(0);
     },
   );
+
+  describe('selections', () => {
+    /** A shared plan whose corners, item, window and obstacle all have ids the own plan does not. */
+    const SHARED_FULL: PlanDocument = planDoc(
+      {
+        outline: [{ id: 's1', x: 0, y: 0 }, { id: 's2', x: 130, y: 0 }, { id: 's3', x: 130, y: 160 }, { id: 's4', x: 0, y: 160 }],
+        height: 96,
+      },
+      [placedItem({ id: 'shared-box', w: 24, d: 24, h: 20, cx: 50, cy: 70 })],
+      'ft',
+      [{ id: 'shared-window', kind: 'window', wallId: 's1', offset: 20, width: 30, sill: 30, height: 40 }],
+      [{ id: 'shared-post', shape: 'box', label: '', x: 100, y: 120, rotation: 0, width: 10, depth: 10, height: 96, elevation: 0 }],
+    );
+
+    it.each([
+      ['item', () => useUiStore.getState().select('shared-box'), () => useUiStore.getState().selectedId],
+      ['corner', () => useUiStore.getState().selectCorner('s2'), () => useUiStore.getState().selectedCornerId],
+      ['wall', () => useUiStore.getState().selectWall('s3'), () => useUiStore.getState().selectedWallId],
+      ['opening', () => useUiStore.getState().selectOpening('shared-window'), () => useUiStore.getState().selectedOpeningId],
+      ['obstacle', () => useUiStore.getState().selectObstacle('shared-post'), () => useUiStore.getState().selectedObstacleId],
+    ])('clears a selected %s that is not in the own plan', async (_, choose, selected) => {
+      shareLink({ status: 'ok', doc: SHARED_FULL });
+      const store = ownStore(loaded());
+      await mountReady(store);
+      act(choose);
+      expect(selected()).not.toBeNull();
+      await act(() => leaveSharedPlan(store));
+      expect(currentDoc()).toEqual(OWN);
+      expect(selected()).toBeNull();
+    });
+
+    it('keeps a selected item and corner that are in the own plan', async () => {
+      shareLink({ status: 'ok', doc: SHARED });
+      const store = ownStore(loaded());
+      await mountReady(store);
+      act(() => {
+        useUiStore.getState().select('own-box');
+        useUiStore.getState().selectCorner('c2');
+      });
+      await act(() => leaveSharedPlan(store));
+      expect(useUiStore.getState().selectedId).toBe('own-box');
+      expect(useUiStore.getState().selectedCornerId).toBe('c2');
+    });
+  });
 
   it('autosave resumes after leaving', async () => {
     shareLink({ status: 'ok', doc: SHARED });

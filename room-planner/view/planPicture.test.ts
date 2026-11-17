@@ -386,12 +386,13 @@ describe('drawPlanPicture', () => {
     });
   });
 
-  it('9. writes every wall\'s length level, 34 px outside its midpoint, after the names', () => {
+  it('9. writes every wall\'s length level, clear of the wall outside its midpoint, after the names', () => {
     const { texts } = draw(input({ items: [SOFA] }));
     const name = at(texts, 0);
     const lengths = texts.filter((t) => t.font === '600 28px Barlow, sans-serif');
+    // Level walls: 33 px out. Upright walls: 19 px plus half the 60 px text, so 49 px out.
     expect(lengths.map((t) => [t.text, t.x, t.y])).toEqual([
-      ['12′ 0″', 880, 126], ['14′ 0″', 1634, 1000], ['12′ 0″', 880, 1874], ['14′ 0″', 126, 1000],
+      ['12′ 0″', 880, 127], ['14′ 0″', 1649, 1000], ['12′ 0″', 880, 1873], ['14′ 0″', 111, 1000],
     ]);
     for (const t of lengths) {
       expect([t.align, t.baseline, t.fillStyle, t.depth, t.rotate]).toEqual(['center', 'middle', '#1a1c2c', 0, null]);
@@ -401,16 +402,93 @@ describe('drawPlanPicture', () => {
 
   it('9. finds the outside of each wall from the room, not from the corner order', () => {
     const lengths = draw(input({ outline: RECT_REVERSED })).texts.filter((t) => t.font === '600 28px Barlow, sans-serif');
-    expect(lengths.map((t) => [t.x, t.y]).sort()).toEqual([[126, 1000], [1634, 1000], [880, 126], [880, 1874]].sort());
+    expect(lengths.map((t) => [t.x, t.y]).sort()).toEqual([[111, 1000], [1649, 1000], [880, 127], [880, 1873]].sort());
   });
 
   it('9. puts the lengths of an L-shaped room\'s notch walls in the notch', () => {
     const lengths = draw(input({ outline: L_ROOM, units: 'm' })).texts
       .filter((t) => t.font === '600 28px Barlow, sans-serif');
     expect(lengths.map((t) => [t.text, t.x, t.y])).toEqual([
-      ['3.66 m', 880, 126], ['2.44 m', 1634, 640], ['1.83 m', 1240, 1154], ['1.83 m', 914, 1480],
-      ['1.83 m', 520, 1874], ['4.27 m', 126, 1000],
+      ['3.66 m', 880, 127], ['2.44 m', 1649, 640], ['1.83 m', 1240, 1153], ['1.83 m', 929, 1480],
+      ['1.83 m', 520, 1873], ['4.27 m', 111, 1000],
     ]);
+  });
+
+  describe('9. a wall length\'s distance from its wall', () => {
+    /** A right triangle whose long wall runs at 45°, with the room below and to its left. */
+    const TRIANGLE: readonly Corner[] = [{ id: 't1', x: 0, y: 0 }, { id: 't2', x: 144, y: 0 }, { id: 't3', x: 0, y: 144 }];
+    /** A five-sided room with no level or upright wall. */
+    const PENTAGON: readonly Corner[] = [
+      { id: 'p1', x: 0, y: 0 }, { id: 'p2', x: 150, y: 20 }, { id: 'p3', x: 170, y: 120 }, { id: 'p4', x: 60, y: 160 },
+      { id: 'p5', x: -10, y: 90 },
+    ];
+
+    /** Each wall's length text with the wall's two ends and midpoint in pane pixels, in outline order. */
+    function labelled(outline: readonly Corner[]) {
+      const { texts, log } = draw(input({ outline }));
+      const { layout } = planPictureSize(outline);
+      const lengths = texts.filter((t) => t.font === '600 28px Barlow, sans-serif');
+      expect(lengths).toHaveLength(outline.length);
+      return {
+        log,
+        walls: lengths.map((t, i) => {
+          const a = toPane(at(outline, i), layout);
+          const b = toPane(at(outline, (i + 1) % outline.length), layout);
+          return { t, a, b, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, width: Array.from(t.text).length * CHAR_W };
+        }),
+      };
+    }
+
+    /** Signed distance of `p` from the line through a and b, in pane pixels. */
+    function side(a: Point, b: Point, p: Point): number {
+      return ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)) / Math.hypot(b.x - a.x, b.y - a.y);
+    }
+
+    it('puts a level wall\'s length 33 px outside its midpoint', () => {
+      const top = at(labelled(RECT).walls, 0);
+      expect([top.t.x, top.t.y]).toEqual([top.mid.x, top.mid.y - 33]);
+      const bottom = at(labelled(RECT).walls, 2);
+      expect([bottom.t.x, bottom.t.y]).toEqual([bottom.mid.x, bottom.mid.y + 33]);
+    });
+
+    it('puts an upright wall\'s length 19 px plus half its measured width outside its midpoint', () => {
+      const { walls, log } = labelled(L_ROOM);
+      // 8′ 0″ and 6′ 0″ are 50 px wide in the recording context, 14′ 0″ is 60 px.
+      const right = at(walls, 1);
+      expect([right.t.text, right.width]).toEqual(['8′ 0″', 50]);
+      expect([right.t.x, right.t.y]).toEqual([right.mid.x + 19 + 25, right.mid.y]);
+      const notch = at(walls, 3);
+      expect([notch.t.x, notch.t.y]).toEqual([notch.mid.x + 19 + 25, notch.mid.y]);
+      const left = at(walls, 5);
+      expect([left.t.text, left.width]).toEqual(['14′ 0″', 60]);
+      expect([left.t.x, left.t.y]).toEqual([left.mid.x - 19 - 30, left.mid.y]);
+      // The width is measured in the wall-length font.
+      const measured = log.findIndex((r) => r.type === 'call' && r.name === 'measureText' && r.args[0] === right.t.text);
+      expect(measured).toBeGreaterThan(-1);
+      const fontAt = log.slice(0, measured).filter((r) => r.type === 'set' && r.name === 'font').pop();
+      expect(fontAt?.type === 'set' ? fontAt.value : null).toBe('600 28px Barlow, sans-serif');
+    });
+
+    it('puts a 45° wall\'s length 19 + (half its width + 14) × √½ px outside its midpoint', () => {
+      const slope = at(labelled(TRIANGLE).walls, 1);
+      const offset = 19 + Math.SQRT1_2 * (slope.width / 2) + Math.SQRT1_2 * 14;
+      expect(slope.t.x).toBeCloseTo(slope.mid.x + Math.SQRT1_2 * offset, 6);
+      expect(slope.t.y).toBeCloseTo(slope.mid.y + Math.SQRT1_2 * offset, 6);
+    });
+
+    it.each([
+      ['the rectangle', RECT], ['the reversed rectangle', RECT_REVERSED], ['the L-shaped room', L_ROOM],
+      ['the triangle', TRIANGLE], ['the pentagon', PENTAGON],
+    ] as const)('in %s, no edge of a length\'s text box is closer than 19 px to its wall line', (_, outline) => {
+      for (const { t, a, b, width } of labelled(outline).walls) {
+        const centre = side(a, b, t);
+        const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx = 0, sy = 0]) =>
+          side(a, b, { x: t.x + (sx * width) / 2, y: t.y + sy * 14 }) * Math.sign(centre));
+        // Every corner is on the centre's side of the line, and the nearest is exactly 19 px from it.
+        expect(Math.min(...corners)).toBeGreaterThanOrEqual(19 - 1e-9);
+        expect(Math.min(...corners)).toBeCloseTo(19, 6);
+      }
+    });
   });
 
   it('10. writes the credit last, left-aligned at (160, height − 36)', () => {
@@ -420,6 +498,15 @@ describe('drawPlanPicture', () => {
       .toEqual([PLAN_PICTURE_CREDIT, 160, 1964, 'left', '400 22px Barlow, sans-serif', '#6b7280']);
     const lastDraw = log.reduce((m, r, i) => (r.type === 'call' && ['fill', 'stroke', 'fillText', 'fillRect'].includes(r.name) ? i : m), -1);
     expect(credit.index).toBe(lastDraw);
+  });
+
+  it('10. sets the credit\'s own baseline, middle, after the wall lengths', () => {
+    const { texts, log } = draw(input());
+    const credit = at(texts, texts.length - 1);
+    expect(credit.baseline).toBe('middle');
+    const lastLength = Math.max(...texts.filter((t) => t.font === '600 28px Barlow, sans-serif').map((t) => t.index));
+    const baselineSet = log.findLastIndex((r, i) => i < credit.index && r.type === 'set' && r.name === 'textBaseline');
+    expect(baselineSet).toBeGreaterThan(lastLength);
   });
 
   it('draws the steps in order: page, floor, furniture, obstacles, walls, windows, doors, names, lengths, credit', () => {

@@ -498,7 +498,7 @@ describe('decodePlan', () => {
     expect(data.length).toBeLessThanOrEqual(MAX_DATA_CHARS);
     expect(await decodePlan(data)).toEqual({ status: 'invalid' });
     expect(writes.length).toBeGreaterThan(0);
-    expect(Math.max(...writes)).toBeLessThanOrEqual(16 * 1024);
+    expect(Math.max(...writes)).toBeLessThanOrEqual(1024);
   });
 
   it('version 1 stops feeding the inflater once its output passes MAX_BYTES', async () => {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearShareFragment, readShareData, reloadPage, shareUrl } from './shareLocation';
 
 const START = window.location.pathname;
@@ -76,8 +76,29 @@ describe('shareUrl', () => {
 });
 
 describe('reloadPage', () => {
-  it('does not throw', () => {
-    // jsdom cannot navigate: it prints "Not implemented: navigation" for the attempted reload.
+  // jsdom cannot navigate, and prints "Not implemented: navigation" for a real reload. Its
+  // location.reload cannot be redefined, so the global window is stubbed with one whose reload is a mock.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubReload(impl: () => void) {
+    const reload = vi.fn(impl);
+    vi.stubGlobal('window', { location: { reload } });
+    return reload;
+  }
+
+  it('reloads the page once', () => {
+    const reload = stubReload(() => {});
+    reloadPage();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw when the reload throws', () => {
+    const reload = stubReload(() => {
+      throw new Error('blocked');
+    });
     expect(() => reloadPage()).not.toThrow();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });

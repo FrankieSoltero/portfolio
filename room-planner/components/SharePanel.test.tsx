@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { findPlanIssues } from '../domain/conflicts';
@@ -7,6 +8,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { canvasToPng, downloadBlob } from '../services/download';
 import { encodePlan } from '../services/shareLink';
 import { shareUrl } from '../services/shareLocation';
+import { clearHistory, useHistoryStore } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { captureView } from '../view/captureRegistry';
@@ -448,4 +450,137 @@ describe('SharePanel: Download 3D view', () => {
     await flush();
     expect(downloadBlob).toHaveBeenCalledTimes(1);
   });
+});
+
+describe('SharePanel: keys inside the panel', () => {
+  /** Moves and selects the desk (so there is a step to undo), then opens the panel in the Harness. */
+  function openWithDeskSelected(): void {
+    clearHistory();
+    render(<Harness />);
+    act(() => {
+      usePlanStore.getState().moveItemTo('seed-desk', 100, 100);
+      useUiStore.getState().select('seed-desk');
+    });
+    expect(useHistoryStore.getState().canUndo).toBe(true);
+    openPanel();
+    expect(screen.getByRole('button', { name: 'Copy link' })).toHaveFocus();
+  }
+
+  it.each([
+    ['ArrowRight', { key: 'ArrowRight' }],
+    ['Delete', { key: 'Delete' }],
+    ['Backspace', { key: 'Backspace' }],
+    ['r', { key: 'r' }],
+    ['Cmd+Z', { key: 'z', metaKey: true }],
+    ['Ctrl+Z', { key: 'z', ctrlKey: true }],
+  ])('%s on Copy link does not reach the planner shortcuts', (_, init) => {
+    openWithDeskSelected();
+    const before = currentDocument();
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Copy link' }), init);
+    expect(currentDocument()).toEqual(before);
+    expect(useUiStore.getState().selectedId).toBe('seed-desk');
+    expect(useHistoryStore.getState().canUndo).toBe(true);
+    expect(panel()).toBeInTheDocument();
+  });
+
+  it('Tab still moves focus through the panel and reaches the page', async () => {
+    openWithDeskSelected();
+    const seen: string[] = [];
+    const listen = (e: KeyboardEvent) => seen.push(e.key);
+    window.addEventListener('keydown', listen);
+    try {
+      const user = userEvent.setup();
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Download floor plan' })).toHaveFocus();
+      await user.tab({ shift: true });
+      expect(screen.getByRole('button', { name: 'Copy link' })).toHaveFocus();
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Copy link' }), { key: 'ArrowRight' });
+    } finally {
+      window.removeEventListener('keydown', listen);
+    }
+    expect(seen).toEqual(['Tab', 'Tab']);
+  });
+
+  it('the fallback link field still takes keys: arrows move the cursor, Ctrl+A selects all', async () => {
+    setClipboard(undefined);
+    openWithDeskSelected();
+    const before = currentDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    await flush();
+    const field = screen.getByRole('textbox', { name: 'Share link' }) as HTMLInputElement;
+    expect(field).toHaveFocus();
+    const user = userEvent.setup();
+    await user.keyboard('{ArrowLeft}{ArrowRight}{ArrowRight}');
+    expect([field.selectionStart, field.selectionEnd]).toEqual([2, 2]);
+    await user.keyboard('{Control>}a{/Control}');
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
+    expect(fireEvent.keyDown(field, { key: 'ArrowRight' })).toBe(true);
+    expect(currentDocument()).toEqual(before);
+    expect(panel()).toBeInTheDocument();
+  });
+});
+
+describe('SharePanel: an action that throws or rejects', () => {
+  /** Spies on every console method, so a test can tell nothing was logged. */
+  function watchConsole() {
+    return (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m));
+  }
+
+  it('Copy link when encodePlan rejects: the too-large message, nothing logged, and a new click tries again', async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    setClipboard(writeText);
+    vi.mocked(encodePlan).mockRejectedValue(new Error('encoder failed'));
+    const logged = watchConsole();
+    render(<SharePanel />);
+    openPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    await flush();
+    expect(screen.getByRole('status')).toHaveTextContent(TOO_LARGE);
+    expect(writeText).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    await flush();
+    expect(encodePlan).toHaveBeenCalledTimes(2);
+    logged.forEach((spy) => expect(spy).not.toHaveBeenCalled());
+  });
+
+  it.each([
+    ['drawPlanPicture throws', () => vi.mocked(drawPlanPicture).mockImplementation(() => { throw new Error('draw'); })],
+    ['canvasToPng rejects', () => vi.mocked(canvasToPng).mockRejectedValue(new Error('png'))],
+    ['downloadBlob throws', () => vi.mocked(downloadBlob).mockImplementation(() => { throw new Error('save'); })],
+  ])('Download floor plan when %s: the could-not-be-made message, nothing logged, and a new click tries again',
+    async (_, fail) => {
+      fail();
+      const logged = watchConsole();
+      render(<SharePanel />);
+      openPanel();
+      fireEvent.click(screen.getByRole('button', { name: 'Download floor plan' }));
+      await flush();
+      expect(screen.getByRole('status')).toHaveTextContent(NO_PICTURE);
+      fireEvent.click(screen.getByRole('button', { name: 'Download floor plan' }));
+      await flush();
+      expect(drawPlanPicture).toHaveBeenCalledTimes(2);
+      logged.forEach((spy) => expect(spy).not.toHaveBeenCalled());
+    });
+
+  it.each([
+    ['captureView throws', () => vi.mocked(captureView).mockImplementation(() => { throw new Error('capture'); })],
+    ['canvasToPng rejects', () => {
+      vi.mocked(captureView).mockReturnValue(document.createElement('canvas'));
+      vi.mocked(canvasToPng).mockRejectedValue(new Error('png'));
+    }],
+  ])('Download 3D view when %s: the could-not-be-made message, nothing logged, and a new click tries again',
+    async (_, fail) => {
+      fail();
+      const logged = watchConsole();
+      render(<SharePanel />);
+      openPanel();
+      fireEvent.click(screen.getByRole('button', { name: 'Download 3D view' }));
+      await flush();
+      expect(screen.getByRole('status')).toHaveTextContent(NO_PICTURE);
+      expect(downloadBlob).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Download 3D view' }));
+      await flush();
+      expect(captureView).toHaveBeenCalledTimes(2);
+      logged.forEach((spy) => expect(spy).not.toHaveBeenCalled());
+    });
 });

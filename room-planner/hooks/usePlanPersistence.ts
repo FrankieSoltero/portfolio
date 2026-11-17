@@ -111,8 +111,9 @@ function startOpening(store: PlanStore): Promise<Opening> {
  * Puts what the load at mount found into the stores.
  *
  * - No share data: the saved plan is applied as `applyLoad` does.
- * - Share data that could not be used: the saved plan is applied, then the shared-link notice
- *   replaces any notice it set, and the fragment is removed.
+ * - Share data that could not be used: the saved plan is applied, and the fragment is removed.
+ *   The shared-link notice replaces any notice the load set, except when the saved plan is from a
+ *   newer planner or storage is unavailable: those notices say work is not being saved, so they stay.
  * - A shared plan: it replaces the plan in the store and the history is cleared. With a saved plan
  *   it is a preview that can be kept, and the fragment stays. With nothing usable saved it becomes
  *   the visitor's own plan: it is saved once and the fragment removed. When the saved plan is from a
@@ -129,7 +130,10 @@ function applyOpening({ own, shared }: Opening, store: PlanStore, reportStorageP
   const ui = useUiStore.getState();
   if (shared.status !== 'ok') {
     applyLoad(own, reportStorageProblem);
-    ui.setNotice(shared.status === 'newer' ? SHARED_NEWER_NOTICE : SHARED_INVALID_NOTICE);
+    // The own load's notice that work is not being saved outranks the bad-link notice.
+    if (own.status !== 'unavailable' && own.status !== 'newer') {
+      ui.setNotice(shared.status === 'newer' ? SHARED_NEWER_NOTICE : SHARED_INVALID_NOTICE);
+    }
     clearShareFragment();
     return;
   }
@@ -157,6 +161,23 @@ function applyOpening({ own, shared }: Opening, store: PlanStore, reportStorageP
       ui.setSharedPreview({ canKeep: false });
       reportStorageProblem();
       return;
+  }
+}
+
+/**
+ * Clears each selection (item, corner, wall, opening, obstacle) whose target is not in the plan
+ * store's plan. A wall is named by its starting corner, so it exists while that corner does.
+ */
+function clearStaleSelections(): void {
+  const { room, items, openings, obstacles } = usePlanStore.getState();
+  const ui = useUiStore.getState();
+  const hasCorner = (id: string): boolean => room.outline.some((c) => c.id === id);
+  if (ui.selectedId !== null && !items.some((i) => i.id === ui.selectedId)) ui.select(null);
+  if (ui.selectedCornerId !== null && !hasCorner(ui.selectedCornerId)) ui.selectCorner(null);
+  if (ui.selectedWallId !== null && !hasCorner(ui.selectedWallId)) ui.selectWall(null);
+  if (ui.selectedOpeningId !== null && !openings.some((o) => o.id === ui.selectedOpeningId)) ui.selectOpening(null);
+  if (ui.selectedObstacleId !== null && !obstacles.some((o) => o.id === ui.selectedObstacleId)) {
+    ui.selectObstacle(null);
   }
 }
 
@@ -197,9 +218,9 @@ export async function keepSharedPlan(store: PlanStore): Promise<void> {
 
 /**
  * Leaves the previewed shared plan for the visitor's own: loads the saved plan (a rejection counts
- * as `unavailable`) and applies it exactly as a load at mount does (so it is not saved back), ends
- * the preview and removes the fragment. Does nothing without a preview, or while an earlier call
- * has not settled. Never rejects.
+ * as `unavailable`) and applies it exactly as a load at mount does (so it is not saved back), clears
+ * any selection that is not in it, ends the preview and removes the fragment. Does nothing without a
+ * preview, or while an earlier call has not settled. Never rejects.
  */
 export async function leaveSharedPlan(store: PlanStore): Promise<void> {
   if (useUiStore.getState().sharedPreview === null || leaving) return;
@@ -213,6 +234,7 @@ export async function leaveSharedPlan(store: PlanStore): Promise<void> {
     }
     // Applied while the preview is still set, so the autosave does not schedule a save of it.
     applyLoad(result, () => useUiStore.getState().setNotice(STORAGE_NOTICE));
+    clearStaleSelections();
     useUiStore.getState().setSharedPreview(null);
     clearShareFragment();
   } finally {
