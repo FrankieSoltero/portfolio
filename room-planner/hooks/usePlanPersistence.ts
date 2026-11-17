@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { CONFIG } from '../config';
 import type { PlanDocument } from '../domain/types';
 import type { LoadResult, PlanStore } from '../services/planStorage';
+import { decodePlan, type ShareDecodeResult } from '../services/shareLink';
+import { clearShareFragment, readShareData, reloadPage } from '../services/shareLocation';
 import { clearHistory } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
@@ -11,9 +13,22 @@ const INVALID_NOTICE = 'Your saved plan could not be read, so the planner starte
 export const STORAGE_NOTICE = 'This browser is blocking storage, so changes will not be saved.';
 const NEWER_NOTICE =
   'Your saved plan was made with a newer version of the planner. It has been left untouched, and changes in this session will not be saved.';
+/** Shown when a shared plan was opened as the visitor's own plan. */
+export const SHARED_OPENED_NOTICE = 'Opened a shared plan.';
+/** Shown when the address held share data that could not be read. */
+export const SHARED_INVALID_NOTICE = 'This shared link could not be read.';
+/** Shown when the address held share data from a newer planner. */
+export const SHARED_NEWER_NOTICE = 'This shared link was made with a newer version of the planner.';
+
+/** What the load at mount found: the visitor's own saved plan, and the decoded share data if any. */
+interface Opening {
+  own: LoadResult;
+  /** Null when the address held no share data. */
+  shared: ShareDecodeResult | null;
+}
 
 /** The plan store's six document fields as a plain object: what is saved, and nothing else. */
-function currentDocument(): PlanDocument {
+export function currentDocument(): PlanDocument {
   const s = usePlanStore.getState();
   return {
     schemaVersion: s.schemaVersion,
@@ -73,6 +88,139 @@ function applyLoad(result: LoadResult, reportStorageProblem: () => void): void {
 }
 
 /**
+ * Starts the load at mount: reads the address's share data once, then loads the saved plan and,
+ * when there is share data, decodes it, waiting for both. Never rejects: a rejected load counts as
+ * `unavailable`, and a rejected decode as `invalid`.
+ */
+function startOpening(store: PlanStore): Promise<Opening> {
+  const data = readShareData();
+  const own = store.load();
+  if (data === null) {
+    return own.then(
+      (result): Opening => ({ own: result, shared: null }),
+      (): Opening => ({ own: { status: 'unavailable' }, shared: null }),
+    );
+  }
+  return Promise.all([
+    own.catch((): LoadResult => ({ status: 'unavailable' })),
+    decodePlan(data).catch((): ShareDecodeResult => ({ status: 'invalid' })),
+  ]).then(([result, shared]): Opening => ({ own: result, shared }));
+}
+
+/**
+ * Puts what the load at mount found into the stores.
+ *
+ * - No share data: the saved plan is applied as `applyLoad` does.
+ * - Share data that could not be used: the saved plan is applied, then the shared-link notice
+ *   replaces any notice it set, and the fragment is removed.
+ * - A shared plan: it replaces the plan in the store and the history is cleared. With a saved plan
+ *   it is a preview that can be kept, and the fragment stays. With nothing usable saved it becomes
+ *   the visitor's own plan: it is saved once and the fragment removed. When the saved plan is from a
+ *   newer planner or storage is unavailable it is a preview that cannot be kept (storage problems
+ *   are reported).
+ *
+ * A shared plan reaches the stores only as the `doc` of a decode `ok` result.
+ */
+function applyOpening({ own, shared }: Opening, store: PlanStore, reportStorageProblem: () => void): void {
+  if (shared === null) {
+    applyLoad(own, reportStorageProblem);
+    return;
+  }
+  const ui = useUiStore.getState();
+  if (shared.status !== 'ok') {
+    applyLoad(own, reportStorageProblem);
+    ui.setNotice(shared.status === 'newer' ? SHARED_NEWER_NOTICE : SHARED_INVALID_NOTICE);
+    clearShareFragment();
+    return;
+  }
+  usePlanStore.getState().reset(shared.doc);
+  clearHistory();
+  switch (own.status) {
+    case 'loaded':
+      ui.setSharedPreview({ canKeep: true });
+      return;
+    case 'empty':
+    case 'invalid':
+      clearShareFragment();
+      store.save(shared.doc).then(
+        (ok) => {
+          if (ok) ui.setNotice(SHARED_OPENED_NOTICE);
+          else reportStorageProblem();
+        },
+        () => reportStorageProblem(),
+      );
+      return;
+    case 'newer':
+      ui.setSharedPreview({ canKeep: false });
+      return;
+    case 'unavailable':
+      ui.setSharedPreview({ canKeep: false });
+      reportStorageProblem();
+      return;
+  }
+}
+
+/** True while a `keepSharedPlan` save has not settled. */
+let keeping = false;
+/** True while a `leaveSharedPlan` load has not settled. */
+let leaving = false;
+
+/**
+ * Keeps the previewed shared plan as the visitor's own: saves the plan as it is now (edits made
+ * while previewing included), then ends the preview, removes the fragment and clears the undo
+ * history, so autosave resumes. Does nothing without a preview that can be kept, or while an
+ * earlier call has not settled. If the save fails, the storage notice is shown and the preview and
+ * fragment stay. Never rejects.
+ */
+export async function keepSharedPlan(store: PlanStore): Promise<void> {
+  const preview = useUiStore.getState().sharedPreview;
+  if (preview === null || !preview.canKeep || keeping) return;
+  keeping = true;
+  try {
+    let saved: boolean;
+    try {
+      saved = await store.save(currentDocument());
+    } catch {
+      saved = false;
+    }
+    if (!saved) {
+      useUiStore.getState().setNotice(STORAGE_NOTICE);
+      return;
+    }
+    useUiStore.getState().setSharedPreview(null);
+    clearShareFragment();
+    clearHistory();
+  } finally {
+    keeping = false;
+  }
+}
+
+/**
+ * Leaves the previewed shared plan for the visitor's own: loads the saved plan (a rejection counts
+ * as `unavailable`) and applies it exactly as a load at mount does (so it is not saved back), ends
+ * the preview and removes the fragment. Does nothing without a preview, or while an earlier call
+ * has not settled. Never rejects.
+ */
+export async function leaveSharedPlan(store: PlanStore): Promise<void> {
+  if (useUiStore.getState().sharedPreview === null || leaving) return;
+  leaving = true;
+  try {
+    let result: LoadResult;
+    try {
+      result = await store.load();
+    } catch {
+      result = { status: 'unavailable' };
+    }
+    // Applied while the preview is still set, so the autosave does not schedule a save of it.
+    applyLoad(result, () => useUiStore.getState().setNotice(STORAGE_NOTICE));
+    useUiStore.getState().setSharedPreview(null);
+    clearShareFragment();
+  } finally {
+    leaving = false;
+  }
+}
+
+/**
  * Loads the saved plan from `store` on mount, then saves every document change, debounced by
  * `CONFIG.saveDebounceMs`. `ready` is false until the load has been applied, so the seeded plan is
  * never shown before a saved one.
@@ -91,10 +239,13 @@ function applyLoad(result: LoadResult, reportStorageProblem: () => void): void {
  * - A load result is applied at most once per store: a later re-run of the effect with the same
  *   store (Fast Refresh, an Activity shown again) only subscribes and reports ready, so the live
  *   document is not replaced by the one loaded at mount.
+ * - The address's share data is read once with the load, and kept and applied with it (see
+ *   `applyOpening`). While the UI store's `sharedPreview` is set, document changes schedule no save.
+ * - While mounted, a `hashchange` to an address with share data reloads the page.
  */
 export function usePlanPersistence(store: PlanStore): { ready: boolean } {
   const [ready, setReady] = useState(false);
-  const loading = useRef<{ store: PlanStore; result: Promise<LoadResult>; applied: boolean } | null>(null);
+  const loading = useRef<{ store: PlanStore; opening: Promise<Opening>; applied: boolean } | null>(null);
   const storageNoticeShown = useRef(false);
 
   useEffect(() => {
@@ -131,33 +282,41 @@ export function usePlanPersistence(store: PlanStore): { ready: boolean } {
       if (document.visibilityState === 'hidden') flush();
     }
 
-    if (loading.current?.store !== store) loading.current = { store, result: store.load(), applied: false };
+    /** A pasted share link changes only the fragment; reloading opens it as a fresh load. */
+    function onHashChange(): void {
+      if (readShareData() !== null) reloadPage();
+    }
+
+    window.addEventListener('hashchange', onHashChange);
+
+    if (loading.current?.store !== store) loading.current = { store, opening: startOpening(store), applied: false };
     const load = loading.current;
-    load.result
-      .catch((): LoadResult => ({ status: 'unavailable' }))
-      .then((result) => {
-        if (!active) return;
-        if (!load.applied) {
-          load.applied = true;
-          applyLoad(result, reportStorageProblem);
-        }
-        const stopDocument = usePlanStore.subscribe((next, prev) => {
-          if (!documentChanged(next, prev)) return;
-          if (timer !== null) clearTimeout(timer);
-          timer = setTimeout(save, CONFIG.saveDebounceMs);
-        });
-        window.addEventListener('pagehide', flush);
-        document.addEventListener('visibilitychange', onVisibilityChange);
-        unsubscribe = () => {
-          stopDocument();
-          window.removeEventListener('pagehide', flush);
-          document.removeEventListener('visibilitychange', onVisibilityChange);
-        };
-        setReady(true);
+    load.opening.then((opening) => {
+      if (!active) return;
+      if (!load.applied) {
+        load.applied = true;
+        applyOpening(opening, store, reportStorageProblem);
+      }
+      const stopDocument = usePlanStore.subscribe((next, prev) => {
+        if (!documentChanged(next, prev)) return;
+        // A previewed shared plan is not saved; keeping it saves it explicitly.
+        if (useUiStore.getState().sharedPreview !== null) return;
+        if (timer !== null) clearTimeout(timer);
+        timer = setTimeout(save, CONFIG.saveDebounceMs);
       });
+      window.addEventListener('pagehide', flush);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      unsubscribe = () => {
+        stopDocument();
+        window.removeEventListener('pagehide', flush);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      };
+      setReady(true);
+    });
 
     return () => {
       active = false;
+      window.removeEventListener('hashchange', onHashChange);
       unsubscribe?.();
       flush();
     };

@@ -53,7 +53,9 @@ export function PlanSection({ planStore }: { planStore: PlanStore }): JSX.Elemen
         <span className="sidebar-heading-num">04</span>
         <span>Plan</span>
       </h6>
-      <p className="note plan-section-note">Saved in this browser only. Nothing is sent anywhere.</p>
+      <p className="note plan-section-note">
+        Saved in this browser only. Nothing is sent anywhere. A share link contains the whole plan.
+      </p>
       <ConfirmButton
         className="plan-section-reset"
         label="Reset plan"

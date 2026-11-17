@@ -575,6 +575,31 @@ describe('uiStore', () => {
   });
 });
 
+describe('uiStore: shared preview', () => {
+  it('starts with no shared preview', () => {
+    expect(freshUi.sharedPreview).toBeNull();
+  });
+
+  it('setSharedPreview sets only its field, and null clears it', () => {
+    const ui = useUiStore.getState();
+    ui.select('seed-bed');
+    ui.setNotice('n');
+    const before = useUiStore.getState();
+    useUiStore.getState().setSharedPreview({ canKeep: true });
+    expect(useUiStore.getState()).toEqual({ ...before, sharedPreview: { canKeep: true } });
+    useUiStore.getState().setSharedPreview({ canKeep: false });
+    expect(useUiStore.getState()).toEqual({ ...before, sharedPreview: { canKeep: false } });
+    useUiStore.getState().setSharedPreview(null);
+    expect(useUiStore.getState()).toEqual({ ...before, sharedPreview: null });
+  });
+
+  it('reset ends a shared preview', () => {
+    useUiStore.getState().setSharedPreview({ canKeep: true });
+    useUiStore.getState().reset();
+    expect(useUiStore.getState().sharedPreview).toBeNull();
+  });
+});
+
 describe('uiStore: doors, windows and obstacles', () => {
   it('starts with the corner tool and no opening or obstacle selected', () => {
     expect(freshUi).toMatchObject({ roomTool: 'corner', selectedOpeningId: null, selectedObstacleId: null });
