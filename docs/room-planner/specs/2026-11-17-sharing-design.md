@@ -1,7 +1,7 @@
 # Sharing: design
 
 - **Date:** 2026-11-17
-- **Status:** awaiting the owner's approval
+- **Status:** approved by the owner on 2026-11-17
 - **Delivery:** its own pull request (branch `sharing`), slice F.
 
 ## The problem
@@ -86,7 +86,7 @@ blueprint mode it is the blueprint drawing.
 
 ## How it works
 
-- **Making the link.** New pure module `room-planner/domain/shareLink.ts`. Encode: the plan
+- **Making the link.** New module `room-planner/services/shareLink.ts`. Encode: the plan
   as JSON, compressed with the browser's built-in `CompressionStream('deflate-raw')`, written
   as base64url, prefixed `1.`. Where the browser lacks `CompressionStream`, the JSON is
   written uncompressed with the prefix `0.`. Decode accepts both.
