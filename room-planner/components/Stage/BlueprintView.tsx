@@ -1,7 +1,8 @@
 /**
  * Blueprint 3D pane: a 2D canvas line drawing of the room through the shared orbit camera.
- * Owns canvas sizing, device-pixel-ratio scaling, token reading and redraw scheduling;
- * the drawing itself is the pure `drawBlueprint`. Ported from prototype lines 178 and 578–583.
+ * Owns canvas sizing, device-pixel-ratio scaling, token reading, redraw scheduling and registering
+ * its picture for download; the drawing itself is the pure `drawBlueprint`.
+ * Ported from prototype lines 178 and 578–583.
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
@@ -13,6 +14,7 @@ import { useUiStore } from '../../state/uiStore';
 import { readTokens } from '../../styles/tokens';
 import { drawBlueprint } from '../../view/blueprintDraw';
 import { computeCameraPose, orbitCamera, zoomCamera } from '../../view/camera';
+import { registerViewCapture } from '../../view/captureRegistry';
 import type { PaneRect } from '../../view/panes';
 
 /** How long to wait before retrying when the stylesheet's colour tokens are not readable yet. */
@@ -81,6 +83,25 @@ export function BlueprintView({ pane }: { pane: PaneRect }): JSX.Element {
       live = false;
     };
   }, []);
+
+  // The Share panel's 3D picture: the canvas as drawn, at its pixel size, on the page background
+  // (the drawing itself leaves the background transparent).
+  useEffect(() => registerViewCapture(() => {
+    const canvas = canvasRef.current;
+    const tokens = readTokens();
+    if (!canvas || !tokens) return null;
+    const { width, height } = canvas;
+    if (width === 0 || height === 0) return null;
+    const picture = document.createElement('canvas');
+    picture.width = width;
+    picture.height = height;
+    const g = picture.getContext('2d');
+    if (!g) return null;
+    g.fillStyle = tokens.bg;
+    g.fillRect(0, 0, width, height);
+    g.drawImage(canvas, 0, 0);
+    return picture;
+  }), []);
 
   // React's onWheel listener is passive and cannot stop the page scrolling.
   useEffect(() => {

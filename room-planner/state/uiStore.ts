@@ -27,6 +27,11 @@ export interface UiState {
   notice: string | null;
   /** True when this session must not save the plan. */
   saveBlocked: boolean;
+  /**
+   * Set while a shared plan is shown as a preview: nothing is autosaved, and `canKeep` says whether
+   * it can be kept as the visitor's own plan. Null otherwise.
+   */
+  sharedPreview: { canKeep: boolean } | null;
   layout: LayoutMode;
   insetSwapped: boolean;
   tab: StageTab;
@@ -71,6 +76,7 @@ export interface UiState {
   setRoomProblem(text: string | null): void;
   setNotice(text: string | null): void;
   setSaveBlocked(b: boolean): void;
+  setSharedPreview(p: { canKeep: boolean } | null): void;
   reset(): void;
 }
 
@@ -87,6 +93,7 @@ type UiData = Pick<
   | 'roomProblem'
   | 'notice'
   | 'saveBlocked'
+  | 'sharedPreview'
   | 'layout'
   | 'insetSwapped'
   | 'tab'
@@ -109,6 +116,7 @@ function initialUi(): UiData {
     roomProblem: null,
     notice: null,
     saveBlocked: false,
+    sharedPreview: null,
     layout: 'inset',
     insetSwapped: false,
     tab: '2d',
@@ -164,5 +172,6 @@ export const useUiStore = create<UiState>()((set) => ({
   setRoomProblem: (roomProblem) => set({ roomProblem }),
   setNotice: (notice) => set({ notice }),
   setSaveBlocked: (saveBlocked) => set({ saveBlocked }),
+  setSharedPreview: (sharedPreview) => set({ sharedPreview }),
   reset: () => set(initialUi()),
 }));

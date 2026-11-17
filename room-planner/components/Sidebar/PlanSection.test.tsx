@@ -2,11 +2,21 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialDocument } from '../../domain/catalog';
+import { clearShareFragment } from '../../services/shareLocation';
 import { clearHistory, undo, useHistoryStore } from '../../state/historyStore';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { createFakePlanStore, type FakePlanStore, type Pending } from '../../test/fakePlanStore';
 import { PlanSection } from './PlanSection';
+
+vi.mock('../../services/shareLocation', () => ({
+  readShareData: vi.fn(),
+  clearShareFragment: vi.fn(),
+  shareUrl: vi.fn(),
+  reloadPage: vi.fn(),
+}));
+
+const clearFragment = vi.mocked(clearShareFragment);
 
 // Vitest globals are off, so Testing Library cannot register its own cleanup.
 afterEach(cleanup);
@@ -14,6 +24,7 @@ afterEach(cleanup);
 beforeEach(() => {
   usePlanStore.getState().reset();
   useUiStore.getState().reset();
+  clearFragment.mockReset();
 });
 
 const STORAGE_NOTICE = 'This browser is blocking storage, so changes will not be saved.';
@@ -82,7 +93,9 @@ describe('PlanSection', () => {
     expect(heading).toHaveClass('sidebar-heading');
     expect(heading.querySelector('.sidebar-heading-num')).toHaveTextContent('04');
     expect(heading).toHaveTextContent(/^04Plan$/);
-    expect(screen.getByText('Saved in this browser only. Nothing is sent anywhere.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Saved in this browser only. Nothing is sent anywhere. A share link contains the whole plan.'),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Reset plan']);
   });
 
@@ -213,6 +226,42 @@ describe('PlanSection', () => {
     expect(useUiStore.getState().saveBlocked).toBe(false);
     expect(useUiStore.getState().notice).toBeNull();
   });
+});
+
+describe('PlanSection: reset during a shared-plan preview', () => {
+  it.each([{ canKeep: true }, { canKeep: false }])(
+    'with a preview (%o): ends the preview and clears the share fragment before the plan store is reset',
+    async (preview) => {
+      const store = createFakePlanStore();
+      render(<PlanSection planStore={store} />);
+      dirtyTheStores();
+      act(() => useUiStore.getState().setSharedPreview(preview));
+      const order: string[] = [];
+      clearFragment.mockImplementation(() => {
+        order.push('clearShareFragment');
+      });
+      const planReset = usePlanStore.getState().reset;
+      usePlanStore.setState({
+        reset: (doc) => {
+          order.push(`plan reset, preview ${JSON.stringify(useUiStore.getState().sharedPreview)}`);
+          planReset(doc);
+        },
+      });
+      try {
+        await act(async () => {
+          await confirmReset();
+        });
+      } finally {
+        usePlanStore.setState({ reset: planReset });
+      }
+      expect(store.clearCalls).toBe(1);
+      expect(clearFragment).toHaveBeenCalledTimes(1);
+      expect(order).toEqual(['clearShareFragment', 'plan reset, preview null']);
+      expect(useUiStore.getState().sharedPreview).toBeNull();
+      expectSeededPlanAndFreshUi();
+      expect(useUiStore.getState().notice).toBeNull();
+    },
+  );
 });
 
 describe('PlanSection: undo history', () => {

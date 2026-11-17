@@ -817,3 +817,70 @@ Six entries. Entry 1 is a decision of the first slice that the owner reversed. E
 - **How to avoid:** Select the listener (`-sTCP:LISTEN`), print what will be stopped, and
   read it before stopping anything.
 
+
+## 2026-11-17 — Sharing
+
+Nine entries. Entry 1 was found by the Task 1 reviewer, entry 2 by the Task 5 implementer, entries 3 and 4 by the live check, entries 5 to 7 by the whole-branch review, and entries 8 and 9 during the final fix pass and plan writing. Items left as they are are listed under "Known limits of sharing (slice F)" in `docs/room-planner/README.md`.
+
+### The decompression cap bounded what was read, not what was inflated (Task 1 review)
+- **Date:** 2026-11-17
+- **What happened:** The first link decoder wrote the whole payload to `DecompressionStream` in one write and stopped reading past the cap. Chromium inflates a written chunk completely, so a 400 KB link could make a visitor's tab inflate about 540 MB. The tests passed because Node's stream respects backpressure. The task reviewer measured it in a real Chromium: 28 to 40 ms and the whole input, against 0.2 ms and 2,048 bytes after the fix.
+- **Root cause:** The cap was applied to the reader, not to the producer. The test environment behaved differently from the browser.
+- **Fix:** Commit `7ea2d93`: the inflater is fed in 1 KB slices, awaiting each write.
+- **How to avoid:** For any size cap on a stream, test what the producer did, not what the consumer read, and measure in the real browser.
+
+### The plan named the wrong test file for the header (plan Amendment 1)
+- **Date:** 2026-11-17
+- **What happened:** Task 5's file list had `bars.test.tsx`; the header's tests are in `Sidebar/RoomSection.test.tsx`. The plan also missed that `.app-body` has `grid-row: 3`, so the banner could not be placed by changing `.app`'s rows alone. The implementer stopped before writing code and reported.
+- **Root cause:** The controller listed test files from their names without grepping for the tests.
+- **Fix:** Plan Amendment 1 added the right file, limited to the two tests the task changes, and allowed `.app-body { grid-row: 4; }`.
+- **How to avoid:** `git grep` for the component's tests and for the CSS rules a task changes before writing the file list.
+
+### Wall lengths overlapped upright walls in the floor-plan picture (plan Amendment 2)
+- **Date:** 2026-11-17
+- **What happened:** The plan gave a fixed 34 px offset for a label drawn level. Beside an upright wall the text's half width (about 35 px) reaches back into the wall, so `14′ 0″` and both `7′ 0″` labels were partly hidden. Unit tests pinned the plan's number, so they passed. Live check run 1 found it by looking at the image.
+- **Root cause:** A fixed offset in the plan's exact values, never looked at on a real rendering.
+- **Fix:** Commit `7b918e6`: the label's centre is `19 + |n.x| × textWidth / 2 + |n.y| × 14` px from the wall's midpoint along the outward normal, with `textWidth` measured.
+- **How to avoid:** For anything drawn, look at a real rendering of a non-trivial case before fixing numbers in a plan.
+
+### Live row S11 was written wrongly (plan Amendment 2)
+- **Date:** 2026-11-17
+- **What happened:** S11 probed the centre of the bed's footprint for the fill colour `#e4e8ee`, but the bed's name is drawn there. The app was right.
+- **Root cause:** The row was written without asking what else is drawn at that point.
+- **Fix:** Amendment 2 moved the probe to the bed's horizontal centre, 40 px below the top edge of its footprint, and added a label-clearance check. S11 was run again.
+- **How to avoid:** When writing a pixel check, ask what else is drawn at that point. Walk each row in the real page before the plan is reviewed.
+
+### "Reset plan" during a preview adopted the shared plan after a reload (whole-branch review, plan Amendment 3)
+- **Date:** 2026-11-17
+- **What happened:** The plan first had Reset clear the share fragment, then removed that at plan review as "not in the spec" without checking what Reset then did during a preview. The reset ran while the preview flag was set, so nothing was saved and `#plan=` stayed. After a reload the shared plan became the visitor's own, right after they chose "Erase everything and start over". Confirmed in a browser.
+- **Root cause:** A behaviour was removed to match the spec without walking the flow it was protecting.
+- **Fix:** Commit `7b918e6`: `resetPlan` ends the preview and clears the fragment before it resets the plan store.
+- **How to avoid:** When removing a behaviour to match a spec, walk the flow it was protecting.
+
+### Shortcuts fired inside the Share panel (whole-branch review)
+- **Date:** 2026-11-17
+- **What happened:** Only Escape was stopped. With focus on `Copy link`, an arrow key moved the selected piece. The task review rated this minor because it matched other header buttons. The whole-branch review confirmed it in a browser and rated it important, because opening the panel moves focus into it and Delete would remove the selected piece.
+- **Root cause:** The panel took focus but did not own its keys.
+- **Fix:** Commit `7b918e6`: a key pressed inside the dialog does not reach the global shortcuts, except Tab. Escape still closes it.
+- **How to avoid:** A dialog that takes focus must own its keys.
+
+### A bad-link notice hid the "changes will not be saved" notices (plan Amendment 3)
+- **Date:** 2026-11-17
+- **What happened:** When a link was unreadable or from a newer planner, the shared-link notice replaced the notice set by the visitor's own load. Two of those notices say that work is not being saved (storage blocked; saved plan from a newer planner).
+- **Root cause:** A defect in the plan's table: "the shared notice replaces a notice the own load set".
+- **Fix:** Commit `7b918e6`: when the own load is `unavailable` or `newer`, its notice stays and the shared-link notice is not shown. The fragment is still cleared.
+- **How to avoid:** When two messages compete for one slot, decide which one the visitor cannot afford to miss.
+
+### A test that failed at random (final fix pass)
+- **Date:** 2026-11-17
+- **What happened:** "unmounting with the Copied timer running clears it" counted all pending timers. jsdom creates one of its own (`_requestFocusFixup`) when more than about 16 ms pass between tests, so the test failed about 1 run in 10 once more tests came before it.
+- **Root cause:** The test counted every timer, not the component's own.
+- **Fix:** Commit `0876252`: only `setTimeout` and `clearTimeout` are faked in that test. It passed 30 of 30 runs afterwards.
+- **How to avoid:** Count the component's own timer, not all timers. A test that fails once should be run in a loop before it is called a fluke.
+
+### A script of the controller's corrupted the plan file for a minute
+- **Date:** 2026-11-17
+- **What happened:** While making the plan's file lists match its table, a regex also matched numbered rows of a behaviour table and wrote those into the task blocks. The plan-structure check, run again, caught it, and it was fixed before the plan was committed.
+- **Root cause:** The regex ran over the whole file, not over the one section.
+- **Fix:** The plan file was corrected before it was committed.
+- **How to avoid:** Slice the section first, then match. Re-run the structure check after any scripted edit.

@@ -1,6 +1,7 @@
 import type { Units } from '../domain/types';
 import { redo, undo, useHistoryStore } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
+import { SharePanel } from './SharePanel';
 import { Segmented, type SegmentedOption } from './ui/Segmented';
 import './Sidebar/sidebar.css';
 
@@ -13,8 +14,8 @@ const UNIT_OPTIONS: readonly SegmentedOption<Units>[] = [
 ];
 
 /**
- * Top navigation bar: the brand, the Undo and Redo buttons, and the units toggle. Changing units
- * never changes stored lengths. A button with nothing to undo or redo is greyed out with
+ * Top navigation bar: the brand, the Undo and Redo buttons, the Share button with its panel
+ * (SharePanel), and the units toggle. Changing units never changes stored lengths. A button with nothing to undo or redo is greyed out with
  * aria-disabled rather than disabled, so it keeps keyboard focus, and clicking it does nothing.
  * A hidden status element announces "Undone" or "Redone" to screen readers. It is in the header from
  * the first render and never re-created, since screen readers often skip a live region inserted
@@ -54,6 +55,9 @@ export function Header() {
         >
           Redo
         </button>
+      </div>
+      <div className="header-share">
+        <SharePanel />
       </div>
       <span className="note">Units</span>
       <Segmented<Units> name="units" aria-label="Units" value={units} options={UNIT_OPTIONS} onChange={setUnits} />

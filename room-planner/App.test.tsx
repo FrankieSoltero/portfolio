@@ -178,6 +178,28 @@ describe('App: saved plan', () => {
   });
 });
 
+describe('App: shared-plan banner', () => {
+  /** The class each child of the `.app` root starts with, in order. */
+  function shellChildren(container: HTMLElement): string[] {
+    const root = container.querySelector('.app');
+    return Array.from(root?.children ?? []).map((el) => el.className.split(' ')[0]);
+  }
+
+  it('renders the banner right after the notice, above the body; without either the shell is unchanged', async () => {
+    const { container } = await renderApp(
+      createFakePlanStore({ load: { type: 'resolve', value: { status: 'unavailable' } } }),
+    );
+    act(() => useUiStore.getState().setSharedPreview({ canKeep: true }));
+    expect(shellChildren(container)).toEqual(['nav', 'notice', 'shared-banner', 'app-body']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(shellChildren(container)).toEqual(['nav', 'shared-banner', 'app-body']);
+
+    act(() => useUiStore.getState().setSharedPreview(null));
+    expect(shellChildren(container)).toEqual(['nav', 'app-body']);
+  });
+});
+
 describe('App: reset plan', () => {
   const STORAGE_NOTICE = 'This browser is blocking storage, so changes will not be saved.';
 

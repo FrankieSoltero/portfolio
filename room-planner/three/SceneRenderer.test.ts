@@ -594,4 +594,108 @@ describe('SceneRenderer', () => {
       expect(watch.disposed()).toBe(watch.total);
     });
   });
+
+  describe('capture', () => {
+    interface CtxCall { canvas: HTMLCanvasElement; name: string; args: unknown[]; fillStyle: unknown; renders: number }
+
+    /** The WebGL canvas the renderer draws into, at a size the real renderer's `setSize` would give it. */
+    let gl: HTMLCanvasElement;
+    /** Every 2D context call, with the canvas it was made on and the renders done before it. */
+    let ctxCalls: CtxCall[];
+
+    /** A 2D context stand-in for `canvas` that records each call and the fill style it was made with. */
+    function recordingContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+      const state: Record<string, unknown> = {};
+      return new Proxy(state, {
+        get(_t, name) {
+          if (typeof name !== 'string') return undefined;
+          if (name in state) return state[name];
+          return (...args: unknown[]) => {
+            ctxCalls.push({ canvas, name, args, fillStyle: state.fillStyle, renders: fake.renders.length });
+          };
+        },
+        set(_t, name, value: unknown) {
+          if (typeof name === 'string') state[name] = value;
+          return true;
+        },
+      }) as unknown as CanvasRenderingContext2D;
+    }
+
+    beforeEach(() => {
+      ctxCalls = [];
+      vi.mocked(HTMLCanvasElement.prototype.getContext).mockImplementation(
+        (function (this: HTMLCanvasElement) {
+          return recordingContext(this);
+        }) as unknown as HTMLCanvasElement['getContext'],
+      );
+      gl = document.createElement('canvas');
+      gl.width = 2000;
+      gl.height = 1200;
+      sr = new SceneRenderer(gl, TOKENS, () => fake);
+    });
+
+    /** The calls made on the captured canvas's context. */
+    function callsOn(canvas: HTMLCanvasElement): CtxCall[] {
+      return ctxCalls.filter((c) => c.canvas === canvas);
+    }
+
+    it('renders once more and returns a new canvas of the WebGL canvas pixel size', () => {
+      sr.update(input());
+      const out = sr.capture();
+      expect(out).toBeInstanceOf(HTMLCanvasElement);
+      expect(out).not.toBe(gl);
+      expect(out?.width).toBe(2000);
+      expect(out?.height).toBe(1200);
+      expect(fake.renders).toHaveLength(2);
+      expect(fake.renders[1]?.scene).toBe(fake.renders[0]?.scene);
+      expect(fake.renders[1]?.camera).toBe(fake.renders[0]?.camera);
+    });
+
+    it('fills the new canvas with the page background, then copies the freshly rendered WebGL canvas on top', () => {
+      sr.update(input());
+      const out = sr.capture();
+      if (!out) throw new Error('no capture');
+      const calls = callsOn(out);
+      const fill = calls.findIndex((c) => c.name === 'fillRect');
+      const draw = calls.findIndex((c) => c.name === 'drawImage');
+      expect(fill).toBeGreaterThanOrEqual(0);
+      expect(calls[fill]?.args).toEqual([0, 0, 2000, 1200]);
+      expect(calls[fill]?.fillStyle).toBe(TOKENS.bg);
+      expect(draw).toBeGreaterThan(fill);
+      expect(calls[draw]?.args).toEqual([gl, 0, 0]);
+      // The copy happens in the same call, after the extra render: the WebGL canvas is not kept between frames.
+      expect(calls[draw]?.renders).toBe(2);
+    });
+
+    it('returns null and renders nothing before any update', () => {
+      expect(sr.capture()).toBeNull();
+      expect(fake.renders).toHaveLength(0);
+    });
+
+    it('returns null and renders nothing after dispose', () => {
+      sr.update(input());
+      sr.dispose();
+      expect(sr.capture()).toBeNull();
+      expect(fake.renders).toHaveLength(1);
+    });
+
+    it.each([
+      ['width', 0, 1200],
+      ['height', 2000, 0],
+    ])('returns null when the WebGL canvas has zero %s', (_what, width, height) => {
+      sr.update(input());
+      gl.width = width;
+      gl.height = height;
+      expect(sr.capture()).toBeNull();
+    });
+
+    it('returns null, without throwing, when a 2D context cannot be made', () => {
+      sr.update(input());
+      vi.mocked(HTMLCanvasElement.prototype.getContext).mockImplementation(
+        (() => null) as unknown as HTMLCanvasElement['getContext'],
+      );
+      expect(() => sr.capture()).not.toThrow();
+      expect(sr.capture()).toBeNull();
+    });
+  });
 });

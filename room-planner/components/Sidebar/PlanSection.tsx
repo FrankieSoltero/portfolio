@@ -1,6 +1,7 @@
 import { type JSX, useRef } from 'react';
 import { STORAGE_NOTICE } from '../../hooks/usePlanPersistence';
 import type { PlanStore } from '../../services/planStorage';
+import { clearShareFragment } from '../../services/shareLocation';
 import { clearHistory } from '../../state/historyStore';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
@@ -10,7 +11,9 @@ import './sidebar.css';
 /**
  * Starts over: erases the saved plan, then restores the seeded plan and the initial UI state.
  *
- * Order matters. The saved key is cleared first and awaited. The plan store is reset next; that
+ * Order matters. The saved key is cleared first and awaited. Any shared-plan preview is then ended
+ * and the `#plan=` fragment removed, so the reset below is saved like any other. The plan store is
+ * reset next; that
  * changes the document, so the autosave writes the seeded plan back after its debounce; the undo
  * history is cleared right after it, so the reset cannot be undone. The UI store is reset last,
  * which clears any notice and lifts `saveBlocked` (so a session that found a plan from a newer
@@ -26,6 +29,10 @@ async function resetPlan(planStore: PlanStore): Promise<void> {
   } catch {
     cleared = false;
   }
+  // A shared-plan preview ends first, so the autosave saves the seeded plan as after any reset,
+  // and the share fragment goes, so a reload does not open the shared plan again.
+  useUiStore.getState().setSharedPreview(null);
+  clearShareFragment();
   usePlanStore.getState().reset();
   clearHistory();
   const webglAvailable = useUiStore.getState().webglAvailable;
@@ -53,7 +60,9 @@ export function PlanSection({ planStore }: { planStore: PlanStore }): JSX.Elemen
         <span className="sidebar-heading-num">04</span>
         <span>Plan</span>
       </h6>
-      <p className="note plan-section-note">Saved in this browser only. Nothing is sent anywhere.</p>
+      <p className="note plan-section-note">
+        Saved in this browser only. Nothing is sent anywhere. A share link contains the whole plan.
+      </p>
       <ConfirmButton
         className="plan-section-reset"
         label="Reset plan"

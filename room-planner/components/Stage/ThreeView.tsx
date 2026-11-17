@@ -1,7 +1,8 @@
 /**
  * Realistic 3D pane: a WebGL canvas driven by `SceneRenderer` through the shared orbit camera.
  * Owns renderer creation (once the colour tokens are readable), WebGL failure reporting,
- * redraw scheduling and orbit/zoom input. Ported from prototype lines 181 and 547–577.
+ * redraw scheduling, orbit/zoom input and registering its picture for download.
+ * Ported from prototype lines 181 and 547–577.
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
@@ -13,6 +14,7 @@ import { useUiStore } from '../../state/uiStore';
 import { readTokens } from '../../styles/tokens';
 import { SceneRenderer } from '../../three/SceneRenderer';
 import { computeCameraPose, orbitCamera, zoomCamera } from '../../view/camera';
+import { registerViewCapture } from '../../view/captureRegistry';
 import type { PaneRect } from '../../view/panes';
 
 const CANVAS_STYLE = {
@@ -81,6 +83,12 @@ export default function ThreeView({ pane }: { pane: PaneRect }): JSX.Element {
     });
     return () => cancelAnimationFrame(frame);
   }, [renderer, room, items, openings, obstacles, selectedId, conflicts, camera, pane]);
+
+  // While the renderer exists, the Share panel's 3D picture comes from it.
+  useEffect(() => {
+    if (!renderer) return;
+    return registerViewCapture(() => renderer.capture());
+  }, [renderer]);
 
   // React's onWheel listener is passive and cannot stop the page scrolling.
   useEffect(() => {

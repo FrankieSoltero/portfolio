@@ -3,7 +3,8 @@
  * the room is rebuilt when its outline, height or wall holes (doors and windows) change by value,
  * each item's model is rebuilt when its `modelKey` changes and otherwise only moved, each obstacle
  * likewise when its shape, size or elevation changes, and every removed subtree is disposed.
- * Each `update` renders exactly once. Ported from prototype lines 473–485 and 547–577.
+ * Each `update` renders exactly once; `capture` renders once more to copy the picture out.
+ * Ported from prototype lines 473–485 and 547–577.
  */
 import * as THREE from 'three';
 import { CONFIG } from '../config';
@@ -83,6 +84,7 @@ function obstacleKey(o: Obstacle): string {
 }
 
 export class SceneRenderer {
+  private readonly canvas: HTMLCanvasElement;
   private readonly renderer: RendererLike;
   private readonly tokens: Tokens;
   private readonly scene = new THREE.Scene();
@@ -95,10 +97,13 @@ export class SceneRenderer {
   private roomKey = '';
   private size = { width: 0, height: 0, pixelRatio: 0 };
   private disposed = false;
+  /** Whether `update` has drawn at least once, so the scene and camera describe a real frame. */
+  private drawn = false;
 
   constructor(canvas: HTMLCanvasElement, tokens: Tokens,
     createRenderer: (canvas: HTMLCanvasElement) => RendererLike = createWebGLRenderer) {
     this.tokens = tokens;
+    this.canvas = canvas;
     this.renderer = createRenderer(canvas);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
@@ -123,6 +128,28 @@ export class SceneRenderer {
     this.syncObstacles(input);
     this.syncCamera(input);
     this.renderer.render(this.scene, this.camera);
+    this.drawn = true;
+  }
+
+  /**
+   * A new 2D canvas holding the scene as last drawn, on the page background; null when it cannot be made.
+   * The WebGL canvas is cleared between frames (no `preserveDrawingBuffer`), so the scene is rendered
+   * again and copied in the same call. The picture has the WebGL canvas's pixel size.
+   */
+  capture(): HTMLCanvasElement | null {
+    if (this.disposed || !this.drawn) return null;
+    const { width, height } = this.canvas;
+    if (width === 0 || height === 0) return null;
+    const picture = this.canvas.ownerDocument.createElement('canvas');
+    picture.width = width;
+    picture.height = height;
+    const g = picture.getContext('2d');
+    if (!g) return null;
+    g.fillStyle = this.tokens.bg;
+    g.fillRect(0, 0, width, height);
+    this.renderer.render(this.scene, this.camera);
+    g.drawImage(this.canvas, 0, 0);
+    return picture;
   }
 
   /**

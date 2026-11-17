@@ -109,11 +109,23 @@
 .room-features-choice .seg-opt { flex: 1 1 auto; justify-content: center; }
 .room-features-remove { align-self: flex-start; }
 
-/* Header: the Undo and Redo buttons, side by side right after the title. The brand gives up its
-   auto margin (industry.css .nav-brand) in the header, and the buttons take the free space
-   instead, so the Units note and control stay at the far right. */
+/* Header: the Undo and Redo buttons, side by side right after the title, then the Share button.
+   The brand gives up its auto margin (industry.css .nav-brand) in the header, and the Share group
+   takes the free space instead, so the Units note and control stay at the far right. */
 .app-header > .nav-brand { margin-right: var(--space-4); }
-.header-history { display: flex; gap: var(--space-2); margin-right: auto; }
+.header-history { display: flex; gap: var(--space-2); }
+.header-share { position: relative; margin-right: auto; }
+
+/* The Share panel, dropped down under the Share button. Its note and status lines are `.note`
+   text (the elements carry both classes). */
+.share-panel {
+  position: absolute; top: calc(100% + var(--space-2)); left: 0; z-index: 20;
+  display: flex; flex-direction: column; gap: var(--space-2);
+  min-width: 260px; padding: var(--space-4);
+  background: var(--color-bg); border: 1px solid var(--color-text); box-shadow: var(--shadow-md);
+}
+.share-panel-note, .share-panel-status { margin: 0; }
+.share-panel-link { width: 100%; }
 /* A greyed-out button keeps focus (aria-disabled, not disabled) but looks like .btn:disabled. */
 .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 

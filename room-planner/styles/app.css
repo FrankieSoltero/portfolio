@@ -3,12 +3,13 @@
   min-height: 100vh;
 }
 
-/* Shell: header row, notice row (empty while there is no notice), then the body (prototype
-   lines 16 and 25). The header's bottom border is `.app-header`, defined in
-   src/components/Sidebar/sidebar.css. */
+/* Shell: header row, notice row, shared-plan banner row (each empty while not shown), then the
+   body (prototype lines 16 and 25). The body is pinned to the last row, so the notice and the
+   banner fill the auto rows in order whichever of them is shown. The header's bottom border is
+   `.app-header`, defined in src/components/Sidebar/sidebar.css. */
 .app {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   height: 100vh;
   min-height: 620px;
   background: var(--color-bg);
@@ -17,7 +18,7 @@
 }
 
 .app-body {
-  grid-row: 3;
+  grid-row: 4;
   display: grid;
   grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
   min-height: 0;
@@ -51,6 +52,18 @@
 }
 
 .notice-dismiss { flex: none; }
+
+/* Shared-plan banner under the notice: the same bar as `.notice`, with its text and buttons. */
+.shared-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+  background: color-mix(in srgb, var(--color-accent-900) 12%, var(--color-bg));
+}
+
+.shared-banner-text { margin: 0; margin-right: auto; }
 
 /* Main column: top bar, stage, selection bar (prototype line 116). */
 .app-main {

@@ -8,6 +8,7 @@ import { readTokens } from '../../styles/tokens';
 import type { Tokens } from '../../styles/tokens';
 import { drawBlueprint } from '../../view/blueprintDraw';
 import { computeCameraPose } from '../../view/camera';
+import { captureView, registerViewCapture } from '../../view/captureRegistry';
 import type { PaneRect } from '../../view/panes';
 import { BlueprintView } from './BlueprintView';
 
@@ -238,5 +239,111 @@ describe('BlueprintView', () => {
     expect(draws()).toBe(2);
     flushFrames();
     expect(draws()).toBe(2);
+  });
+
+  describe('capture', () => {
+    interface CtxCall { canvas: HTMLCanvasElement; name: string; args: unknown[]; fillStyle: unknown }
+
+    /** Every 2D context call on any canvas, with the canvas and the fill style it was made with. */
+    let ctxCalls: CtxCall[];
+
+    /** A 2D context stand-in for `canvas` that records each call and keeps assigned properties. */
+    function canvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+      const state: Record<string, unknown> = {};
+      return new Proxy(state, {
+        get(_t, name) {
+          if (typeof name !== 'string') return undefined;
+          if (name in state) return state[name];
+          return (...args: unknown[]) => {
+            ctxCalls.push({ canvas, name, args, fillStyle: state.fillStyle });
+            return name === 'measureText' ? { width: 40 } : undefined;
+          };
+        },
+        set(_t, name, value: unknown) {
+          if (typeof name === 'string') state[name] = value;
+          return true;
+        },
+      }) as unknown as CanvasRenderingContext2D;
+    }
+
+    beforeEach(() => {
+      ctxCalls = [];
+      vi.mocked(HTMLCanvasElement.prototype.getContext).mockImplementation(
+        (function (this: HTMLCanvasElement) {
+          return canvasContext(this);
+        }) as unknown as HTMLCanvasElement['getContext'],
+      );
+    });
+
+    it('captures a new canvas of its own canvas size, filled with the page background, with its drawing on top', () => {
+      vi.stubGlobal('devicePixelRatio', 2);
+      const { container } = render(<BlueprintView pane={PANE} />);
+      flushFrames();
+      const view = canvasOf(container);
+      const out = captureView();
+      if (!out) throw new Error('no capture');
+      expect(out).not.toBe(view);
+      expect(out.width).toBe(2000);
+      expect(out.height).toBe(1200);
+      const calls = ctxCalls.filter((c) => c.canvas === out);
+      const fill = calls.findIndex((c) => c.name === 'fillRect');
+      const draw = calls.findIndex((c) => c.name === 'drawImage');
+      expect(fill).toBeGreaterThanOrEqual(0);
+      expect(calls[fill]?.args).toEqual([0, 0, 2000, 1200]);
+      expect(calls[fill]?.fillStyle).toBe(T.bg);
+      expect(draw).toBeGreaterThan(fill);
+      expect(calls[draw]?.args).toEqual([view, 0, 0]);
+    });
+
+    it('reads the background colour when the picture is taken', () => {
+      render(<BlueprintView pane={PANE} />);
+      flushFrames();
+      vi.mocked(readTokens).mockReturnValue({ ...T, bg: 'T-bg-later' });
+      const out = captureView();
+      const fill = ctxCalls.find((c) => c.canvas === out && c.name === 'fillRect');
+      expect(fill?.fillStyle).toBe('T-bg-later');
+    });
+
+    it('captures null when the colour tokens are not readable', () => {
+      render(<BlueprintView pane={PANE} />);
+      flushFrames();
+      vi.mocked(readTokens).mockReturnValue(null);
+      expect(captureView()).toBeNull();
+    });
+
+    it('captures null when its canvas is zero-size', () => {
+      render(<BlueprintView pane={{ ...PANE, w: 0, h: 0, safeW: 0 }} />);
+      flushFrames();
+      expect(captureView()).toBeNull();
+    });
+
+    it('unregisters its capture on unmount', () => {
+      const { unmount } = render(<BlueprintView pane={PANE} />);
+      flushFrames();
+      expect(captureView()).not.toBeNull();
+      unmount();
+      expect(captureView()).toBeNull();
+    });
+
+    it('leaves a newer registration in place when it unmounts (style switch)', () => {
+      const { unmount } = render(<BlueprintView pane={PANE} />);
+      flushFrames();
+      const newer = document.createElement('canvas');
+      const unregisterNewer = registerViewCapture(() => newer);
+      unmount();
+      expect(captureView()).toBe(newer);
+      unregisterNewer();
+    });
+
+    it('stays registered when an older view unregisters after it mounted (style switch)', () => {
+      const unregisterOlder = registerViewCapture(() => document.createElement('canvas'));
+      const { container } = render(<BlueprintView pane={PANE} />);
+      flushFrames();
+      unregisterOlder();
+      const out = captureView();
+      expect(out).not.toBeNull();
+      const draw = ctxCalls.find((c) => c.canvas === out && c.name === 'drawImage');
+      expect(draw?.args[0]).toBe(canvasOf(container));
+    });
   });
 });
