@@ -9,6 +9,7 @@ import { readTokens } from '../../styles/tokens';
 import type { Tokens } from '../../styles/tokens';
 import type { SceneInput } from '../../three/SceneRenderer';
 import { computeCameraPose } from '../../view/camera';
+import { captureView } from '../../view/captureRegistry';
 import type { PaneRect } from '../../view/panes';
 import ThreeView from './ThreeView';
 
@@ -17,6 +18,7 @@ const sr = vi.hoisted(() => ({
   ctor: vi.fn<(canvas: HTMLCanvasElement, tokens: unknown) => void>(),
   update: vi.fn<(input: unknown) => void>(),
   dispose: vi.fn<() => void>(),
+  capture: vi.fn<() => HTMLCanvasElement | null>(),
   fail: false,
 }));
 vi.mock('../../three/SceneRenderer', () => ({
@@ -29,6 +31,9 @@ vi.mock('../../three/SceneRenderer', () => ({
     }
     update(input: unknown): void {
       sr.update(input);
+    }
+    capture(): HTMLCanvasElement | null {
+      return sr.capture();
     }
     /** Like the real renderer, disposing forces a context loss on the canvas. */
     dispose(): void {
@@ -87,6 +92,8 @@ beforeEach(() => {
   sr.ctor.mockClear();
   sr.update.mockClear();
   sr.dispose.mockClear();
+  sr.capture.mockReset();
+  sr.capture.mockReturnValue(null);
   sr.fail = false;
   frames = new Map();
   nextFrame = 1;
@@ -268,5 +275,34 @@ describe('ThreeView', () => {
     flushFrames();
     expect(sr.ctor).toHaveBeenCalledTimes(1);
     expect(sr.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers no capture until its renderer exists', () => {
+    vi.mocked(readTokens).mockReturnValue(null);
+    render(<ThreeView pane={PANE} />);
+    flushFrames();
+    sr.capture.mockReturnValue(document.createElement('canvas'));
+    expect(captureView()).toBeNull();
+    expect(sr.capture).not.toHaveBeenCalled();
+  });
+
+  it("registers a capture that returns the renderer's capture once the renderer exists", () => {
+    const picture = document.createElement('canvas');
+    sr.capture.mockReturnValue(picture);
+    render(<ThreeView pane={PANE} />);
+    flushFrames();
+    expect(captureView()).toBe(picture);
+    expect(sr.capture).toHaveBeenCalledTimes(1);
+    sr.capture.mockReturnValue(null);
+    expect(captureView()).toBeNull();
+  });
+
+  it('unregisters its capture on unmount', () => {
+    sr.capture.mockReturnValue(document.createElement('canvas'));
+    const { unmount } = render(<ThreeView pane={PANE} />);
+    flushFrames();
+    expect(captureView()).not.toBeNull();
+    unmount();
+    expect(captureView()).toBeNull();
   });
 });
