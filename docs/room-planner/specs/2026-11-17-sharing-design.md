@@ -27,7 +27,7 @@ actions:
 |---|---|
 | Copy link | The link is copied. The button reads "Copied" for 2 seconds. If the browser refuses the clipboard, the link is shown in a text field, selected, to copy by hand. |
 | Download floor plan | Saves `room-plan.png`. |
-| Download 3D view | Saves `room-3d.png`. Greyed out, with the reason shown, when the 3D view is not on screen or the browser has no WebGL and the blueprint view is not shown either. |
+| Download 3D view | Saves `room-3d.png`. Greyed out, with the reason shown, when the 3D view is not on screen (the "Tabs" layout on its plan tab). Without WebGL the planner already shows the blueprint view there, and that is what is saved. |
 
 The panel closes on Escape, on a click outside it, and returns focus to the Share button.
 
@@ -54,6 +54,7 @@ The panel closes on Escape, on a click outside it, and returns focus to the Shar
 | Visitor has no saved plan | The shared plan opens as their plan and is saved, with a notice: "Opened a shared plan." No banner. |
 | While previewing | The visitor can move things, undo and redo, and use Share. Nothing is saved until "Keep this plan". A reload shows the shared plan as it was in the link. |
 | The link is damaged or cut short | The visitor's own plan loads, with a notice: "This shared link could not be read." |
+| A share link arrives in the address of a planner that is already open (pasted into the same tab) | The page reloads and the link opens as above. (Added with the owner's approval on 2026-11-17.) |
 | The link was made by a newer planner | The visitor's own plan loads, with a notice: "This shared link was made with a newer version of the planner." |
 | The browser's storage is blocked | The shared plan is shown with the usual storage notice. "Keep this plan" is not offered, since nothing can be saved. |
 
@@ -90,9 +91,9 @@ blueprint mode it is the blueprint drawing.
   as JSON, compressed with the browser's built-in `CompressionStream('deflate-raw')`, written
   as base64url, prefixed `1.`. Where the browser lacks `CompressionStream`, the JSON is
   written uncompressed with the prefix `0.`. Decode accepts both.
-- **Reading the link.** The fragment is untrusted input. Decoding refuses text longer than
-  the planner's existing stored-plan limit (524,288 characters), stops decompressing once the
-  output passes that same limit, and hands the result to `parsePlan`, the one gate every
+- **Reading the link.** The fragment is untrusted input. Decoding refuses link data longer than
+  699,053 characters, stops decompressing once the plan text passes the planner's existing
+  stored-plan limit (524,288, counted in bytes), and hands the result to `parsePlan`, the one gate every
   stored plan already goes through. Nothing from the link is used before it has passed
   `parsePlan`. Decoding never throws.
 - **Preview.** A new flag in the UI store, `sharedPreview`. While it is set the autosave
