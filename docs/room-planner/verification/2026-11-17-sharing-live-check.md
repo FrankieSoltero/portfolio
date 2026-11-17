@@ -91,3 +91,89 @@ All in `docs/room-planner/verification/shots-sharing/`, each looked at after sav
   `Download 3D view` greyed with its reason).
 - `clipboard-fallback.png` (S16, page screenshot: the `Share link` field with the link selected).
 - `banner-and-notice.png` (S18, page screenshot: storage notice and view-only banner together).
+
+## Run 2
+
+- **Run on:** 2026-11-17, 22:19 to 22:23 UTC, after plan Amendments 2 and 3
+  (`docs/room-planner/plans/2026-11-17-sharing.md`).
+- **Commit checked:** `0876252` (`test(room-planner): make the Copied-timer test deterministic`),
+  branch `sharing`; the code fixes are in `7b918e6`. `git log` printed `0876252` as head before and
+  after the run, and nothing under `room-planner/` differs from it.
+- **Browser, viewport, URL, server:** as in run 1 (Playwright Chromium 156.0.8078.82, 1440 × 900 in
+  every context, device pixel ratio 1, `http://localhost:3478/room-planner` on the dev server that
+  was already running; it hot-reloaded the fixes and was not restarted). WebGL available. Every row
+  ran in a new browser context; reading methods as in run 1.
+- **Rows run:** S1, S2, S3, S5, S6, S7, S8, S10, S11 (amended checks), S12, S13, S15, S17, S18 and
+  the new rows X1 to X4. Not rerun (not asked for): S4, S9, S14, S16.
+- **Share link:** the same 470-character link as run 1 (the seeded plan encodes the same way).
+- **Images replaced:** `room-plan.png`, `room-3d.png` and `room-3d-blueprint.png` now hold run 2's
+  downloads; run 1's versions are in commit `b769853`.
+
+### Failures first (run 2)
+
+None. Every row run in run 2 passed.
+
+### Rows (run 2, `0876252`)
+
+| Row | What was done | Expected | Result | What was seen |
+|---|---|---|---|---|
+| S1 | New context, clipboard granted; planner (stored `null`); `Share` → `Copy link`; read the clipboard. | Address starting `http://localhost:3478/room-planner#plan=1.`; button `Copied`. | Pass | Panel `Copy link`, `Download floor plan`, `Download 3D view`, status; focus on `Copy link`. Button `Copied`; clipboard `http://localhost:3478/room-planner#plan=1.rZHNTsMwEIRfJZrzUjW_…` (470 characters, the same as run 1). |
+| S2 | New empty context, went to the link. | Sender's positions; notice `Opened a shared plan.`; no banner; no `#plan=`; saved key holds the plan. | Pass | Plan bed `(72, 42.5)`, desk `(131, 131.5)`; notice `Opened a shared plan.`; no banner; address `http://localhost:3478/room-planner`. Stored `schemaVersion` 3, the six document keys, outline `(0,0) (144,0) (144,168) (0,168)`, bed `(72, 42.5)` 0°, desk `(131, 131.5)` 90°. |
+| S3 | New context; bed dragged to `(42, 72.5)` (stored); `about:blank`; the link. | Banner with the first text; shared positions; saved key still holds the moved bed. | Pass | Banner `Viewing a shared plan. Your own plan is untouched, and changes here are not saved.` with `Keep this plan`, `Back to my plan`; `#plan=` kept; plan bed `(72, 42.5)`, desk `(131, 131.5)`; stored string identical to before; Undo `aria-disabled="true"`. |
+| S5 | In the S3 page: `Keep this plan` (banner then showed `Replace my plan`, `Cancel`, `Back to my plan`) → `Replace my plan`. | Banner gone; no `#plan=`; saved key equals the shared plan; Undo greyed. | Pass | No banner, no notice, address without fragment; stored plan equal to the plan S2 saved (bed `(72, 42.5)`, desk `(131, 131.5)`); Undo `aria-disabled="true"`. |
+| S6 | New context, same set-up as S3, then `Back to my plan`. | Moved bed back; banner gone; no `#plan=`. | Pass | Preview: same banner, bed `(72, 42.5)`. After: bed `(41.99, 72.5)` (screen rounding of stored `(42, 72.5)`), desk `(131, 131.5)`; no banner, no notice, no fragment; stored string unchanged. |
+| S7 | S6 context: `about:blank`, then the link minus its last 10 characters (ends `…5288-0W4Lt2SjTTJee1M`). | Own plan; notice `This shared link could not be read.`; no `#plan=`. | Pass | Notice `This shared link could not be read.`; no banner; no fragment; bed `(42, 72.5)`, desk `(131, 131.5)`; stored unchanged. (Storage works here, so Amendment 3 item 3 keeps the shared-link notice.) |
+| S8 | Same context: `about:blank`, then `#plan=9.AAAA`. | Own plan; notice `This shared link was made with a newer version of the planner.` | Pass | That notice; no banner; no fragment; bed `(42, 72.5)`, desk `(131, 131.5)`; stored unchanged. |
+| S10 | New context, clipboard granted, `Side by side`. `Edit room` → `L-shape`; `Add door` + click on wall 5 → `Door on wall 5`; `Add window` + click on wall 6 → `Window on wall 6`; `Add column` → `Column`; `Done`. Bed dragged to `(36, 42.5)`; desk dragged to the lower left and `Shift+R` (90° → 105°). The turn left the desk `Outside the room` at `(34, 140.5)` (stage `1 conflict`; a turn does not stop at walls), so the desk was dragged 4.5 in up; it stopped at `(33.67, 135.93)` and the stage read `Everything fits`. `Share` → `Copy link` (`Copied`, 957 characters); opened it in a new empty context. (A first copy taken while the desk was outside was also opened in an empty context: 0 differing fields there too.) | Every stored field equal to the sender's. | Pass | Receiver: `Opened a shared plan.`, no fragment. Field-by-field: all 76 leaf values equal, no missing or extra keys (6-corner outline with ids, height 96, units `ft`, bed `(36, 42.5)` 0°, desk `(33.67, 135.93)` 105°, door offset 20 width 32 height 80 hinge `start` swing `in`, window offset 30 width 36 sill 36 height 48, column `cylinder` `(72, 120.75)` 12 × 12 × 96). Both strings the same length. |
+| S11 | S10 sender (`Everything fits`), panel open: `Download floor plan`; saved over `shots-sharing/room-plan.png`; decoded and looked at. Label widths measured in the page with the picture's font (`600 28px Barlow, sans-serif`, `document.fonts.check` true): `6′ 0″` 64.62 px, `7′ 0″` 63.48, `12′ 0″` 75.18, `14′ 0″` 76.44. | Amended checks (Amendment 2 item 2), listed in "What was seen". | Pass | Name `room-plan.png`. Size 1760 × 2000 (longer side 2000). Scale 10 px/in, origin (160, 160). (4, 4) `#ffffff`. Bed: horizontal centre x = 160 + 36 × 10 = 520, top edge y = 160 + (42.5 − 42.5) × 10 = 160, probe (520, 200) = `#e4e8ee`. Middles of walls with no opening: wall 1 (520, 160), wall 2 (880, 580), wall 3 (1240, 1000), wall 4 (1600, 1420) all `#1a1c2c`. 50-px grid: 1440 samples, 0 `#fbdada` / `#b3261e` (0 in the whole image). Wall-length clearance (method below): for all 6 labels the rule puts the text box's near edge 19.0 px from the wall line; the strip 6 to 13 px out from the wall line along each label's extent has 0 pixels that are not white or floor (552, 264, 552, 264, 632, 264 pixels scanned for walls 1 to 6); the nearest dark text pixel of each label is 25, 19, 25, 19, 22 and 21 px from its wall line. Looking at the image: door swing arc **seen**; window line **seen** (blue, left wall, (160, 1360) `#2f6fb0`); every item's name **seen** (`Low platform bed, queen`, `Tack writing desk`, `Column`); a length on every wall, fully readable and not touching its wall, **seen** (`6′ 0″` above wall 1, `7′ 0″` right of wall 2, `6′ 0″` above wall 3, `7′ 0″` right of wall 4, `12′ 0″` below wall 5, `14′ 0″` left of wall 6, each with white space between it and the wall); credit line **seen** (`Room Planner · frankiesoltero.com/room-planner`). |
+| S12 | Same page, `Realistic` checked, panel reopened: `Download 3D view`; saved over `room-3d.png`. | Size equals the 3D canvas's attributes; (2, 2) equals the background; ≥ 20% differ and ≥ 50 colours on a 20-px grid; floor, walls, bed, desk listed. | Pass | Name `room-3d.png`. Canvas (`three.js r187`) 550 × 729; PNG 550 × 729. (2, 2) `#f2f2f3` = `--color-bg` (all four corners). 20-px grid: 1036 samples, 259 differ (25.00%), 61 distinct colours. Looking at it: floor **seen**, walls **seen**, bed **seen**, desk **seen** (with its selection outline; it was selected); column visible. |
+| S13 | Clicked `Blueprint` (closed the panel, as in run 1), reopened `Share`, `Download 3D view`; saved over `room-3d-blueprint.png`. | Size equals the blueprint canvas's attributes; (2, 2) equals the background; ≥ 1% differ on a 20-px grid; outline, bed, desk listed. | Pass | Name `room-3d.png`. Render style `blueprint`; canvas 550 × 729; PNG 550 × 729. (2, 2) `#f2f2f3` (all four corners). 20-px grid: 1036 samples, 234 differ (22.59%), 26 distinct colours. Looking at it: room outline **seen** (L-shape lines, floor grid, `14′ 0″`, `12′ 0″`, `8′ 0″`), bed **seen**, desk **seen** (with the tag `Tack writing desk · 2′ 6″ tall`). |
+| S15 | Same page, desk selected (`aria-pressed="true"`), panel open with focus inside it (after X2's keys and Tab, focus on `Download floor plan`): Escape. | Panel closes; piece stays selected. | Pass | Dialog gone; desk `aria-pressed="true"`; selection bar `Tack writing desk 55 × 26 × 30 in … Rotate 90° … Remove`; focus on `Share` (`aria-expanded="false"`); stored plan unchanged. |
+| S17 | Console, page-error, request and websocket listeners on every page and context of run 2, plus the MCP tool's console log. | 0 errors, 0 warnings; only `localhost:3478`. | Pass | 0 console errors, 0 warnings, 0 page errors (MCP log: 0 and 0). 308 requests, all to `localhost:3478`; websockets only `ws://localhost:3478/_next/webpack-hmr` (21 connections, one per page load). |
+| S18 | Measured at 1440 × 900 in: no bar (S1 page), notice only (S2 page, `Opened a shared plan.`), banner only (S3 preview), banner and notice (context whose `localStorage` getter throws `SecurityError`, opening the link: notice `This browser is blocking storage, so changes will not be saved.` above the banner `Viewing a shared plan. Changes here are not saved.` with only `Back to my plan`). | `scrollHeight <= innerHeight`; `.stage` bottom within 1 px of `.app-main` bottom minus the selection bar; sidebar bottom within 1 px of `innerHeight`. | Pass | All four: `scrollHeight` 900, `innerHeight` 900, `innerWidth` 1440; `.stage` bottom 844, `.app-main` bottom 900, selection bar 56 (difference 0); `.sidebar` bottom 900. Screenshot `banner-and-notice-run2.png`. |
+| X1 | New context; bed dragged to `(42, 72.5)` (stored); `about:blank`; the link (preview banner, `#plan=` in the address). `Reset plan` (the section then showed `Erase everything and start over`, `Cancel`) → `Erase everything and start over`. Read at once, after 1 s, and after a reload. | Banner gone; no `#plan=`; after 1 s the saved key holds the starting plan (bed x 72, y 42.5); reload: starting plan, no notice, no banner. | Pass | Right after the click: no banner, no notice, address `http://localhost:3478/room-planner`. After 1 s stored: outline `(0,0) (144,0) (144,168) (0,168)`, bed `(72, 42.5)` 0°, desk `(131, 131.5)` 90°; plan shows bed `(71.99, 42.5)`. After reload: no notice, no banner, no fragment, bed `(71.99, 42.5)`, desk `(131, 131.5)`; stored string the same as before the reload. |
+| X2 | S10 sender page, desk selected, Undo enabled (history has steps). `Share` (focus on `Copy link`); pressed `ArrowRight`, `Delete`, `Backspace`, `r`, `ControlOrMeta+z` (Meta on this macOS host) one at a time, reading the saved plan 800 ms after each; then Tab; then Escape. | Plan never changes; desk stays selected; panel stays open; Tab moves to the next panel button; Escape closes, focus on `Share`. | Pass | Before: desk `(33.67, 135.93)` 105°. After each of the five keys: stored string identical to before, 2 items, desk `aria-pressed="true"`, dialog open, focus still `Copy link`. Tab: focus `Download floor plan`, dialog open, desk selected. Escape: dialog closed, focus `Share` (`aria-expanded="false"`), desk selected, stored unchanged. Control: with focus outside the panel the same `ArrowRight` moved the desk to `(34.67, 135.93)`, so the keys do act outside the panel; one `Undo` put the stored plan back to the X2 starting string. |
+| X3 | (a) New context; selected the desk and pressed Delete, so the own plan holds only `seed-bed` at `(72, 42.5)`; `about:blank`; the link (preview has `seed-bed`, `seed-desk`); clicked the desk (selected, selection bar `Tack writing desk …`); `Back to my plan`. (b) Same with an own plan that keeps both pieces (bed moved to `(42, 72.5)`). | Own plan shown, banner gone, no selection UI for a piece not in the own plan (if the same id is in both plans, say so and record what is selected). | Pass | (a) After `Back to my plan`: only `seed-bed` on the plan at `(71.99, 42.5)`; no banner, no notice, no fragment; no element with `aria-pressed="true"`; the selection bar shows the hint text (`Drag a piece on the plan to move it, …`), no piece controls. Screenshot `run2-x3-back-to-my-plan.png`. (b) The same id `seed-desk` is in both plans: after `Back to my plan` the own plan shows bed `(41.99, 72.5)`, desk `(131, 131.5)`, and the desk stays selected (`aria-pressed="true"`, selection bar `Tack writing desk 55 × 26 × 30 in … Remove`); no banner, no fragment. |
+| X4 | Context whose `localStorage` getter throws `SecurityError` (as in run 1's S18): opened the link minus its last 10 characters; then `about:blank` and `#plan=9.AAAA`. | Notice is the storage one, not the shared-link one; no `#plan=`. | Pass | Damaged link: notice `This browser is blocking storage, so changes will not be saved.` (the only non-empty status text on the page), no banner, address without fragment, seeded plan shown (bed `(72, 42.5)`, desk `(131, 131.5)`). Newer link: the same storage notice, no banner, no fragment. Screenshot `run2-x4-blocked-newer-link.png` (the newer-link case). |
+
+### How the S11 label clearance was measured
+
+From the stored outline `(0,0) (72,0) (72,84) (144,84) (144,168) (0,168)` and the picture's layout
+(scale 10, origin 160), for each wall: the unit normal `n = (−dy, dx) / length`, turned outward by
+testing a point 1 in along it against the outline; the label text `fmtLen` gives (`6′ 0″`, `7′ 0″`,
+`6′ 0″`, `7′ 0″`, `12′ 0″`, `14′ 0″`); its width measured in the page as above; the centre placed
+where Amendment 2 item 1's rule puts it (`19 + |n.x| × width / 2 + |n.y| × 14` px from the midpoint
+along the outward normal: 33 px for level walls, 50.7 px for the `7′ 0″` walls, 57.2 px for
+`14′ 0″`). The text box is that width by 28 px. Then, over the label's extent along the wall (± half
+its width or ± 14 px, plus 2 px), every pixel at a whole-pixel distance of 6 to 13 px out from the
+wall line was read: 6 px is just past the 10-px wall stroke (half width 5) and its anti-aliasing,
+13 px is 8 px beyond the stroke. A pixel counted as a fault if it was not `#ffffff` and not the floor
+`#f7f5f0`; there were none. Separately, over the same extent, the nearest pixel darker than an RGB
+sum of 450 beyond 6 px was found (the label's ink): 19 to 25 px from the wall line for every label,
+so at least 14 px clear of the stroke. Ink boxes: wall 1 x 489–551, y 116–135; wall 2 x 899–961,
+y 569–588; wall 3 x 1209–1271, y 956–975; wall 4 x 1619–1681, y 1409–1428; wall 5 x 843–916,
+y 1862–1881; wall 6 x 65–139, y 989–1008.
+
+### Other observations (run 2)
+
+- **Turning a piece next to a wall can put it outside the room.** In S10, `Shift+R` on the desk
+  lying flush with the bottom wall turned it to 105° partly through the wall (`Outside the room`,
+  `1 conflict`); a drag then stopped it inside. A turn does not stop at walls the way a drag does.
+  This is earlier behaviour, not part of sharing.
+- **The saved 3D pictures still include the selection** (outline in `room-3d.png`, the desk's tag in
+  `room-3d-blueprint.png`), as noted in run 1. The capture path was not changed.
+- **X3 (b):** when the shared plan and the own plan share a piece id (`seed-desk`; both start from the
+  seeded plan), the selection made in the preview carries over to the own plan's piece of the same id.
+- Run 1's wall-length overlap is gone: every length now sits clear of its wall (S11).
+
+### Saved images (run 2)
+
+In `docs/room-planner/verification/shots-sharing/`, each looked at after saving:
+
+- `room-plan.png` (S11, replaced: run 2's floor plan, 1760 × 2000).
+- `room-3d.png` (S12, replaced: run 2's realistic 3D view, 550 × 729).
+- `room-3d-blueprint.png` (S13, replaced: run 2's blueprint view, 550 × 729).
+- `banner-and-notice-run2.png` (S18, storage notice above the view-only banner).
+- `run2-x3-back-to-my-plan.png` (X3 (a): own plan with the bed only, no selection).
+- `run2-x4-blocked-newer-link.png` (X4: blocked storage and a newer-version link, storage notice
+  shown).
