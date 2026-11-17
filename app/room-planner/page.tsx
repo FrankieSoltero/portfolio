@@ -9,8 +9,7 @@ import PlannerLoader from './PlannerLoader';
 export const metadata: Metadata = {
   title: 'Room Planner',
   description: 'Lay out a room to scale, place furniture, and check the fit in 3D.',
-  // An empty data URL stops the browser requesting /favicon.ico, which would log a console error.
-  icons: { icon: 'data:,' },
+  // The tab icon comes from the root layout (public/favicon.svg).
 };
 
 export default function RoomPlannerPage(): JSX.Element {
