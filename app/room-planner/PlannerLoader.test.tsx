@@ -101,7 +101,6 @@ describe('room-planner page', () => {
     expect(metadata).toEqual({
       title: 'Room Planner',
       description: 'Lay out a room to scale, place furniture, and check the fit in 3D.',
-      icons: { icon: 'data:,' },
     });
   });
 

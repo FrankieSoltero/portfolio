@@ -191,3 +191,20 @@ all three as semver-major (`katex` 0.16 → 0.19, and the `rehype-katex` / `rema
 "fixes" are downgrades to old major versions with different plugin APIs). The advisory
 needs prototype pollution that already exists; KaTeX here renders only the repo's own
 MDX content, not user input.
+
+## 2026-11-17 — Home page title, tab icon and Room Planner blurb
+
+### Changes
+- `public/index.html` had no `<title>`, no description and no `lang`. The browser tab and
+  search results showed the bare address. Added all three.
+- The site had no icon, so the browser's automatic `/favicon.ico` request returned 404 and
+  logged a console error on the home page. Added `public/favicon.svg` (a pixel star in the
+  site's colours), linked from `index.html` and from the root layout's metadata.
+- The Room Planner page declared an empty icon (`data:,`) to avoid that same 404. That
+  workaround is removed; the page now inherits the real icon from the layout.
+- The Room Planner project card's blurb described the first version. It now mentions room
+  drawing, doors and windows, stopping at walls and undo.
+
+### Lesson
+- A workaround for a missing asset (the empty icon) hid the gap on one page and left it on
+  the others. Add the asset once at the root when it is missing site-wide.
