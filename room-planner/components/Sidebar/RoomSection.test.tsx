@@ -97,11 +97,11 @@ describe('Header', () => {
     const undoButton = () => screen.getByRole('button', { name: 'Undo' });
     const redoButton = () => screen.getByRole('button', { name: 'Redo' });
 
-    it('renders Undo then Redo as btn buttons after the brand and before the units control', () => {
+    it('renders Undo then Redo as btn buttons after the brand, then Share, before the units control', () => {
       render(<Header />);
       const header = screen.getByRole('banner');
       const buttons = within(header).getAllByRole('button');
-      expect(buttons.map((b) => b.textContent)).toEqual(['Undo', 'Redo']);
+      expect(buttons.map((b) => b.textContent)).toEqual(['Undo', 'Redo', 'Share']);
       for (const b of buttons) {
         expect(b).toHaveAttribute('type', 'button');
         expect(b).toHaveClass('btn');
@@ -109,13 +109,16 @@ describe('Header', () => {
       const wrapper = buttons[0].parentElement;
       expect(wrapper).toHaveClass('header-history');
       expect(buttons[1].parentElement).toBe(wrapper);
+      const share = buttons[2].parentElement;
+      expect(share).toHaveClass('header-share');
       const children = [...header.children];
       const brand = screen.getByText('Room planner');
       const unitsNote = screen.getByText('Units');
       const units = screen.getByRole('radiogroup', { name: 'Units' });
       expect(children.indexOf(brand)).toBe(0);
       expect(children.indexOf(wrapper as Element)).toBe(1);
-      expect(children.indexOf(unitsNote)).toBe(2);
+      expect(children.indexOf(share as Element)).toBe(2);
+      expect(children.indexOf(unitsNote)).toBe(3);
       expect(children.indexOf(units)).toBeGreaterThan(children.indexOf(unitsNote));
     });
 
@@ -241,8 +244,9 @@ describe('Header', () => {
         return css.slice(css.indexOf('{', at) + 1, css.indexOf('}', at)).replace(/\s+/g, ' ').trim();
       };
 
-      it('lays the two buttons out in a row with a small gap, pushing the units control to the far right', () => {
-        expect(rule('.header-history')).toBe('display: flex; gap: var(--space-2); margin-right: auto;');
+      it('lays the two buttons out in a row with a small gap; the Share group pushes the units control to the far right', () => {
+        expect(rule('.header-history')).toBe('display: flex; gap: var(--space-2);');
+        expect(rule('.header-share')).toBe('position: relative; margin-right: auto;');
       });
 
       it('sits the buttons beside the title: in the header the brand no longer takes the free space', () => {
