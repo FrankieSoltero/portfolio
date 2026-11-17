@@ -177,3 +177,67 @@ In `docs/room-planner/verification/shots-sharing/`, each looked at after saving:
 - `run2-x3-back-to-my-plan.png` (X3 (a): own plan with the bed only, no selection).
 - `run2-x4-blocked-newer-link.png` (X4: blocked storage and a newer-version link, storage notice
   shown).
+
+## Run 3
+
+- **Run on:** 2026-11-17, 22:25:33 to 22:25:50 UTC. Head `0876252`, the same as run 2 (`git log`
+  printed it before the run; nothing under `room-planner/` differs from it). Same browser
+  (Playwright Chromium 156.0.8078.82), 1440 × 900 in every context, the same dev server, not
+  restarted.
+- **Rows:** the four run 2 did not repeat: S4, S9, S14, S16. Each ran in a new browser context. The
+  share link was made again in a sender context with clipboard access (`Copy link`): 470 characters,
+  the same seeded-plan link as runs 1 and 2.
+- **Console and network for run 3:** 0 console errors, 0 warnings, 0 page errors; 103 requests, all
+  to `localhost:3478`; the only websocket was `ws://localhost:3478/_next/webpack-hmr`.
+
+### Failures first (run 3)
+
+None.
+
+### Rows (run 3, `0876252`)
+
+| Row | What was done | Expected | Result | What was seen |
+|---|---|---|---|---|
+| S4 | New context; bed dragged to `(42, 72.5)` (stored); `about:blank`; the link (preview). Dragged the desk 30 px left and 30 px up, waited 2 s, reloaded. | Saved key unchanged before and after; after reload the shared plan as in the link. | Pass | Preview before the drag: banner `Viewing a shared plan. Your own plan is untouched, and changes here are not saved.`, `Keep this plan`, `Back to my plan`, `#plan=` in the address, plan bed `(72, 42.5)`, desk `(131, 131.5)`, stored string identical to the own plan. After the drag the plan showed the desk at `(106, 106.5)`. Stored string after 2 s: identical to the own plan (bed `(42, 72.5)`, desk `(131, 131.5)`); after the reload: identical again. After the reload: the same banner and buttons, `#plan=` kept, plan bed `(72, 42.5)`, desk `(131, 131.5)` (the drag was not kept). |
+| S9 | Same page: `Back to my plan` (own plan, bed `(41.99, 72.5)`, no banner, no fragment); set `window.__marker`; ran `location.hash = '#plan=1.rZHN…'` (the link's fragment) in the page. | The page reloads and the link opens. | Pass | A `load` event fired; `window.__marker` was gone; navigation type `reload`. The link opened as a preview: banner `Viewing a shared plan. Your own plan is untouched, and changes here are not saved.` with `Keep this plan`, `Back to my plan`, `#plan=` in the address, plan bed `(72, 42.5)`, desk `(131, 131.5)`; stored own plan unchanged. |
+| S14 | New context; layout `Tabs` (clicked, then blurred); the `View` group showed `2D plan` checked. `Share`; read `Download 3D view`; force-clicked it, waited 2 s. | `Download 3D view` greyed with its reason. | Pass | `aria-disabled="true"`, described by `Show the 3D view to save a picture of it.` shown under it; opacity 0.45, `cursor: not-allowed`. The click made no download, and the panel's status stayed empty. Screenshot `run3-s14-tabs-plan.png`. |
+| S16 | New context. Replaced `navigator.clipboard.writeText` in the page with a function returning a rejected promise (`NotAllowedError`), because Chromium grants `clipboard-write` by default here (run 1). `Share` → `Copy link`. | The fallback field shows the link, focused and selected. | Pass | The button stayed `Copy link`; the panel's status stayed empty; a read-only field `Share link` appeared with the full 470-character link (equal to the link from the sender), focused, selection 0 to 470. Screenshot `run3-s16-clipboard-fallback.png`. |
+
+### Other observations (run 3)
+
+Nothing new.
+
+### Saved images (run 3)
+
+In `docs/room-planner/verification/shots-sharing/`, each looked at after saving:
+
+- `run3-s14-tabs-plan.png` (S14: `Tabs` layout on `2D plan`, panel open, `Download 3D view` greyed
+  with its reason).
+- `run3-s16-clipboard-fallback.png` (S16: the `Share link` field with the link selected).
+
+## Latest result of every row on `0876252`
+
+| Row | Latest result | From run |
+|---|---|---|
+| S1 | Pass | 2 |
+| S2 | Pass | 2 |
+| S3 | Pass | 2 |
+| S4 | Pass | 3 |
+| S5 | Pass | 2 |
+| S6 | Pass | 2 |
+| S7 | Pass | 2 |
+| S8 | Pass | 2 |
+| S9 | Pass | 3 |
+| S10 | Pass | 2 |
+| S11 | Pass (amended checks) | 2 |
+| S12 | Pass | 2 |
+| S13 | Pass | 2 |
+| S14 | Pass | 3 |
+| S15 | Pass | 2 |
+| S16 | Pass | 3 |
+| S17 | Pass (run 2 and run 3 each: 0 errors, 0 warnings, only `localhost:3478`) | 2 and 3 |
+| S18 | Pass | 2 |
+| X1 | Pass | 2 |
+| X2 | Pass | 2 |
+| X3 | Pass | 2 |
+| X4 | Pass | 2 |
