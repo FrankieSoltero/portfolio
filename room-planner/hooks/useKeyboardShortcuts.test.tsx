@@ -171,6 +171,16 @@ describe('useKeyboardShortcuts', () => {
     expect(ev.defaultPrevented).toBe(true);
   });
 
+  it('an arrow nudges a piece wholly inside the room freely by one step and prevents default', () => {
+    // The seed desk (quarter-turned, x 118–144, y 104–159) starts wholly inside the room.
+    useUiStore.getState().select('seed-desk');
+    const left = press(document.body, 'ArrowLeft');
+    expect(desk()).toMatchObject({ x: 130, y: 131.5 });
+    expect(left.defaultPrevented).toBe(true);
+    press(document.body, 'ArrowDown');
+    expect(desk()).toMatchObject({ x: 130, y: 132.5 });
+  });
+
   it('Shift+ArrowRight nudges by the large step (12 in)', () => {
     expect(CONFIG.nudgeStepLarge).toBe(12);
     useUiStore.getState().select(BED);

@@ -97,8 +97,9 @@ describe('shiftItem', () => {
     const desk: Item = { ...seed('seed-desk'), angle: 180 };
     expect(shiftItem(desk, 1, 0, OUTLINE)).toMatchObject({ x: 132, y: 131.5, angle: 180 });
     expect(shiftItem(desk, 0, 12, OUTLINE)).toMatchObject({ x: 131, y: 143.5 });
-    // The bed is flush with the back wall, so the step up stops at it.
-    expect(shiftItem(seed('seed-bed'), 0.3, -0.4, OUTLINE)).toMatchObject({ x: 72.3, y: 42.5 });
+    // The bed is flush with the back wall and a nudge moves only straight along the step, so a step
+    // up and to the right leaves it where it is (it does not slide sideways along the wall).
+    expect(shiftItem(seed('seed-bed'), 0.3, -0.4, OUTLINE)).toMatchObject({ x: 72, y: 42.5 });
   });
 
   it('clamps the centre into the bounds', () => {
@@ -161,6 +162,60 @@ describe('moveItem and shiftItem stop at the walls', () => {
 
   it('moves a piece that starts outside the room as before', () => {
     expect(moveItem(piece(60, 80, 140, 84), 150.2, 84, R, 1)).toMatchObject({ x: 144, y: 84 });
+  });
+});
+
+/** One angled wall, on the line x + y = 244 (Task 1's room A). */
+const A: Point[] = [{ x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 100 }, { x: 76, y: 168 }, { x: 0, y: 168 }];
+
+describe('moveItem and shiftItem at an angled wall (amendment 2)', () => {
+  it('stops a drag past the bounding box beyond an angled wall where the pointer points, not towards the box corner', () => {
+    // The pointer goes from (100, 100) to (220, 220), 2 in a frame, straight at the angled wall and
+    // past the room's bounding box (x 144, y 168). Clamping the asked-for place to that box turned
+    // it towards the box corner, so the piece ran along the wall to (100, 124).
+    let item = piece(20, 20, 100, 100);
+    for (let frame = 1; frame <= 60; frame++) item = moveItem(item, 100 + 2 * frame, 100 + 2 * frame, A, 1);
+    expect(item).toMatchObject({ x: 112, y: 112 });
+  });
+
+  it('nudges straight into an angled wall and stops: y never changes', () => {
+    let item = piece(20, 20, 100, 100);
+    for (let i = 0; i < 40; i++) {
+      item = shiftItem(item, 1, 0, A);
+      expect(item.y).toBe(100);
+    }
+    expect(item).toMatchObject({ x: 124, y: 100 });
+  });
+
+  it('nudges along the diagonal as far as fits', () => {
+    expect(shiftItem(piece(20, 20, 111.5, 111.5), 1, 1, A)).toMatchObject({ x: 112, y: 112 });
+    let item = piece(20, 20, 100, 100);
+    for (let i = 0; i < 20; i++) {
+      item = shiftItem(item, 1, 1, A);
+      expect(item.x).toBe(item.y);
+    }
+    expect(item).toMatchObject({ x: 112, y: 112 });
+  });
+
+  it('keeps up with the pointer when a drag slides along an angled wall', () => {
+    // A 40 × 30 piece turned 45° dragged diagonally into a shallow angled wall, as the store does it:
+    // each frame asks for the start plus the pointer's offset, from where the piece is now. Where the
+    // piece settles is where it ends when that frame's target is asked for again until nothing changes.
+    const room: Point[] = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 120 }, { x: 0, y: 150 }];
+    const start = piece(40, 30, 60, 70, { angle: 45 });
+    let item = start;
+    for (let frame = 1; frame <= 80; frame++) {
+      const tx = start.x + 1.5 * frame;
+      const ty = start.y + 1.5 * frame;
+      item = moveItem(item, tx, ty, room, 1);
+      let settled = item;
+      for (let k = 0; k < 300; k++) {
+        const next = moveItem(settled, tx, ty, room, 1);
+        if (next.x === settled.x && next.y === settled.y) break;
+        settled = next;
+      }
+      expect(Math.hypot(settled.x - item.x, settled.y - item.y), `frame ${frame}`).toBeLessThanOrEqual(1);
+    }
   });
 });
 

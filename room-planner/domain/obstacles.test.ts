@@ -245,6 +245,29 @@ describe('moveObstacle and shiftObstacle stop at the walls', () => {
   });
 });
 
+/** One angled wall, on the line x + y = 244. */
+const ANGLED: Point[] = [{ x: 0, y: 0 }, { x: 144, y: 0 }, { x: 144, y: 100 }, { x: 76, y: 168 }, { x: 0, y: 168 }];
+
+describe('moveObstacle and shiftObstacle at an angled wall', () => {
+  it('stops a box dragged past the bounding box beyond an angled wall where the pointer points', () => {
+    // The pointer goes from (100, 100) to (220, 220), 2 in a frame, straight at the angled wall.
+    const start = box({ x: 100, y: 100, width: 20, depth: 20 });
+    let o = start;
+    for (let frame = 1; frame <= 60; frame++) o = moveObstacle(o, 100 + 2 * frame, 100 + 2 * frame, ANGLED, 1);
+    expect(o).toEqual({ ...start, x: 112, y: 112 });
+  });
+
+  it('nudges a column straight into an angled wall and stops: y never changes', () => {
+    // The 16-sided outline reaches 10 in towards the wall, so the column stops at x = 244 − 100 − 10√2.
+    let o: Obstacle = { ...COLUMN, x: 100, y: 100, width: 20, depth: 20 };
+    for (let i = 0; i < 40; i++) {
+      o = shiftObstacle(o, 1, 0, ANGLED);
+      expect(o.y).toBe(100);
+    }
+    expect(o.x).toBe(129.85);
+  });
+});
+
 describe('updateObstacle', () => {
   const LIST: Obstacle[] = [BOX, COLUMN];
 

@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import { findConflicts, findPlanIssues, OUTSIDE_THE_ROOM } from '../domain/conflicts';
+import { findConflicts, findPlanIssues } from '../domain/conflicts';
 import { addObstacle, newObstacle, OBSTACLE_PROBLEM_TEXT } from '../domain/obstacles';
 import { addOpening, OPENING_PROBLEM_TEXT } from '../domain/openings';
 import {
@@ -384,7 +384,7 @@ describe('planStore', () => {
     usePlanStore.getState().moveItemTo('seed-bed', 400, 400);
     expect(itemById('seed-bed')).toMatchObject({ x: 112, y: 125.5 });
     const { items, room } = usePlanStore.getState();
-    expect(findConflicts(items, room)['seed-bed']).not.toBe(OUTSIDE_THE_ROOM);
+    expect(findConflicts(items, room)['seed-bed']).toBeUndefined();
   });
 
   it('rotateItemBy on a piece flush in a corner keeps its position', () => {
@@ -1350,7 +1350,7 @@ describe('plan store: doors, windows and obstacles', () => {
     usePlanStore.getState().moveObstacleTo('b1', -400, 120);
     expect(obstacleById('b1')).toMatchObject({ x: 12, y: 120 });
     const { items, room, openings, obstacles } = usePlanStore.getState();
-    expect(findPlanIssues(items, room, openings, obstacles).conflicts.b1).not.toBe(OUTSIDE_THE_ROOM);
+    expect(findPlanIssues(items, room, openings, obstacles).conflicts.b1).toBeUndefined();
   });
 
   it('obstacle moves that change nothing, unknown ids and numbers that are not finite keep the same state', () => {

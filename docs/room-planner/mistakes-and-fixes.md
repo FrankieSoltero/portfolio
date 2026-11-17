@@ -757,7 +757,7 @@ Nine entries. Entries 1 to 4 are plan defects found while building (fixed by pla
 
 ## 2026-11-16 — Stop at walls
 
-Four entries. Entry 1 is a decision of the first slice that the owner reversed. Entry 2 is a defect in the approved spec, found while writing the plan. Entry 3 was found by the Task 1 reviewer. Entry 4 is a process mistake in the plan's live-check rows. Items left as they are are listed under "Known limits of stop at walls" in `docs/room-planner/README.md`.
+Six entries. Entry 1 is a decision of the first slice that the owner reversed. Entry 2 is a defect in the approved spec, found while writing the plan. Entry 3 was found by the Task 1 reviewer. Entry 4 is a process mistake in the plan's live-check rows. Entries 5 and 6 were found by the whole-change review (plan Amendment 2). Items left as they are are listed under "Known limits of stop at walls" in `docs/room-planner/README.md`.
 
 ### The first slice's "a footprint that leaves the room is a conflict, not a clamp" decision was reversed (found by the owner)
 - **Date:** 2026-11-16
@@ -786,3 +786,17 @@ Four entries. Entry 1 is a decision of the first slice that the owner reversed. 
 - **Root cause:** The plan author wrote the rows from memory of the UI, not from the page. This is the third slice in a row with a live-check row or script that was wrong while the app was right (slice D "stale scale", slice E row U4).
 - **Fix:** Plan Amendment 1: W6 types `12.2916666667` (147.5 in), W7 deletes the bed first. The whole table was run again.
 - **How to avoid:** Before a plan is reviewed, walk every live-check row once in the real page (or have an agent do it) and correct the rows.
+
+### The asked-for place was clamped to the room's bounding box before the wall stop (whole-change review)
+- **Date:** 2026-11-16
+- **What happened:** The move functions first clamped the asked-for centre into the room's bounding box, as before, and then stopped the piece at the walls. Beyond an angled wall that cuts a corner off the box, the clamped place lies in another direction from the pointer, so a piece dragged straight at the wall ran along it away from the pointer: in room A a 20 in square dragged from (100, 100) towards (220, 220) ended at (100, 124) instead of (112, 112). The whole-change review found it with a fuzz of 72,000 frames.
+- **Root cause:** The plan said "compute the place it returns today, then stop at walls". The old bounding-box clamp was a limit the new rule replaced, but it stayed on the path in front of it.
+- **Fix:** `stopAtWalls` takes an optional `whenOutside` place. The move functions pass the asked-for place clamped only to ±2·`CONFIG.coordMax` as the target, and the old bounding-box-clamped place as `whenOutside`, which is used only for a piece that starts outside (plan Amendment 2, item 1).
+- **How to avoid:** When a new rule replaces an old limit, remove the old limit on that path instead of stacking the new one after it.
+
+### An arrow-key nudge slid sideways along an angled wall (whole-change review)
+- **Date:** 2026-11-16
+- **What happened:** ArrowRight on a piece against a 45° wall moved it diagonally along the wall on every press, although the spec says a nudge into a wall "moves the part of the step that fits and stops flush. More presses do nothing."
+- **Root cause:** The plan gave drags and nudges the same candidates (x then y, y then x, a slide along each angled wall), although the spec row said a nudge stops. No test or live-check row had an angled wall with a nudge.
+- **Fix:** `stopAtWalls` takes `straight: true`, which keeps only the furthest fit along the step; `shiftItem` and `shiftObstacle` pass it (plan Amendment 2, item 2).
+- **How to avoid:** Every spec behaviour row gets a test in each room shape the feature names.

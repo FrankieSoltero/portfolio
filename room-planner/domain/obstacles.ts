@@ -1,10 +1,10 @@
 import { CONFIG } from '../config';
-import { footprintHalfExtents, snapCentreInto, storedAngle } from './geometry';
+import { clampFar, footprintHalfExtents, snapCentreInto, storedAngle } from './geometry';
 import { inLimits } from './outline';
 import { boundsOf, round2 } from './polygon';
 import { footprintCorners, type Footprint } from './shape';
 import type { Obstacle, Point } from './types';
-import { stopAtWalls } from './wallStop';
+import { stopAtWalls, type StopAtWallsOptions } from './wallStop';
 
 /**
  * Pure operations on a room's fixed obstacles: boxes (columns, radiators, built-ins, raised units
@@ -131,34 +131,36 @@ export function addObstacle(obstacles: readonly Obstacle[], obstacle: Obstacle):
 }
 
 /** Returns a copy of the obstacle centred on the point stopAtWalls gives for a move from its centre to `to`. */
-function stopObstacleAtWalls(o: Obstacle, to: Point, outline: readonly Point[]): Obstacle {
+function stopObstacleAtWalls(o: Obstacle, to: Point, outline: readonly Point[], options: StopAtWallsOptions): Obstacle {
   const shapeAt = (c: Point): readonly Point[] => obstaclePolygon({ ...o, x: c.x, y: c.y });
-  const p = stopAtWalls(shapeAt, { x: o.x, y: o.y }, to, outline);
+  const p = stopAtWalls(shapeAt, { x: o.x, y: o.y }, to, outline, options);
   return { ...o, x: p.x, y: p.y };
 }
 
 /**
- * Returns a copy of the obstacle moved towards (x, y): the place is first found with the min corner
- * of its axis-aligned bounding box on the `snap` grid, its centre clamped into the outline's bounding
- * box, and the obstacle then stops at the room's walls (stopAtWalls), as moveItem does. One wholly
- * inside the room stays wholly inside, flush against a wall it would cross; one that starts partly
- * outside goes to the place unchanged.
+ * Returns a copy of the obstacle moved towards (x, y), with the min corner of its axis-aligned
+ * bounding box snapped to the `snap` grid, as moveItem does. One wholly inside the room asks for
+ * that snapped place (clamped only to ±2·CONFIG.coordMax, not to the room's bounding box) and stops
+ * at the room's walls (stopAtWalls), flush against a wall it would cross; one that starts partly
+ * outside goes to that place with its centre clamped into the outline's bounding box, unchanged.
  */
 export function moveObstacle(o: Obstacle, x: number, y: number, outline: readonly Point[], snap: number): Obstacle {
   const { hx, hy } = halfExtents(o);
   const bounds = boundsOf(outline);
+  const far = 2 * CONFIG.coordMax;
+  const to = { x: snapCentreInto(x, hx, snap, -far, far), y: snapCentreInto(y, hy, snap, -far, far) };
   const place = {
     x: snapCentreInto(x, hx, snap, bounds.minX, bounds.maxX),
     y: snapCentreInto(y, hy, snap, bounds.minY, bounds.maxY),
   };
-  return stopObstacleAtWalls(o, place, outline);
+  return stopObstacleAtWalls(o, to, outline, { whenOutside: place });
 }
 
 /**
- * Returns a copy of the obstacle moved by (dx, dy): the place is its centre moved by exactly the
- * step, clamped into the outline's bounding box and stored to 0.01, and the obstacle then stops at
- * the room's walls (stopAtWalls), as shiftItem does. One wholly inside the room moves the part of
- * the step that fits; one that starts partly outside goes to the place unchanged.
+ * Returns a copy of the obstacle moved by (dx, dy), as shiftItem does: one wholly inside the room
+ * moves straight along the step (never sideways along a wall) as far as it fits; one that starts
+ * partly outside moves by exactly the step, its centre clamped into the outline's bounding box and
+ * stored to 0.01.
  */
 export function shiftObstacle(o: Obstacle, dx: number, dy: number, outline: readonly Point[]): Obstacle {
   const bounds = boundsOf(outline);
@@ -166,7 +168,8 @@ export function shiftObstacle(o: Obstacle, dx: number, dy: number, outline: read
     x: round2(Math.min(Math.max(o.x + dx, bounds.minX), bounds.maxX)),
     y: round2(Math.min(Math.max(o.y + dy, bounds.minY), bounds.maxY)),
   };
-  return stopObstacleAtWalls(o, place, outline);
+  const to = { x: clampFar(o.x + dx), y: clampFar(o.y + dy) };
+  return stopObstacleAtWalls(o, to, outline, { whenOutside: place, straight: true });
 }
 
 /**

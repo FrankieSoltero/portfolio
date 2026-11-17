@@ -59,7 +59,9 @@ lived in `src/`. That folder is `room-planner/` in this repository.
   a drag or by the arrow keys, stops flush against every wall, including an L-shape's cut-out
   and angled walls. It slides along the wall as the drag goes on, and a piece pushed into a
   corner stops flush against both walls, even when the room or the piece is not a whole number of
-  inches. The rule is in `room-planner/domain/wallStop.ts`. Some things are not pushed back:
+  inches. An arrow-key nudge moves straight and stops: it goes the part of the step that fits and
+  never slides sideways along a wall. A drag past the room's bounding box beyond an angled wall
+  still goes towards the pointer. The rule is in `room-planner/domain/wallStop.ts`. Some things are not pushed back:
   turning a piece (R, Shift+R, the Angle field), changing the room (a wall drag, a typed
   length, a starting shape), typed sizes, and a piece that is already partly outside. Such a
   piece is flagged as usual and moves freely until it is wholly inside again. Furniture can
@@ -175,14 +177,25 @@ Known limits of undo and redo (slice E):
 
 Known limits of stop at walls:
 
-- Along an angled wall the slide can lag the pointer slightly. The piece never crosses the wall.
+- Along an angled wall the piece can lag the pointer slightly. The piece never crosses the wall.
+  Over 60 probe drags into angled walls (7,200 frames) the lag was 0.05 in or less on 92% of the
+  584 frames that lagged at all and more than 0.71 in on one frame only (1.26 in). Before the
+  whole-change review's fix it was typically 0.5 to 2 in, worst 5.3 in for two frames.
+- A column is checked as a 16-sided outline, so against an angled wall its true circle can reach
+  up to about 2% of its radius past the wall (0.23 in for a 24 in column). The conflict check
+  uses the same outline.
 - Turning a piece near a wall is not pushed back. It can turn red.
 - Changing the room never moves furniture. A piece left outside turns red and drags freely
   until it is wholly inside again.
 - A fast drag can carry a piece across an L-shape's cut-out to the other arm.
 - Furniture still overlaps other furniture and obstacles (red), by the owner's choice.
-- Cost grows with the number of angled walls. About 14 ms per pointer move was measured in a
-  unit probe for a 64-corner room, and 7 ms worst case in the live check's L-shape room.
+- Cost grows with the number of angled walls. About 0.1 ms per move in rooms of up to 6
+  corners; in a room where every wall is angled about 0.4 ms (box) to 1.1 ms (column) at 16
+  corners and 4.3 ms (box) to 12.4 ms (column) at 64 corners, the most the planner allows
+  (measured by a reviewer's probe on the development machine; the probe is not kept in the
+  repo), and about 0.5 to 1.7 ms and 6 to 17 ms when the pointer is beyond the room's bounding
+  box. The live check's longest pointer-move handling was 7.3 ms (mean 1.56 ms) in the L-shape
+  room, most of it rendering.
 - Safari and Firefox were not run.
 
 Changed behaviour (slice D, wall editing). These are on purpose:
@@ -206,8 +219,9 @@ Changed behaviour (stop at walls). This is on purpose:
   kept inside, and turned red. It now stops flush against the wall. This reverses a decision of
   the first slice.
 
-The checks on the final code: `npm run check` passes with 59 test files and 2285 tests, and the
-build shows `/room-planner` at 105 kB First Load JS.
+The checks on the final code: the tests pass with 59 test files and 2296 tests (after the
+whole-change review's fix; typecheck and lint also pass), and the last build, before that fix,
+showed `/room-planner` at 105 kB First Load JS. The fix adds no dependency.
 
 Open questions for the owner (slice C):
 

@@ -117,3 +117,26 @@ describe('stopAtWalls', () => {
     expect(stopAtWalls(rect(60, 80), { x: 114, y: 84 }, { x: 114, y: 84 }, R)).toEqual({ x: 114, y: 84 });
   });
 });
+
+describe('stopAtWalls options', () => {
+  it('returns whenOutside, rounded to 0.01, for a piece that starts outside the room', () => {
+    const whenOutside = { x: 144.004, y: 84.006 };
+    expect(stopAtWalls(rect(60, 80), { x: 140, y: 84 }, { x: 200, y: 84 }, R, { whenOutside })).toEqual({ x: 144, y: 84.01 });
+  });
+
+  it('ignores whenOutside for a piece that starts inside the room', () => {
+    const whenOutside = { x: 144, y: 84 };
+    expect(stopAtWalls(rect(60, 80), { x: 72, y: 84 }, { x: 200, y: 84 }, R, { whenOutside })).toEqual({ x: 114, y: 84 });
+  });
+
+  it('with straight, stops on the line from the start to the target instead of sliding along a wall', () => {
+    // Without straight this move slides along room A's angled wall to (117, 87).
+    expect(stopAtWalls(rect(40, 40), { x: 104, y: 100 }, { x: 130, y: 100 }, A, { straight: true })).toEqual({ x: 104, y: 100 });
+    expect(stopAtWalls(rect(60, 80), { x: 114, y: 84 }, { x: 130, y: 100 }, R, { straight: true })).toEqual({ x: 114, y: 84 });
+  });
+
+  it('with straight, goes as far as fits along the line', () => {
+    expect(stopAtWalls(rect(20, 20), { x: 100, y: 100 }, { x: 130, y: 130 }, A, { straight: true })).toEqual({ x: 112, y: 112 });
+    expect(stopAtWalls(rect(20, 20), { x: 100, y: 100 }, { x: 101, y: 100 }, A, { straight: true })).toEqual({ x: 101, y: 100 });
+  });
+});
