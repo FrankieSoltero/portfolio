@@ -219,9 +219,8 @@ Changed behaviour (stop at walls). This is on purpose:
   kept inside, and turned red. It now stops flush against the wall. This reverses a decision of
   the first slice.
 
-The checks on the final code: the tests pass with 59 test files and 2296 tests (after the
-whole-change review's fix; typecheck and lint also pass), and the last build, before that fix,
-showed `/room-planner` at 105 kB First Load JS. The fix adds no dependency.
+The checks on the final code: `npm run check` passes with 59 test files and 2296 tests, and the
+build shows `/room-planner` at 105 kB First Load JS.
 
 Open questions for the owner (slice C):
 

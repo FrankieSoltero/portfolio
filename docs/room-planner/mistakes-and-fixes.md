@@ -800,3 +800,20 @@ Six entries. Entry 1 is a decision of the first slice that the owner reversed. E
 - **Root cause:** The plan gave drags and nudges the same candidates (x then y, y then x, a slide along each angled wall), although the spec row said a nudge stops. No test or live-check row had an angled wall with a nudge.
 - **Fix:** `stopAtWalls` takes `straight: true`, which keeps only the furthest fit along the step; `shiftItem` and `shiftObstacle` pass it (plan Amendment 2, item 2).
 - **How to avoid:** Every spec behaviour row gets a test in each room shape the feature names.
+
+### Stopping the dev server "by port" also stopped an editor process
+
+- **Date:** 2026-11-16
+- **What happened:** Before the final `npm run check`, the controller ran
+  `lsof -ti tcp:3478 | xargs kill`. `lsof -ti tcp:<port>` lists every process with a
+  connection on that port, clients included. The owner's code editor had a connection to the
+  dev server, so one of its helper processes was stopped together with the server.
+- **Root cause:** The rule "stop the server by port, never by name" was written as a command
+  that selects by port but not by role. It was used all session without looking at what it
+  matched; the listing printed just before the kill showed the editor's process and was not
+  read.
+- **Fix:** The command is now `lsof -ti tcp:3478 -sTCP:LISTEN | xargs kill`, which matches
+  only the process listening on the port.
+- **How to avoid:** Select the listener (`-sTCP:LISTEN`), print what will be stopped, and
+  read it before stopping anything.
+
