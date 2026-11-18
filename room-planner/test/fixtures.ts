@@ -62,3 +62,30 @@ export function planDoc(
 ): PlanDocument {
   return { schemaVersion: 3, units, room, items, openings, obstacles };
 }
+
+/**
+ * The furnished plan the app used to start with: the 144 x 168 in room (8 ft tall, feet) with the
+ * queen bed `seed-bed` and the desk `seed-desk`. The app now starts empty; tests that need furniture
+ * load this. Returns a fresh object every call.
+ */
+export function furnishedDocument(): PlanDocument {
+  return {
+    schemaVersion: 3,
+    units: 'ft',
+    room: rectRoom(144, 168, 96),
+    items: [
+      {
+        id: 'seed-bed', kind: 'bed', name: 'Low platform bed, queen', host: 'shop.example',
+        sourceUrl: null, price: 890, w: 64, d: 85, h: 38, x: 72, y: 42.5, angle: 0,
+        model: { tier: 'retailer', label: '3D model from retailer', assetUrl: null },
+      },
+      {
+        id: 'seed-desk', kind: 'desk', name: 'Tack writing desk', host: 'shop.example',
+        sourceUrl: null, price: 420, w: 55, d: 26, h: 30, x: 131, y: 131.5, angle: 90,
+        model: { tier: 'retailer', label: '3D model from retailer', assetUrl: null },
+      },
+    ],
+    openings: [],
+    obstacles: [],
+  };
+}

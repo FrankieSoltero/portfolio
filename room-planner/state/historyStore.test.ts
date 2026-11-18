@@ -10,6 +10,7 @@ import {
   undo,
   useHistoryStore,
 } from './historyStore';
+import { furnishedDocument } from '../test/fixtures';
 import { usePlanStore } from './planStore';
 import { useUiStore } from './uiStore';
 
@@ -65,7 +66,7 @@ function planRefs() {
 }
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
   clearHistory();
 });

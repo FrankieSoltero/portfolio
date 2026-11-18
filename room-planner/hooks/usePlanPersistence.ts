@@ -53,7 +53,7 @@ function documentChanged(a: PlanDocument, b: PlanDocument): boolean {
 }
 
 /**
- * Puts the result of a load into the stores: the saved document, or the seeded one and a notice.
+ * Puts the result of a load into the stores: the saved document, or the starting one and a notice.
  * Unavailable storage is reported through `reportStorageProblem`. The undo history is cleared after
  * the reset, so the first step is never taking back the load.
  */
@@ -244,7 +244,7 @@ export async function leaveSharedPlan(store: PlanStore): Promise<void> {
 
 /**
  * Loads the saved plan from `store` on mount, then saves every document change, debounced by
- * `CONFIG.saveDebounceMs`. `ready` is false until the load has been applied, so the seeded plan is
+ * `CONFIG.saveDebounceMs`. `ready` is false until the load has been applied, so the starting plan is
  * never shown before a saved one.
  *
  * - The document applied from the load is not saved back: the subscription starts after it.

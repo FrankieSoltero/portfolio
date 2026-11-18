@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
-import { createInitialDocument } from '../domain/catalog';
 import { parsePlan } from '../domain/planSchema';
 import type { PlanDocument } from '../domain/types';
+import { furnishedDocument } from '../test/fixtures';
 import { createBrowserPlanStore } from './browserPlanStore';
 
 const KEY = 'room-planner:plan:v1';
@@ -63,10 +63,10 @@ function serialised(doc: PlanDocument): string {
   });
 }
 
-/** The seeded document holding one door and one box. */
+/** The furnished test plan holding one door and one box. */
 function docWithDoorAndBox(): PlanDocument {
   return {
-    ...createInitialDocument(),
+    ...furnishedDocument(),
     openings: [{ id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' }],
     obstacles: [{ id: 'b1', shape: 'box', label: 'Box', x: 40, y: 120, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 }],
   };
@@ -95,11 +95,11 @@ function v1Seed(): Record<string, unknown> {
 
 /**
  * A document that serialises to exactly `chars` characters and that parsePlan accepts, so only the
- * size limit can refuse it: 200 copies of the seeded bed whose link, name and host are padded, one
+ * size limit can refuse it: 200 copies of the furnished plan's bed whose link, name and host are padded, one
  * field at a time, up to their saved-plan limits.
  */
 function docSerialisingTo(chars: number): PlanDocument {
-  const doc = createInitialDocument();
+  const doc = furnishedDocument();
   const link = 'https://shop.example/';
   doc.items = Array.from({ length: CONFIG.maxItems }, (_, i) => ({ ...doc.items[0], id: `pad-${i}`, sourceUrl: link }));
   let pad = chars - serialised(doc).length;
@@ -145,7 +145,7 @@ describe('createBrowserPlanStore load', () => {
   });
 
   it('loads a saved version 3 document and leaves it stored', async () => {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     storage.setItem(KEY, serialised(doc));
     const store = createBrowserPlanStore(() => storage);
     await expect(store.load()).resolves.toEqual({ status: 'loaded', doc });
@@ -159,10 +159,10 @@ describe('createBrowserPlanStore load', () => {
   });
 
   it('loads a saved version 2 document as version 3 with empty lists, and leaves it stored', async () => {
-    const seed = createInitialDocument();
+    const seed = furnishedDocument();
     const stored = JSON.stringify({ schemaVersion: 2, units: seed.units, room: seed.room, items: seed.items });
     storage.setItem(KEY, stored);
-    await expect(createBrowserPlanStore(() => storage).load()).resolves.toEqual({ status: 'loaded', doc: createInitialDocument() });
+    await expect(createBrowserPlanStore(() => storage).load()).resolves.toEqual({ status: 'loaded', doc: furnishedDocument() });
     expect(storage.getItem(KEY)).toBe(stored);
   });
 
@@ -190,9 +190,9 @@ describe('createBrowserPlanStore load', () => {
   it.each([
     ['JSON null', 'null'],
     ['a JSON string', '"plan"'],
-    ['a document with unknown units', JSON.stringify({ ...createInitialDocument(), units: 'cubits' })],
-    ['a document with no schemaVersion', JSON.stringify({ units: 'ft', room: createInitialDocument().room, items: [] })],
-    ['a document with schemaVersion 0', JSON.stringify({ ...createInitialDocument(), schemaVersion: 0 })],
+    ['a document with unknown units', JSON.stringify({ ...furnishedDocument(), units: 'cubits' })],
+    ['a document with no schemaVersion', JSON.stringify({ units: 'ft', room: furnishedDocument().room, items: [] })],
+    ['a document with schemaVersion 0', JSON.stringify({ ...furnishedDocument(), schemaVersion: 0 })],
   ])('discards %s, which parsePlan refuses as not newer', async (_name, stored) => {
     const refusal = parsePlan(JSON.parse(stored));
     expect(refusal).toMatchObject({ ok: false, newer: false });
@@ -202,7 +202,7 @@ describe('createBrowserPlanStore load', () => {
   });
 
   it.each([4, 40])('leaves a plan saved by a newer planner (schemaVersion %s) untouched', async (version) => {
-    const stored = JSON.stringify({ ...createInitialDocument(), schemaVersion: version });
+    const stored = JSON.stringify({ ...furnishedDocument(), schemaVersion: version });
     storage.setItem(KEY, stored);
     const setItem = vi.spyOn(storage, 'setItem');
     const removeItem = vi.spyOn(storage, 'removeItem');
@@ -213,7 +213,7 @@ describe('createBrowserPlanStore load', () => {
   });
 
   it('discards an oversized value without parsing it, even when it is a valid document', async () => {
-    const doc = serialised(createInitialDocument());
+    const doc = serialised(furnishedDocument());
     const stored = doc + ' '.repeat(CONFIG.maxStoredChars + 1 - doc.length);
     expect(stored).toHaveLength(CONFIG.maxStoredChars + 1);
     storage.setItem(KEY, stored);
@@ -224,7 +224,7 @@ describe('createBrowserPlanStore load', () => {
   });
 
   it('loads a value of exactly the size limit', async () => {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     const stored = serialised(doc) + ' '.repeat(CONFIG.maxStoredChars - serialised(doc).length);
     expect(stored).toHaveLength(CONFIG.maxStoredChars);
     storage.setItem(KEY, stored);
@@ -234,7 +234,7 @@ describe('createBrowserPlanStore load', () => {
   it('reads the key afresh on every call', async () => {
     const store = createBrowserPlanStore(() => storage);
     await expect(store.load()).resolves.toEqual({ status: 'empty' });
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     storage.setItem(KEY, serialised(doc));
     await expect(store.load()).resolves.toEqual({ status: 'loaded', doc });
   });
@@ -242,7 +242,7 @@ describe('createBrowserPlanStore load', () => {
 
 describe('createBrowserPlanStore save', () => {
   it('round-trips a document through save and load', async () => {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     const store = createBrowserPlanStore(() => storage);
     await expect(store.save(doc)).resolves.toBe(true);
     await expect(store.load()).resolves.toEqual({ status: 'loaded', doc });
@@ -250,7 +250,7 @@ describe('createBrowserPlanStore save', () => {
 
   it('writes exactly the one key holding only the six document fields', async () => {
     const empty = new MemoryStorage();
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     // A store state object: the document's fields plus actions and UI state.
     const state = {
       ...doc,
@@ -275,7 +275,7 @@ describe('createBrowserPlanStore save', () => {
   });
 
   it('writes nothing and resolves false for a document with an invalid opening (off its wall)', async () => {
-    const earlier = serialised(createInitialDocument());
+    const earlier = serialised(furnishedDocument());
     storage.setItem(KEY, earlier);
     const setItem = vi.spyOn(storage, 'setItem');
     const doc = docWithDoorAndBox();
@@ -287,8 +287,8 @@ describe('createBrowserPlanStore save', () => {
 
   it('leaves other keys untouched and overwrites an earlier save', async () => {
     const store = createBrowserPlanStore(() => storage);
-    const first = createInitialDocument();
-    const second = { ...createInitialDocument(), units: 'm' as const };
+    const first = furnishedDocument();
+    const second = { ...furnishedDocument(), units: 'm' as const };
     await expect(store.save(first)).resolves.toBe(true);
     await expect(store.save(second)).resolves.toBe(true);
     expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE, [KEY]: serialised(second) });
@@ -301,7 +301,7 @@ describe('createBrowserPlanStore save', () => {
   });
 
   it('writes nothing when the document serialises to more than the size limit', async () => {
-    const earlier = serialised(createInitialDocument());
+    const earlier = serialised(furnishedDocument());
     storage.setItem(KEY, earlier);
     const setItem = vi.spyOn(storage, 'setItem');
     const removeItem = vi.spyOn(storage, 'removeItem');
@@ -313,11 +313,11 @@ describe('createBrowserPlanStore save', () => {
   });
 
   it('writes nothing and resolves false when parsePlan would refuse the document (a 3000-character link)', async () => {
-    const earlier = serialised(createInitialDocument());
+    const earlier = serialised(furnishedDocument());
     storage.setItem(KEY, earlier);
     const setItem = vi.spyOn(storage, 'setItem');
     const removeItem = vi.spyOn(storage, 'removeItem');
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     doc.items[0] = { ...doc.items[0], sourceUrl: `https://shop.example/${'a'.repeat(3000 - 21)}` };
     expect(doc.items[0].sourceUrl).toHaveLength(3000);
     expect(parsePlan(JSON.parse(serialised(doc))).ok).toBe(false);
@@ -331,14 +331,14 @@ describe('createBrowserPlanStore save', () => {
     vi.spyOn(storage, 'setItem').mockImplementation(() => {
       throw quotaError();
     });
-    await expect(createBrowserPlanStore(() => storage).save(createInitialDocument())).resolves.toBe(false);
+    await expect(createBrowserPlanStore(() => storage).save(furnishedDocument())).resolves.toBe(false);
     expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE });
   });
 });
 
 describe('createBrowserPlanStore clear', () => {
   it('removes the key and leaves other keys untouched', async () => {
-    storage.setItem(KEY, serialised(createInitialDocument()));
+    storage.setItem(KEY, serialised(furnishedDocument()));
     await expect(createBrowserPlanStore(() => storage).clear()).resolves.toBeUndefined();
     expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE });
   });
@@ -360,7 +360,7 @@ describe('createBrowserPlanStore when storage fails', () => {
     let clear: Promise<unknown> | undefined;
     expect(() => {
       load = store.load();
-      save = store.save(createInitialDocument());
+      save = store.save(furnishedDocument());
       clear = store.clear();
     }).not.toThrow();
     await expect(load).resolves.toEqual({ status: 'unavailable' });
@@ -392,7 +392,7 @@ describe('createBrowserPlanStore when storage fails', () => {
   });
 
   it('resolves clear when removing the key throws', async () => {
-    storage.setItem(KEY, serialised(createInitialDocument()));
+    storage.setItem(KEY, serialised(furnishedDocument()));
     vi.spyOn(storage, 'removeItem').mockImplementation(() => {
       throw blockedError();
     });
@@ -407,9 +407,9 @@ describe('createBrowserPlanStore when storage fails', () => {
 
     storage.setItem(KEY, '{oops');
     await store.load();
-    storage.setItem(KEY, JSON.stringify({ ...createInitialDocument(), units: 'cubits' }));
+    storage.setItem(KEY, JSON.stringify({ ...furnishedDocument(), units: 'cubits' }));
     await store.load();
-    storage.setItem(KEY, JSON.stringify({ ...createInitialDocument(), schemaVersion: 4 }));
+    storage.setItem(KEY, JSON.stringify({ ...furnishedDocument(), schemaVersion: 4 }));
     await store.load();
     storage.setItem(KEY, 'x'.repeat(CONFIG.maxStoredChars + 1));
     await store.load();
@@ -419,7 +419,7 @@ describe('createBrowserPlanStore when storage fails', () => {
       throw blockedError();
     });
     await blocked.load();
-    await blocked.save(createInitialDocument());
+    await blocked.save(furnishedDocument());
     await blocked.clear();
 
     vi.spyOn(storage, 'setItem').mockImplementation(() => {
@@ -431,7 +431,7 @@ describe('createBrowserPlanStore when storage fails', () => {
     vi.spyOn(storage, 'getItem').mockImplementation(() => {
       throw blockedError();
     });
-    await store.save(createInitialDocument());
+    await store.save(furnishedDocument());
     await store.clear();
     await store.load();
 
@@ -449,7 +449,7 @@ describe('createBrowserPlanStore default storage', () => {
   });
 
   it('uses window.localStorage when no getter is given', async () => {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     const store = createBrowserPlanStore();
     await expect(store.save(doc)).resolves.toBe(true);
     expect(window.localStorage.getItem(KEY)).toBe(serialised(doc));

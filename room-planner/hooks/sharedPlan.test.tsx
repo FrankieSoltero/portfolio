@@ -12,7 +12,7 @@ import { clearHistory, redo, undo, useHistoryStore } from '../state/historyStore
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { createFakePlanStore, type FakeOutcome, type FakePlanStore } from '../test/fakePlanStore';
-import { placedItem, planDoc, rectRoom } from '../test/fixtures';
+import { furnishedDocument, placedItem, planDoc, rectRoom } from '../test/fixtures';
 import {
   currentDocument,
   keepSharedPlan,
@@ -116,7 +116,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   readData.mockReturnValue(null);
   decode.mockReset();
-  usePlanStore.getState().reset();
+  // The furnished plan, not the empty starting plan, so a test can tell the starting plan was applied.
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
   clearHistory();
 });
@@ -164,7 +165,7 @@ describe('opening a link: decodes ok', () => {
     await settle();
     expect(decode).toHaveBeenCalledWith(DATA);
     expect(result.current.ready).toBe(false);
-    expect(currentDoc()).toEqual(createInitialDocument());
+    expect(currentDoc()).toEqual(furnishedDocument());
     expect(useUiStore.getState().sharedPreview).toBeNull();
     store.pendingLoads[0].resolve({ status: 'loaded', doc: OWN });
     await settle();
@@ -178,7 +179,7 @@ describe('opening a link: decodes ok', () => {
     const { result } = renderHook(() => usePlanPersistence(store));
     await settle();
     expect(result.current.ready).toBe(false);
-    expect(currentDoc()).toEqual(createInitialDocument());
+    expect(currentDoc()).toEqual(furnishedDocument());
     expect(useUiStore.getState().notice).toBeNull();
   });
 
@@ -294,7 +295,7 @@ describe('opening a link: decodes invalid or newer', () => {
       expect(store.saveCalls).toHaveLength(0);
     });
 
-    it.each(['empty', 'invalid'] as const)('own %s: the seeded plan, and the shared notice', async (own) => {
+    it.each(['empty', 'invalid'] as const)('own %s: the empty starting plan, and the shared notice', async (own) => {
       shareLink(decoded);
       const store = ownStore(status(own));
       await mountReady(store);
@@ -308,7 +309,7 @@ describe('opening a link: decodes invalid or newer', () => {
     it.each([
       ['unavailable', status('unavailable')],
       ['rejected', { type: 'reject', error: new Error('offline') } as FakeOutcome<LoadResult>],
-    ])('own %s: the seeded plan, and the storage notice stays instead of the shared notice', async (_, load) => {
+    ])('own %s: the empty starting plan, and the storage notice stays instead of the shared notice', async (_, load) => {
       shareLink(decoded);
       const store = ownStore(load);
       await mountReady(store);
@@ -319,7 +320,7 @@ describe('opening a link: decodes invalid or newer', () => {
       expect(clearFragment).toHaveBeenCalledTimes(1);
     });
 
-    it('own newer: the seeded plan with saving blocked, and the newer-plan notice stays instead of the shared notice', async () => {
+    it('own newer: the empty starting plan with saving blocked, and the newer-plan notice stays instead of the shared notice', async () => {
       shareLink(decoded);
       const store = ownStore(status('newer'));
       await mountReady(store);
@@ -430,7 +431,7 @@ describe('while previewing a shared plan', () => {
 });
 
 describe('Reset plan during a preview', () => {
-  it('ends the preview, resets the plan, and the autosave saves the seeded plan after the debounce', async () => {
+  it('ends the preview, resets the plan, and the autosave saves the empty starting plan after the debounce', async () => {
     shareLink({ status: 'ok', doc: SHARED });
     const store = ownStore(loaded());
     const hook = await mountReady(store);

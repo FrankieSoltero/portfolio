@@ -17,6 +17,7 @@ import {
 } from '../state/actions';
 import { ROOM_PROBLEM_TEXT, type RoomProblem, usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
+import { furnishedDocument } from '../test/fixtures';
 import { addObstacle, newObstacle, updateObstacle } from './obstacles';
 import { addOpening, slideOpening, updateOpening } from './openings';
 import { setRectangleSize, setWallLength, wallsOf } from './outline';
@@ -26,8 +27,8 @@ import { roomBounds } from './shape';
 import type { PlanDocument, Point, ProductPreview } from './types';
 
 /**
- * Every kind of edit the planner offers, made through the real stores and actions from the seeded
- * plan, must leave a document that `parsePlan` reads back after a JSON round trip, as the browser
+ * Every kind of edit the planner offers, made through the real stores and actions from the
+ * furnished plan (the room with the bed and desk), must leave a document that `parsePlan` reads back after a JSON round trip, as the browser
  * store would on the next visit. A refusal there discards the visitor's whole plan.
  */
 
@@ -35,7 +36,7 @@ import type { PlanDocument, Point, ProductPreview } from './types';
 afterEach(cleanup);
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
 });
 
@@ -140,7 +141,10 @@ function place(preview: ProductPreview): void {
 describe('every edit leaves a plan that parsePlan reads back', () => {
   it('starts readable', () => {
     expect(LONG_LINK).toHaveLength(3000);
-    expectReadable('seeded plan');
+    expectReadable('furnished plan');
+    usePlanStore.getState().reset();
+    expect(usePlanStore.getState().items).toEqual([]);
+    expectReadable('starting plan with no furniture');
   });
 
   it('item edits: move, nudge, rotate and set angle', () => {

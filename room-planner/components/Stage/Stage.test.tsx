@@ -4,6 +4,7 @@ import type { JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
+import { furnishedDocument } from '../../test/fixtures';
 import type { PaneRect } from '../../view/panes';
 import { Stage } from './Stage';
 
@@ -127,6 +128,7 @@ describe('Stage', () => {
   });
 
   it('Swap: clicking Swap makes the 3D pane the inset labelled 3D and keeps the selection', async () => {
+    usePlanStore.getState().reset(furnishedDocument());
     useUiStore.getState().select('seed-bed');
     const { container } = await renderStage();
     await userEvent.setup().click(within(mustPane(container, 'plan')).getByRole('button', { name: 'Swap' }));

@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { createInitialDocument } from '../domain/catalog';
 import type { Item } from '../domain/types';
+import { furnishedDocument } from '../test/fixtures';
 import { buildFurniture } from './furnitureModels';
 import { modelKey, resolveModel } from './modelSource';
 
 function seedBed(): Item {
-  const bed = createInitialDocument().items.find((i) => i.id === 'seed-bed');
+  const bed = furnishedDocument().items.find((i) => i.id === 'seed-bed');
   if (!bed) throw new Error('seed bed missing');
   return bed;
 }

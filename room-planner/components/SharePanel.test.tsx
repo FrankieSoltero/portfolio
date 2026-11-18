@@ -11,6 +11,7 @@ import { shareUrl } from '../services/shareLocation';
 import { clearHistory, useHistoryStore } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
+import { furnishedDocument } from '../test/fixtures';
 import { captureView } from '../view/captureRegistry';
 import { drawPlanPicture, planPictureSize } from '../view/planPicture';
 import { SharePanel } from './SharePanel';
@@ -79,7 +80,8 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  // Furnished, so the plan shared and drawn has the bed and desk in it.
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
   vi.mocked(encodePlan).mockReset().mockResolvedValue(DATA);
   vi.mocked(canvasToPng).mockReset().mockResolvedValue(new Blob(['png']));

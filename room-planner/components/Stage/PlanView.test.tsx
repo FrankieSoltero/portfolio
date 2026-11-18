@@ -2,7 +2,6 @@ import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../../config';
-import { createInitialDocument } from '../../domain/catalog';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { setRectangleSize } from '../../domain/outline';
 import { boundsOf } from '../../domain/polygon';
@@ -12,7 +11,7 @@ import type { Door, Item, Obstacle, Opening, PlanDocument, Point, WindowOpening 
 import { fmtLen } from '../../domain/units';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
-import { placedItem } from '../../test/fixtures';
+import { furnishedDocument, placedItem } from '../../test/fixtures';
 import type { PaneRect } from '../../view/panes';
 import { doorDrawing } from '../../view/planFeatures';
 import { computeClearances, computePlanLayout, labelBox, planItemBox, toPane } from '../../view/planLayout';
@@ -37,7 +36,8 @@ const INSET: PaneRect = { left: 600, top: 300, w: 380, h: 280, z: 8, inset: true
 const SCALE = 472 / 168;
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  // The plan view tests draw the furnished plan: the bed and the desk in the 144 x 168 in room.
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
 });
 
@@ -129,7 +129,7 @@ function item(id: string): Item | undefined {
 const RUG: Item = placedItem({ id: 'rug-1', kind: 'rug', name: 'Wool rug', price: 100, w: 60, d: 40, h: 1, cx: 40, cy: 120 });
 
 function withRug(): PlanDocument {
-  const doc = createInitialDocument();
+  const doc = furnishedDocument();
   return { ...doc, items: [...doc.items, RUG] };
 }
 
@@ -358,7 +358,7 @@ describe('PlanView', () => {
   });
 
   it('draws one hairline per part for multi-part kinds and none for a shelf', () => {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     const shelf: Item = placedItem({ id: 'shelf-1', kind: 'shelf', name: 'Shelf', price: 100, w: 30, d: 12, h: 70, cx: 15, cy: 156 });
     usePlanStore.getState().reset({ ...doc, items: [...doc.items, shelf] });
     render(<PlanView pane={MAIN} />);
@@ -735,7 +735,7 @@ describe('PlanView doors, windows and obstacles', () => {
   const COLUMN: Obstacle = { id: 'o2', shape: 'cylinder', label: 'Column', x: 100, y: 100, rotation: 0, width: 12, depth: 12, height: 96, elevation: 0 };
 
   function withFeatures(openings: Opening[], obstacles: Obstacle[] = [BOX, COLUMN]): PlanDocument {
-    return { ...createInitialDocument(), openings, obstacles };
+    return { ...furnishedDocument(), openings, obstacles };
   }
 
   function before(a: Element | null, b: Element | null): boolean {

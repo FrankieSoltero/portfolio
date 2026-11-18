@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
+import { furnishedDocument } from '../test/fixtures';
 import { createInitialDocument } from './catalog';
 import { newObstacle } from './obstacles';
 import { openingSpan } from './openings';
@@ -9,12 +10,15 @@ import type { Corner, Door, Item, Kind, ModelTier, Obstacle, PlanDocument, Windo
 type Obj = Record<string, unknown>;
 type Path = readonly (string | number)[];
 
-/** Today's (version 3) seeded document after a JSON round trip, as storage would hand it back. */
+/**
+ * The furnished plan (the room with the bed and desk the app used to start with) as a version 3
+ * document after a JSON round trip, as storage would hand it back.
+ */
 function seed(): Obj {
-  return JSON.parse(JSON.stringify(createInitialDocument())) as Obj;
+  return JSON.parse(JSON.stringify(furnishedDocument())) as Obj;
 }
 
-/** The version 2 seeded document as slice B wrote it: today's seed without the two lists. */
+/** The version 2 seeded document as slice B wrote it: the furnished plan without the two lists. */
 function v2Seed(): Obj {
   return set(drop(drop(seed(), ['openings']), ['obstacles']), ['schemaVersion'], 2);
 }
@@ -28,9 +32,9 @@ const B1: Obstacle = newObstacle('box', { x: 40, y: 120 }, 96, 'b1');
 /** A default column obstacle. */
 const C1: Obstacle = newObstacle('cylinder', { x: 100, y: 100 }, 96, 'k1');
 
-/** Today's seed holding D1, W1, a box and a column, as a typed document. */
+/** The furnished plan holding D1, W1, a box and a column, as a typed document. */
 function fullDoc(): PlanDocument {
-  return { ...createInitialDocument(), openings: [{ ...D1 }, { ...W1 }], obstacles: [{ ...B1 }, { ...C1 }] };
+  return { ...furnishedDocument(), openings: [{ ...D1 }, { ...W1 }], obstacles: [{ ...B1 }, { ...C1 }] };
 }
 
 /** fullDoc after a JSON round trip. */
@@ -125,9 +129,15 @@ const KINDS: Kind[] = ['sofa', 'chair', 'bed', 'desk', 'table', 'shelf', 'rug', 
 const TIERS: ModelTier[] = ['retailer', 'generated', 'parametric', 'box'];
 
 describe('parsePlan — behaviour', () => {
-  it('accepts the current seeded document after a JSON round trip, deep-equal to it', () => {
+  it('accepts the furnished version 3 document after a JSON round trip, deep-equal to it', () => {
     const input = seed();
+    expect(parsePlan(input)).toEqual({ ok: true, doc: furnishedDocument() });
+  });
+
+  it('accepts the starting plan (the room with no furniture) after a JSON round trip, deep-equal to it', () => {
+    const input = JSON.parse(JSON.stringify(createInitialDocument())) as Obj;
     expect(parsePlan(input)).toEqual({ ok: true, doc: createInitialDocument() });
+    expect(accepted(input).items).toEqual([]);
   });
 
   it('returns a new object that shares nothing with the input', () => {
@@ -138,7 +148,7 @@ describe('parsePlan — behaviour', () => {
     expect(doc.items[0]).not.toBe((input.items as Obj[])[0]);
     (input.items as Obj[])[0].name = 'changed';
     ((input.room as Obj).outline as Obj[])[0].x = 5;
-    expect(doc).toEqual(createInitialDocument());
+    expect(doc).toEqual(furnishedDocument());
   });
 
   it('converts a version 1 room to a rectangle outline c1…c4 with its height, at version 3', () => {
@@ -164,16 +174,16 @@ describe('parsePlan — behaviour', () => {
     expect([three.x, three.y, three.angle]).toEqual([131, 131.5, 270]);
   });
 
-  it('converts the whole version 1 seeded document to today’s seeded document', () => {
-    expect(parsePlan(v1Seed())).toEqual({ ok: true, doc: createInitialDocument() });
+  it('converts the whole version 1 seeded document to the furnished plan, keeping the bed and desk', () => {
+    expect(parsePlan(v1Seed())).toEqual({ ok: true, doc: furnishedDocument() });
   });
 
   it('checks every version 2 limit after converting version 1 (a top-left at 1440 puts the centre past 1440)', () => {
     expect(parsePlan(set(v1Seed(), ['items', 0, 'x'], 1440))).toEqual(refusal('items.0.x: too_big'));
   });
 
-  it('converts the version 2 seeded document to today’s seeded document (both lists empty)', () => {
-    expect(parsePlan(v2Seed())).toEqual({ ok: true, doc: createInitialDocument() });
+  it('converts the version 2 seeded document to the furnished plan, keeping the bed and desk (both lists empty)', () => {
+    expect(parsePlan(v2Seed())).toEqual({ ok: true, doc: furnishedDocument() });
   });
 
   it('ignores openings and obstacles keys in a version 2 document: the lists start empty', () => {
@@ -231,7 +241,7 @@ describe('parsePlan — behaviour', () => {
   it('drops unknown keys in a version 1 document too, including the stale rot', () => {
     const input = set(set(v1Seed(), ['items', 0, 'angle'], 45), ['room', 'outline'], 'x');
     const doc = accepted(input);
-    expect(doc).toEqual(createInitialDocument());
+    expect(doc).toEqual(furnishedDocument());
     expect(Object.keys(doc.room)).toEqual(['outline', 'height']);
     expect(Object.prototype.hasOwnProperty.call(doc.items[0], 'rot')).toBe(false);
   });
@@ -425,7 +435,7 @@ describe('parsePlan — behaviour', () => {
   it('accepts a deeply nested value under an unknown key, which is dropped unread', () => {
     let deep: Obj = {};
     for (let k = 0; k < 100_000; k++) deep = { next: deep };
-    expect(accepted(set(seed(), ['extra'], deep))).toEqual(createInitialDocument());
+    expect(accepted(set(seed(), ['extra'], deep))).toEqual(furnishedDocument());
   });
 });
 

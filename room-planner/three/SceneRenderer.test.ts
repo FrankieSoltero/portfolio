@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
-import { createInitialDocument } from '../domain/catalog';
 import { boundsOf } from '../domain/polygon';
 import { itemFootprint, roomBounds, roomHeight } from '../domain/shape';
 import type { Conflicts, Corner, Door, Item, Obstacle, Opening, WindowOpening } from '../domain/types';
-import { rectRoom } from '../test/fixtures';
+import { furnishedDocument, rectRoom } from '../test/fixtures';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from '../view/camera';
 import type { PaneRect } from '../view/panes';
@@ -65,7 +64,7 @@ function fakeRenderer(): FakeRenderer {
 }
 
 function seedItems(): Item[] {
-  return createInitialDocument().items;
+  return furnishedDocument().items;
 }
 
 function input(over: Partial<SceneInput> = {}): SceneInput {

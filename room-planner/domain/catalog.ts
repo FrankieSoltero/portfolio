@@ -27,7 +27,7 @@ export const LOOKS: Record<Kind, { main?: string; soft?: string; wood?: string; 
 export const LINEN = '#f3f1ec';
 export const BOOK_COLOURS = ['#7c8a96', '#b9a48a', '#5f6b5c', '#a2584a', '#d8d2c4'] as const;
 
-/** The seeded plan shown on first load. Returns a fresh object every call. */
+/** The starting plan shown on first load and after Reset: the room with no furniture. Returns a fresh object every call. */
 export function createInitialDocument(): PlanDocument {
   return {
     schemaVersion: 3,
@@ -36,18 +36,7 @@ export function createInitialDocument(): PlanDocument {
       outline: [{ id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 }],
       height: 96,
     },
-    items: [
-      {
-        id: 'seed-bed', kind: 'bed', name: 'Low platform bed, queen', host: 'shop.example',
-        sourceUrl: null, price: 890, w: 64, d: 85, h: 38, x: 72, y: 42.5, angle: 0,
-        model: { tier: 'retailer', label: '3D model from retailer', assetUrl: null },
-      },
-      {
-        id: 'seed-desk', kind: 'desk', name: 'Tack writing desk', host: 'shop.example',
-        sourceUrl: null, price: 420, w: 55, d: 26, h: 30, x: 131, y: 131.5, angle: 90,
-        model: { tier: 'retailer', label: '3D model from retailer', assetUrl: null },
-      },
-    ],
+    items: [],
     openings: [],
     obstacles: [],
   };

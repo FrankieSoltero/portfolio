@@ -9,6 +9,7 @@ import { clearHistory, undo } from './state/historyStore';
 import { usePlanStore } from './state/planStore';
 import { useUiStore } from './state/uiStore';
 import { createFakePlanStore, type FakePlanStore } from './test/fakePlanStore';
+import { furnishedDocument } from './test/fixtures';
 
 // The 3D views draw on canvases jsdom cannot provide; inert stand-ins keep the lazy chunk resolvable.
 vi.mock('./components/Stage/ThreeView', () => ({
@@ -43,8 +44,16 @@ beforeEach(() => {
   seenLookups.length = 0;
 });
 
-/** Renders the app against `store` and waits until its plan has loaded and the workspace shows. */
-async function renderApp(store: FakePlanStore = createFakePlanStore()) {
+/** A fake store holding a saved plan with the bed and the desk in it. */
+function furnishedStore(): FakePlanStore {
+  return createFakePlanStore({ load: { type: 'resolve', value: { status: 'loaded', doc: furnishedDocument() } } });
+}
+
+/**
+ * Renders the app against `store` (by default one holding the furnished plan) and waits until its
+ * plan has loaded and the workspace shows.
+ */
+async function renderApp(store: FakePlanStore = furnishedStore()) {
   const view = render(<App planStore={store} />);
   await screen.findByRole('main');
   return { ...view, store };
@@ -151,10 +160,15 @@ describe('App: saved plan', () => {
     });
     expect(await screen.findByRole('main')).toBeInTheDocument();
     expect(screen.queryByText('Loading your plan…')).not.toBeInTheDocument();
+    // Nothing saved: the starting plan, a room with no furniture.
+    expect(container.querySelectorAll('button.item-row')).toHaveLength(0);
+    // The empty list says so, and the total reads $0.
+    expect(screen.getByText('Nothing placed yet.')).toBeInTheDocument();
+    expect(container.querySelector('.item-list-total-value')).toHaveTextContent('$0');
   });
 
   it('renders the workspace from the loaded plan', async () => {
-    const seed = createInitialDocument();
+    const seed = furnishedDocument();
     const saved = { ...seed, items: seed.items.filter((i) => i.id !== 'seed-desk') };
     const { container } = await renderApp(
       createFakePlanStore({ load: { type: 'resolve', value: { status: 'loaded', doc: saved } } }),
@@ -229,7 +243,7 @@ describe('App: reset plan', () => {
     await flushPromises();
   }
 
-  it('passes its planStore to the sidebar: a confirmed reset clears it, then the autosave saves the seeded document', async () => {
+  it('passes its planStore to the sidebar: a confirmed reset clears it, then the autosave saves the empty starting document', async () => {
     const { store } = await renderApp();
     vi.useFakeTimers();
     act(() => usePlanStore.getState().moveItemTo('seed-bed', 100, 100));
@@ -239,7 +253,8 @@ describe('App: reset plan', () => {
 
     await confirmReset();
     expect(store.clearCalls).toBe(1);
-    expect(bedX()).not.toBe(100);
+    // Reset gives the starting plan, which has no furniture: the bed is gone.
+    expect(usePlanStore.getState().items).toEqual([]);
     expect(useUiStore.getState().notice).toBeNull();
 
     await advance(CONFIG.saveDebounceMs - 1);
@@ -249,7 +264,7 @@ describe('App: reset plan', () => {
     expect(store.saveCalls[1]).toEqual(createInitialDocument());
   });
 
-  it('when clear rejects: resets, shows the storage notice, and still saves the seeded document', async () => {
+  it('when clear rejects: resets, shows the storage notice, and still saves the empty starting document', async () => {
     const { store, container } = await renderApp();
     store.clear = vi.fn(() => Promise.reject(new Error('storage blocked')));
     vi.useFakeTimers();
@@ -257,7 +272,8 @@ describe('App: reset plan', () => {
 
     await confirmReset();
     expect(store.clear).toHaveBeenCalledTimes(1);
-    expect(bedX()).not.toBe(100);
+    // Reset gives the starting plan, which has no furniture: the bed is gone.
+    expect(usePlanStore.getState().items).toEqual([]);
     expect(container.querySelector('.notice')).toHaveTextContent(STORAGE_NOTICE);
     await advance(CONFIG.saveDebounceMs);
     expect(store.saveCalls.at(-1)).toEqual(createInitialDocument());
@@ -270,7 +286,10 @@ describe('App: reset plan', () => {
     expect(useUiStore.getState().saveBlocked).toBe(true);
     expect(container.querySelector('.notice')).toBeInTheDocument();
     vi.useFakeTimers();
+    // Furnish this session's plan, then move the bed: neither is saved while saving is blocked.
+    act(() => usePlanStore.getState().reset(furnishedDocument()));
     act(() => usePlanStore.getState().moveItemTo('seed-bed', 100, 100));
+    expect(bedX()).toBe(100);
     await advance(CONFIG.saveDebounceMs);
     expect(store.saveCalls).toHaveLength(0);
 

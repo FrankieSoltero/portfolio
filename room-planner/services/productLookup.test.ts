@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRODUCT_TEXT_LIMITS, parsePlan } from '../domain/planSchema';
-import { createInitialDocument } from '../domain/catalog';
+import { furnishedDocument } from '../test/fixtures';
 import { LOOKUP_MESSAGES, LookupError, UNTITLED_PRODUCT, capProductText, parseProductUrl } from './productLookup';
 
 function expectInvalid(raw: string): void {
@@ -139,7 +139,7 @@ describe('capProductText', () => {
   });
 
   it('gives fields a saved plan accepts', () => {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     const capped = capProductText({ name: 'n'.repeat(500), host: 'h'.repeat(300), sourceUrl: LONG_URL });
     doc.items[0] = { ...doc.items[0], ...capped };
     expect(parsePlan(JSON.parse(JSON.stringify(doc))).ok).toBe(true);

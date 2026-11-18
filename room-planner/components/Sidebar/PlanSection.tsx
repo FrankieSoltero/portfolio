@@ -9,12 +9,12 @@ import { ConfirmButton } from '../ui/ConfirmButton';
 import './sidebar.css';
 
 /**
- * Starts over: erases the saved plan, then restores the seeded plan and the initial UI state.
+ * Starts over: erases the saved plan, then restores the starting plan (the empty room) and the initial UI state.
  *
  * Order matters. The saved key is cleared first and awaited. Any shared-plan preview is then ended
  * and the `#plan=` fragment removed, so the reset below is saved like any other. The plan store is
  * reset next; that
- * changes the document, so the autosave writes the seeded plan back after its debounce; the undo
+ * changes the document, so the autosave writes the starting plan back after its debounce; the undo
  * history is cleared right after it, so the reset cannot be undone. The UI store is reset last,
  * which clears any notice and lifts `saveBlocked` (so a session that found a plan from a newer
  * planner saves again: the visitor has confirmed erasing it). If clearing failed, the storage
@@ -29,7 +29,7 @@ async function resetPlan(planStore: PlanStore): Promise<void> {
   } catch {
     cleared = false;
   }
-  // A shared-plan preview ends first, so the autosave saves the seeded plan as after any reset,
+  // A shared-plan preview ends first, so the autosave saves the starting plan as after any reset,
   // and the share fragment goes, so a reload does not open the shared plan again.
   useUiStore.getState().setSharedPreview(null);
   clearShareFragment();

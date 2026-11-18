@@ -1,10 +1,10 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createInitialDocument } from '../../domain/catalog';
 import type { Door, Obstacle, Opening, WindowOpening } from '../../domain/types';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
+import { furnishedDocument } from '../../test/fixtures';
 import { RoomFeatures } from './RoomFeatures';
 
 beforeEach(() => {
@@ -16,13 +16,13 @@ beforeEach(() => {
 const DOOR: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 56, width: 32, height: 80, hinge: 'start', swing: 'in' };
 /** A 36 in window on the right wall c2, 20 in from its top end. */
 const WINDOW: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 20, width: 36, sill: 36, height: 48 };
-/** A 24 in box in the middle of the seed room, away from the furniture and the door. */
+/** A 24 in box in the middle of the furnished room, away from the furniture and the door. */
 const BOX: Obstacle = { id: 'b1', shape: 'box', label: 'Box', x: 72, y: 120, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 };
 const COLUMN: Obstacle = { id: 'k1', shape: 'cylinder', label: 'Column', x: 30, y: 140, rotation: 0, width: 12, depth: 12, height: 96, elevation: 0 };
 
-/** The seed plan with these doors, windows and obstacles, in room mode. */
+/** The furnished plan (bed and desk) with these doors, windows and obstacles, in room mode. */
 function seed(openings: Opening[], obstacles: Obstacle[] = []): void {
-  usePlanStore.getState().reset({ ...createInitialDocument(), openings, obstacles });
+  usePlanStore.getState().reset({ ...furnishedDocument(), openings, obstacles });
   useUiStore.getState().setMode('room');
 }
 
@@ -54,7 +54,7 @@ function obstacle(id: string): Obstacle | undefined {
 
 describe('RoomFeatures', () => {
   it('renders nothing in furnish mode', () => {
-    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [DOOR], obstacles: [BOX] });
+    usePlanStore.getState().reset({ ...furnishedDocument(), openings: [DOOR], obstacles: [BOX] });
     const { container } = render(<RoomFeatures />);
     expect(container).toBeEmptyDOMElement();
   });

@@ -10,7 +10,7 @@ import { clearHistory, undo, useHistoryStore } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { createFakePlanStore, type FakePlanStore } from '../test/fakePlanStore';
-import { placedItem, planDoc, rectRoom } from '../test/fixtures';
+import { furnishedDocument, placedItem, planDoc, rectRoom } from '../test/fixtures';
 import { STORAGE_NOTICE, usePlanPersistence } from './usePlanPersistence';
 
 const INVALID_TEXT = 'Your saved plan could not be read, so the planner started fresh.';
@@ -45,9 +45,24 @@ function advance(ms: number): void {
   });
 }
 
-/** Moves the seeded bed one inch to the right: a document change. */
+/** Moves the furnished plan's bed one inch to the right: a document change. */
 function nudgeBed(): void {
   act(() => usePlanStore.getState().moveItemBy('seed-bed', 1, 0));
+}
+
+/** Puts the furnished plan in the store: a document change from the empty starting plan. */
+function furnish(): void {
+  act(() => usePlanStore.getState().reset(furnishedDocument()));
+}
+
+/**
+ * A fake store whose memory holds the furnished plan, so a mount loads the bed and the desk the
+ * way a visitor's saved plan would.
+ */
+function furnishedStore(options: Parameters<typeof createFakePlanStore>[0] = {}): FakePlanStore {
+  const store = createFakePlanStore(options);
+  store.stored = furnishedDocument();
+  return store;
 }
 
 /** Mounts the hook against `store` and waits for its load to be applied. */
@@ -60,10 +75,9 @@ async function mountReady(store: PlanStore) {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  usePlanStore.getState().reset();
+  // A plan that differs from the empty starting plan, so a test can tell the starting plan was applied.
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
-  // A plan that differs from the seeded one, so a test can tell the seed was applied.
-  usePlanStore.getState().removeItem('seed-desk');
   window.localStorage.clear();
 });
 
@@ -103,21 +117,21 @@ describe('usePlanPersistence: loading', () => {
     expect(store.saveCalls).toHaveLength(0);
   });
 
-  it('uses the seeded document and shows no notice when nothing is saved', async () => {
+  it('uses the empty starting plan and shows no notice when nothing is saved', async () => {
     const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'empty' } } });
     await mountReady(store);
     expect(currentDoc()).toEqual(createInitialDocument());
     expect(useUiStore.getState().notice).toBeNull();
   });
 
-  it('uses the seeded document and shows the invalid-plan notice when the saved plan is invalid', async () => {
+  it('uses the empty starting plan and shows the invalid-plan notice when the saved plan is invalid', async () => {
     const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'invalid' } } });
     await mountReady(store);
     expect(currentDoc()).toEqual(createInitialDocument());
     expect(useUiStore.getState().notice).toBe(INVALID_TEXT);
   });
 
-  it('uses the seeded document and shows the storage notice when storage is unavailable', async () => {
+  it('uses the empty starting plan and shows the storage notice when storage is unavailable', async () => {
     const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'unavailable' } } });
     await mountReady(store);
     expect(currentDoc()).toEqual(createInitialDocument());
@@ -178,12 +192,13 @@ describe('usePlanPersistence: loading', () => {
 });
 
 describe('usePlanPersistence: newer plan', () => {
-  it('uses the seeded document, shows the newer-version notice and blocks saving', async () => {
+  it('uses the empty starting plan, shows the newer-version notice and blocks saving', async () => {
     const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'newer' } } });
     const { unmount } = await mountReady(store);
     expect(currentDoc()).toEqual(createInitialDocument());
     expect(useUiStore.getState().notice).toBe(NEWER_TEXT);
     expect(useUiStore.getState().saveBlocked).toBe(true);
+    furnish();
     nudgeBed();
     advance(1000);
     nudgeBed();
@@ -199,6 +214,7 @@ describe('usePlanPersistence: newer plan', () => {
     const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'newer' } } });
     await mountReady(store);
     act(() => useUiStore.getState().reset());
+    furnish();
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
     expect(store.saveCalls).toHaveLength(1);
@@ -207,7 +223,7 @@ describe('usePlanPersistence: newer plan', () => {
 
 describe('usePlanPersistence: autosave', () => {
   it('saves once, after 300 ms of quiet, the document as it is after the last of three changes', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     await mountReady(store);
     nudgeBed();
     advance(100);
@@ -225,7 +241,7 @@ describe('usePlanPersistence: autosave', () => {
   });
 
   it('passes save an object with exactly the six document keys', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     await mountReady(store);
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
@@ -233,7 +249,7 @@ describe('usePlanPersistence: autosave', () => {
   });
 
   it('saves once when the openings list is replaced, with all six fields', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     await mountReady(store);
     act(() => usePlanStore.setState({ openings: [DOOR] }));
     advance(CONFIG.saveDebounceMs);
@@ -245,7 +261,7 @@ describe('usePlanPersistence: autosave', () => {
   });
 
   it('saves once when the obstacles list is replaced, with all six fields', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     await mountReady(store);
     act(() => usePlanStore.setState({ obstacles: [BOX] }));
     advance(CONFIG.saveDebounceMs);
@@ -255,7 +271,7 @@ describe('usePlanPersistence: autosave', () => {
   });
 
   it('does not save for UI state changes or plan updates that change no document field', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     await mountReady(store);
     act(() => {
       useUiStore.getState().select('seed-bed');
@@ -273,7 +289,7 @@ describe('usePlanPersistence: autosave', () => {
   });
 
   it('shows the storage notice when save resolves false, and leaves it untouched on a second failure', async () => {
-    const store = createFakePlanStore({ save: { type: 'resolve', value: false } });
+    const store = furnishedStore({ save: { type: 'resolve', value: false } });
     await mountReady(store);
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
@@ -292,7 +308,7 @@ describe('usePlanPersistence: autosave', () => {
   });
 
   it('shows the storage notice when save rejects, without an unhandled rejection', async () => {
-    const store = createFakePlanStore({ save: { type: 'reject', error: new Error('quota') } });
+    const store = furnishedStore({ save: { type: 'reject', error: new Error('quota') } });
     await mountReady(store);
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
@@ -316,7 +332,7 @@ describe('usePlanPersistence: storage notice once per mount', () => {
   });
 
   it('a failed save after the notice was dismissed does not show it again', async () => {
-    const store = createFakePlanStore({ save: { type: 'resolve', value: false } });
+    const store = furnishedStore({ save: { type: 'resolve', value: false } });
     await mountReady(store);
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
@@ -340,6 +356,7 @@ describe('usePlanPersistence: storage notice once per mount', () => {
     expect(useUiStore.getState().notice).toBe(STORAGE_TEXT);
 
     act(() => useUiStore.getState().setNotice(null));
+    furnish();
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
     await settle();
@@ -348,7 +365,7 @@ describe('usePlanPersistence: storage notice once per mount', () => {
   });
 
   it('a UI reset does not re-arm it within the same mount', async () => {
-    const store = createFakePlanStore({ save: { type: 'resolve', value: false } });
+    const store = furnishedStore({ save: { type: 'resolve', value: false } });
     await mountReady(store);
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
@@ -370,7 +387,7 @@ describe('usePlanPersistence: storage notice once per mount', () => {
   });
 
   it('shows the notice again in a new mount', async () => {
-    const store = createFakePlanStore({ save: { type: 'resolve', value: false } });
+    const store = furnishedStore({ save: { type: 'resolve', value: false } });
     const first = await mountReady(store);
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
@@ -378,7 +395,7 @@ describe('usePlanPersistence: storage notice once per mount', () => {
     first.unmount();
     act(() => useUiStore.getState().setNotice(null));
 
-    const second = createFakePlanStore({ save: { type: 'resolve', value: false } });
+    const second = furnishedStore({ save: { type: 'resolve', value: false } });
     await mountReady(second);
     nudgeBed();
     advance(CONFIG.saveDebounceMs);
@@ -389,7 +406,7 @@ describe('usePlanPersistence: storage notice once per mount', () => {
 
 describe('usePlanPersistence: unmount', () => {
   it('flushes a pending save immediately on unmount, exactly once', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     const { unmount } = await mountReady(store);
     nudgeBed();
     advance(100);
@@ -403,7 +420,7 @@ describe('usePlanPersistence: unmount', () => {
   });
 
   it('saves nothing on unmount when nothing is pending, and stops listening', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     const { unmount } = await mountReady(store);
     unmount();
     expect(store.saveCalls).toHaveLength(0);
@@ -433,7 +450,7 @@ describe('usePlanPersistence: page hide', () => {
   }
 
   it('pagehide flushes a pending save at once with the current document, and the timer does not save again', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     await mountReady(store);
     nudgeBed();
     advance(100);
@@ -447,7 +464,7 @@ describe('usePlanPersistence: page hide', () => {
   });
 
   it('visibilitychange to hidden flushes a pending save at once, and the timer does not save again', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     await mountReady(store);
     nudgeBed();
     advance(100);
@@ -460,7 +477,7 @@ describe('usePlanPersistence: page hide', () => {
   });
 
   it('visibilitychange to visible does not save; the pending save still happens on its timer', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     await mountReady(store);
     nudgeBed();
     advance(100);
@@ -471,7 +488,7 @@ describe('usePlanPersistence: page hide', () => {
   });
 
   it('saves nothing when nothing is pending', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     await mountReady(store);
     pageHide();
     visibility('hidden');
@@ -486,6 +503,7 @@ describe('usePlanPersistence: page hide', () => {
   it('saves nothing while saving is blocked', async () => {
     const store = createFakePlanStore({ load: { type: 'resolve', value: { status: 'newer' } } });
     await mountReady(store);
+    furnish();
     nudgeBed();
     advance(100);
     pageHide();
@@ -496,7 +514,7 @@ describe('usePlanPersistence: page hide', () => {
   });
 
   it('under StrictMode one pagehide makes exactly one save', async () => {
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     const { result } = renderHook(() => usePlanPersistence(store), { wrapper: StrictMode });
     await settle();
     expect(result.current.ready).toBe(true);
@@ -521,7 +539,7 @@ describe('usePlanPersistence: page hide', () => {
         remove(type, fn, opts);
       });
     }
-    const store = createFakePlanStore();
+    const store = furnishedStore();
     const { unmount } = await mountReady(store);
     expect(added.map(([, type]) => type).sort()).toEqual(['pagehide', 'visibilitychange']);
     nudgeBed();
@@ -540,7 +558,7 @@ describe('usePlanPersistence: page hide', () => {
 
 describe('usePlanPersistence: StrictMode', () => {
   it('becomes ready with exactly one active subscription: one change, one save', async () => {
-    const store: FakePlanStore = createFakePlanStore();
+    const store: FakePlanStore = furnishedStore();
     const { result } = renderHook(() => usePlanPersistence(store), { wrapper: StrictMode });
     await settle();
     expect(result.current.ready).toBe(true);
