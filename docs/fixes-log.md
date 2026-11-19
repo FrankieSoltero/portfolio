@@ -209,6 +209,16 @@ MDX content, not user input.
 - A workaround for a missing asset (the empty icon) hid the gap on one page and left it on
   the others. Add the asset once at the root when it is missing site-wide.
 
+## 2026-11-17 — Room Planner link in the navigation; card mentions sharing
+
+### Changes
+- `public/index.html`: the top navigation gains `PLANNER`, linking to `/room-planner`
+  (after `PAPERS`). Until now the planner was reachable only through its project card.
+- The Room Planner project card's blurb and reward line mention sharing (a link with no
+  server behind it, or a picture), which went live the same day.
+- Checked at 1440, 1024 and 390 px wide: no horizontal scroll; at 390 px the navigation
+  wraps to two rows, as it did before.
+
 ## 2026-11-18 — Starting plan has no furniture
 
 ### Changes
