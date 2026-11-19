@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProductPreview } from '../domain/types';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
+import { furnishedDocument } from '../test/fixtures';
 import { SelectionBar } from './SelectionBar';
 import { TopBar } from './TopBar';
 
@@ -11,7 +12,7 @@ import { TopBar } from './TopBar';
 afterEach(cleanup);
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
 });
 

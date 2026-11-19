@@ -2,11 +2,11 @@ import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SelectionBar } from '../components/SelectionBar';
 import { CONFIG } from '../config';
-import { createInitialDocument } from '../domain/catalog';
 import type { Corner, Door, Item, Obstacle } from '../domain/types';
 import { clearHistory, redo, runKeyed, undo, useHistoryStore } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
+import { furnishedDocument } from '../test/fixtures';
 import { startDrag } from './startDrag';
 import { useElementSize } from './useElementSize';
 import { ROTATE_STEP_COARSE, ROTATE_STEP_FINE, useKeyboardShortcuts } from './useKeyboardShortcuts';
@@ -47,7 +47,8 @@ function focused<K extends 'input' | 'textarea' | 'select'>(tag: K, type?: strin
 }
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  // The starting plan is empty; these shortcuts act on furniture, so every test starts furnished.
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
   clearHistory();
 });
@@ -62,7 +63,7 @@ describe('useKeyboardShortcuts', () => {
   beforeEach(() => {
     // Put the bed's centre at exactly (40, 20), off the drag grid, so the rows also show a nudge never
     // re-snaps. There the bed is partly outside the room (y −22.5 to 62.5), so the walls stop no arrow.
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     usePlanStore.getState().reset({ ...doc, items: doc.items.map((i) => (i.id === BED ? { ...i, x: 40, y: 20 } : i)) });
     renderHook(() => useKeyboardShortcuts());
   });
@@ -375,7 +376,7 @@ describe('useKeyboardShortcuts in room mode with a door, window or obstacle', ()
   }
 
   beforeEach(() => {
-    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1], obstacles: [BOX] });
+    usePlanStore.getState().reset({ ...furnishedDocument(), openings: [D1], obstacles: [BOX] });
     renderHook(() => useKeyboardShortcuts());
     useUiStore.getState().setMode('room');
   });
@@ -508,7 +509,7 @@ describe('useKeyboardShortcuts slides a door the way the arrow points on screen'
   }
 
   function withDoor(door: Door, outline?: Corner[]): void {
-    const base = createInitialDocument();
+    const base = furnishedDocument();
     usePlanStore.getState().reset({ ...base, room: { ...base.room, outline: outline ?? base.room.outline }, items: [], openings: [door] });
     renderHook(() => useKeyboardShortcuts());
     useUiStore.getState().setMode('room');
@@ -890,7 +891,7 @@ describe('useKeyboardShortcuts key runs', () => {
   }
 
   beforeEach(() => {
-    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1], obstacles: [BOX] });
+    usePlanStore.getState().reset({ ...furnishedDocument(), openings: [D1], obstacles: [BOX] });
     renderHook(() => useKeyboardShortcuts());
     clearHistory();
     vi.useFakeTimers();
@@ -940,8 +941,8 @@ describe('useKeyboardShortcuts key runs', () => {
   });
 
   it('Two things: ArrowRight on the bed, then on the desk at once, are 2 steps', () => {
-    // The seed desk is flush with the right wall; partly outside the room (x 127–153), ArrowRight moves it.
-    const doc = createInitialDocument();
+    // The furnished plan's desk is flush with the right wall; partly outside the room (x 127–153), ArrowRight moves it.
+    const doc = furnishedDocument();
     usePlanStore.getState().reset({
       ...doc,
       openings: [D1],

@@ -2,10 +2,10 @@
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
-import { createInitialDocument } from '../domain/catalog';
 import { newObstacle } from '../domain/obstacles';
 import { parsePlan } from '../domain/planSchema';
 import type { Item, PlanDocument } from '../domain/types';
+import { furnishedDocument } from '../test/fixtures';
 import { decodePlan, encodePlan } from './shareLink';
 
 /**
@@ -88,7 +88,7 @@ function item(id: string, patch: Partial<Item> = {}): Item {
 
 function lShape(): PlanDocument {
   return {
-    ...createInitialDocument(),
+    ...furnishedDocument(),
     room: {
       outline: [
         { id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 120, y: 0 }, { id: 'c3', x: 120, y: 96 },
@@ -102,7 +102,7 @@ function lShape(): PlanDocument {
 /** Angled wall c2→c3, a door on c1, a window on the angled wall and a column. */
 function angledRoom(): PlanDocument {
   return {
-    ...createInitialDocument(),
+    ...furnishedDocument(),
     room: {
       outline: [
         { id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 192, y: 72 },
@@ -120,7 +120,7 @@ function angledRoom(): PlanDocument {
 
 function fortyItems(): PlanDocument {
   return {
-    ...createInitialDocument(),
+    ...furnishedDocument(),
     items: Array.from({ length: 40 }, (_, i) => item(`item-${i}`, { x: 40 + (i % 8) * 10, y: 40 + Math.floor(i / 8) * 20 })),
   };
 }
@@ -141,9 +141,9 @@ function v1Stored(): unknown {
   };
 }
 
-/** The version 2 seeded document: today's seed without the two lists. */
+/** The version 2 seeded document: the furnished plan without the two lists. */
 function v2Stored(): unknown {
-  const { units, room, items } = createInitialDocument();
+  const { units, room, items } = furnishedDocument();
   return { schemaVersion: 2, units, room, items };
 }
 
@@ -160,7 +160,7 @@ describe('base64url helper (golden vector)', () => {
 
 describe('encodePlan', () => {
   it('normal: 1.<base64url of raw deflate of the JSON>, decoding to parsePlan(doc).doc', async () => {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     const data = await encoded(doc);
     expect(data).toMatch(/^1\.[A-Za-z0-9_-]+$/);
     expect(payloadJson(data)).toBe(JSON.stringify(doc));
@@ -169,7 +169,7 @@ describe('encodePlan', () => {
 
   it('no CompressionStream global: 0.<base64url of the JSON>, decoding to the same doc', async () => {
     replaceGlobal('CompressionStream', undefined);
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     const data = await encoded(doc);
     expect(data).toBe('0.' + b64url(JSON.stringify(doc)));
     expect(await decodePlan(data)).toEqual({ status: 'ok', doc: accepted(doc) });
@@ -181,7 +181,7 @@ describe('encodePlan', () => {
         throw new Error('no compression');
       }
     });
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     await expect(encodePlan(doc)).resolves.toBe('0.' + b64url(JSON.stringify(doc)));
   });
 
@@ -199,7 +199,7 @@ describe('encodePlan', () => {
         this.writable = t.writable;
       }
     });
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     await expect(encodePlan(doc)).resolves.toBe('0.' + b64url(JSON.stringify(doc)));
   });
 
@@ -220,7 +220,7 @@ describe('encodePlan', () => {
           this.writable = t.writable;
         }
       };
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     replaceGlobal('CompressionStream', inflating(MAX_BYTES + 1));
     await expect(encodePlan(doc)).resolves.toBe('0.' + b64url(JSON.stringify(doc)));
     replaceGlobal('CompressionStream', inflating(MAX_BYTES));
@@ -230,7 +230,7 @@ describe('encodePlan', () => {
   });
 
   it('extra keys on the argument: only the six fields, in order, are encoded', async () => {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     const state = { ...doc, selectedId: 'seed-bed', reset: () => undefined, applyOpenings: () => null };
     const data = await encoded(state as PlanDocument);
     expect(payloadJson(data)).toBe(
@@ -242,14 +242,14 @@ describe('encodePlan', () => {
   });
 
   it('a plan parsePlan refuses gives null', async () => {
-    const bad = { ...createInitialDocument(), units: 'yd' } as unknown as PlanDocument;
+    const bad = { ...furnishedDocument(), units: 'yd' } as unknown as PlanDocument;
     await expect(encodePlan(bad)).resolves.toBeNull();
   });
 
   it('JSON over MAX_BYTES UTF-8 bytes gives null (bytes, not characters, are counted)', async () => {
     const kana = (n: number) => 'あ'.repeat(n);
     const doc: PlanDocument = {
-      ...createInitialDocument(),
+      ...furnishedDocument(),
       items: Array.from({ length: 200 }, (_, i) =>
         item(`big-${i}`, {
           name: kana(200), host: kana(255), sourceUrl: `https://a.example/${kana(1500)}`,
@@ -266,7 +266,7 @@ describe('encodePlan', () => {
 
   it('non-Latin text round-trips exactly', async () => {
     const doc: PlanDocument = {
-      ...createInitialDocument(),
+      ...furnishedDocument(),
       items: [item('jp', { name: '寝室のベッド' }), item('emoji', { name: 'Sofa 🛋️ with 👍🏽', x: 80 })],
     };
     const result = await decodePlan(await encoded(doc));
@@ -276,7 +276,7 @@ describe('encodePlan', () => {
   });
 
   it('round trips: the starting plan', async () => {
-    await expectRoundTrip(createInitialDocument());
+    await expectRoundTrip(furnishedDocument());
   });
 
   it('round trips: an L-shape room', async () => {
@@ -349,10 +349,10 @@ describe('decodePlan', () => {
     expect(await decodePlan('0.A')).toEqual({ status: 'invalid' });
     // A real link (padded with JSON whitespace to a whole number of 4-character groups) with one
     // stray character added; that character's 6 bits make no byte, so only the length rule refuses it.
-    let json = JSON.stringify(createInitialDocument());
+    let json = JSON.stringify(furnishedDocument());
     while (Buffer.byteLength(json) % 3 !== 0) json += ' ';
     const data = '0.' + b64url(json);
-    expect(await decodePlan(data)).toEqual({ status: 'ok', doc: accepted(createInitialDocument()) });
+    expect(await decodePlan(data)).toEqual({ status: 'ok', doc: accepted(furnishedDocument()) });
     expect(await decodePlan(data + 'A')).toEqual({ status: 'invalid' });
     // Version 1: refused before any inflating.
     const inflates = countInflates();
@@ -371,7 +371,7 @@ describe('decodePlan', () => {
   });
 
   it('leading zeros in the version are read as its number (accepted behavior)', async () => {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     const data = await encoded(doc);
     expect(data.startsWith('1.')).toBe(true);
     expect(await decodePlan('0' + data)).toEqual({ status: 'ok', doc: accepted(doc) });
@@ -381,7 +381,7 @@ describe('decodePlan', () => {
   it('version 0, bytes that are not valid UTF-8, is invalid', async () => {
     expect(await decodePlan('0.' + b64url(new Uint8Array([0xff, 0xfe])))).toEqual({ status: 'invalid' });
     // A plan that would be accepted if the stray byte were read as a replacement character.
-    const [before, after] = JSON.stringify(createInitialDocument()).split('Tack writing desk');
+    const [before, after] = JSON.stringify(furnishedDocument()).split('Tack writing desk');
     const bytes = Buffer.concat([Buffer.from(before), Buffer.from([0xff]), Buffer.from(after)]);
     expect(await decodePlan('0.' + b64url(bytes))).toEqual({ status: 'invalid' });
   });
@@ -409,7 +409,7 @@ describe('decodePlan', () => {
   });
 
   it('version 1, no DecompressionStream global, is invalid', async () => {
-    const data = await encoded(createInitialDocument());
+    const data = await encoded(furnishedDocument());
     expect(data.startsWith('1.')).toBe(true);
     replaceGlobal('DecompressionStream', undefined);
     expect(await decodePlan(data)).toEqual({ status: 'invalid' });
@@ -539,7 +539,7 @@ describe('decodePlan', () => {
         return 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[(seed >>> 0) % 62];
       }).join('');
     const doc: PlanDocument = {
-      ...createInitialDocument(),
+      ...furnishedDocument(),
       items: Array.from({ length: 200 }, (_, i) => item(`n-${i}`, { name: noise(200), host: noise(100) })),
     };
     const data = await encoded(doc);
@@ -550,11 +550,11 @@ describe('decodePlan', () => {
   });
 
   it('a __proto__ key in the JSON is never copied and pollutes nothing', async () => {
-    const json = JSON.stringify(createInitialDocument()).replace('{', '{"__proto__":{"polluted":true},');
+    const json = JSON.stringify(furnishedDocument()).replace('{', '{"__proto__":{"polluted":true},');
     expect(Object.prototype.hasOwnProperty.call(JSON.parse(json), '__proto__')).toBe(true);
     for (const data of linksFor(json)) {
       const result = await decodePlan(data);
-      expect(result).toEqual({ status: 'ok', doc: accepted(createInitialDocument()) });
+      expect(result).toEqual({ status: 'ok', doc: accepted(furnishedDocument()) });
       if (result.status !== 'ok') continue;
       expect(Object.getPrototypeOf(result.doc)).toBe(Object.prototype);
       expect(Object.prototype.hasOwnProperty.call(result.doc, '__proto__')).toBe(false);

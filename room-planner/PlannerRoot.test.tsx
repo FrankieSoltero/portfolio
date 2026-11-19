@@ -6,9 +6,9 @@ import type { JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PlannerRoot from './PlannerRoot';
 import { CONFIG } from './config';
-import { createInitialDocument } from './domain/catalog';
 import { usePlanStore } from './state/planStore';
 import { useUiStore } from './state/uiStore';
+import { furnishedDocument } from './test/fixtures';
 
 // The 3D views draw on canvases jsdom cannot provide; inert stand-ins keep the lazy chunk resolvable.
 vi.mock('./components/Stage/ThreeView', () => ({
@@ -49,7 +49,7 @@ describe('PlannerRoot', () => {
   });
 
   it('loads the plan saved in this browser and saves changes back to it', async () => {
-    const seed = createInitialDocument();
+    const seed = furnishedDocument();
     const saved = { ...seed, items: seed.items.filter((i) => i.id !== 'seed-desk') };
     window.localStorage.setItem(CONFIG.planStorageKey, JSON.stringify(saved));
     const { container } = render(<PlannerRoot />);

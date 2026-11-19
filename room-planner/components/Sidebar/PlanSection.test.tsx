@@ -7,6 +7,7 @@ import { clearHistory, undo, useHistoryStore } from '../../state/historyStore';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { createFakePlanStore, type FakePlanStore, type Pending } from '../../test/fakePlanStore';
+import { furnishedDocument } from '../../test/fixtures';
 import { PlanSection } from './PlanSection';
 
 vi.mock('../../services/shareLocation', () => ({
@@ -22,7 +23,8 @@ const clearFragment = vi.mocked(clearShareFragment);
 afterEach(cleanup);
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  // Start furnished, so a reset has a bed to take away.
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
   clearFragment.mockReset();
 });
@@ -35,9 +37,13 @@ function bed() {
   return item;
 }
 
-/** Moves the bed, selects it and shows a notice, so a reset has something to undo. */
+/**
+ * Loads the furnished plan, moves the bed, selects it and shows a notice, so a reset has something to
+ * undo. It sets the plan directly rather than through `reset`, which some tests count.
+ */
 function dirtyTheStores(): void {
   act(() => {
+    usePlanStore.setState(furnishedDocument());
     usePlanStore.getState().moveItemTo('seed-bed', 100, 100);
     useUiStore.getState().select('seed-bed');
     useUiStore.getState().setNotice('Something earlier');
@@ -66,7 +72,8 @@ async function confirmReset(): Promise<void> {
   await user.click(screen.getByRole('button', { name: 'Erase everything and start over' }));
 }
 
-function expectSeededPlanAndFreshUi(): void {
+/** The plan is the starting plan, the room with no furniture, and the UI store is fresh. */
+function expectStartingPlanAndFreshUi(): void {
   const seed = createInitialDocument();
   const plan = usePlanStore.getState();
   expect({
@@ -77,6 +84,7 @@ function expectSeededPlanAndFreshUi(): void {
     openings: plan.openings,
     obstacles: plan.obstacles,
   }).toEqual(seed);
+  expect(plan.items).toEqual([]);
   const ui = useUiStore.getState();
   expect(ui.selectedId).toBeNull();
   expect(ui.mode).toBe('furnish');
@@ -108,7 +116,7 @@ describe('PlanSection', () => {
     expect(bed().x).toBe(100);
   });
 
-  it('reset: awaits planStore.clear(), then resets the plan to the seeded document and the UI store', async () => {
+  it('reset: awaits planStore.clear(), then resets the plan to the empty starting document and the UI store', async () => {
     const store = createFakePlanStore();
     const clear = holdClear(store);
     render(<PlanSection planStore={store} />);
@@ -123,7 +131,7 @@ describe('PlanSection', () => {
     await act(async () => {
       clear.resolve();
     });
-    expectSeededPlanAndFreshUi();
+    expectStartingPlanAndFreshUi();
     expect(useUiStore.getState().notice).toBeNull();
   });
 
@@ -138,7 +146,7 @@ describe('PlanSection', () => {
       await confirmReset();
     });
     expect(clear).toHaveBeenCalledTimes(1);
-    expectSeededPlanAndFreshUi();
+    expectStartingPlanAndFreshUi();
     expect(useUiStore.getState().notice).toBe(STORAGE_NOTICE);
   });
 
@@ -162,7 +170,7 @@ describe('PlanSection', () => {
       });
       expect(planResets).toBe(1);
       expect(uiResets).toBe(1);
-      expectSeededPlanAndFreshUi();
+      expectStartingPlanAndFreshUi();
 
       // A new reset after the first has settled runs normally.
       store.clear = () => {
@@ -176,7 +184,7 @@ describe('PlanSection', () => {
       expect(store.clearCalls).toBe(2);
       expect(planResets).toBe(2);
       expect(uiResets).toBe(2);
-      expectSeededPlanAndFreshUi();
+      expectStartingPlanAndFreshUi();
     } finally {
       usePlanStore.setState({ reset: planReset });
       useUiStore.setState({ reset: uiReset });
@@ -193,7 +201,7 @@ describe('PlanSection', () => {
       await confirmReset();
     });
     expect(store.clearCalls).toBe(1);
-    expectSeededPlanAndFreshUi();
+    expectStartingPlanAndFreshUi();
     expect(useUiStore.getState().webglAvailable).toBe(false);
     expect(useUiStore.getState().renderStyle).toBe('blueprint');
     expect(useUiStore.getState().notice).toBeNull();
@@ -222,7 +230,7 @@ describe('PlanSection', () => {
       await confirmReset();
     });
     expect(store.clearCalls).toBe(1);
-    expectSeededPlanAndFreshUi();
+    expectStartingPlanAndFreshUi();
     expect(useUiStore.getState().saveBlocked).toBe(false);
     expect(useUiStore.getState().notice).toBeNull();
   });
@@ -258,7 +266,7 @@ describe('PlanSection: reset during a shared-plan preview', () => {
       expect(clearFragment).toHaveBeenCalledTimes(1);
       expect(order).toEqual(['clearShareFragment', 'plan reset, preview null']);
       expect(useUiStore.getState().sharedPreview).toBeNull();
-      expectSeededPlanAndFreshUi();
+      expectStartingPlanAndFreshUi();
       expect(useUiStore.getState().notice).toBeNull();
     },
   );
@@ -284,7 +292,7 @@ describe('PlanSection: undo history', () => {
       await confirmReset();
     });
     expect(store.clearCalls).toBe(1);
-    expectSeededPlanAndFreshUi();
+    expectStartingPlanAndFreshUi();
     expect(useHistoryStore.getState().canUndo).toBe(false);
     expect(useHistoryStore.getState().canRedo).toBe(false);
   });

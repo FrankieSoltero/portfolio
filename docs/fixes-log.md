@@ -218,3 +218,27 @@ MDX content, not user input.
   server behind it, or a picture), which went live the same day.
 - Checked at 1440, 1024 and 390 px wide: no horizontal scroll; at 390 px the navigation
   wraps to two rows, as it did before.
+
+## 2026-11-18 — Starting plan has no furniture
+
+### Changes
+- The Room Planner's starting plan (`createInitialDocument()` in
+  `room-planner/domain/catalog.ts`) held a queen bed and a desk. At the owner's request it is
+  now the same 12 × 14 ft room, 8 ft tall, with no furniture. The room, units, height, doors,
+  windows and obstacles are unchanged. The same function feeds the plan store's first state
+  and `Reset plan`, so both now give an empty room.
+- Saved plans are untouched. There is no migration: a plan already in a visitor's browser
+  (`room-planner:plan:v1`) or in a share link loads as it was, furniture included.
+- Tests that need furniture now load `furnishedDocument()` from
+  `room-planner/test/fixtures.ts`, which is the old furnished plan with the same ids
+  (`seed-bed`, `seed-desk`). Tests about the starting plan or Reset keep
+  `createInitialDocument()` and now check that the bed and desk are absent. The version 1 and
+  version 2 sample documents in `planSchema.test.ts` still migrate to the furnished plan.
+- The empty room already reads correctly: the furniture list shows "Nothing placed yet.", the
+  total shows $0, and the plan picture, 2D plan and 3D view draw the room with nothing in it.
+  No other production change was needed. Comments that called the starting plan "seeded" now
+  call it "starting".
+
+### Lesson
+- The starting plan was also the shared test setup for about 30 test files. Test data that
+  must stay fixed belongs in a test fixture, not in a production default the owner may change.

@@ -3,6 +3,7 @@ import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearHistory, undo, useHistoryStore } from '../state/historyStore';
 import { usePlanStore } from '../state/planStore';
+import { furnishedDocument } from '../test/fixtures';
 import { startDrag } from './startDrag';
 
 /** A pointerdown at (x, y), with just the fields startDrag reads. */
@@ -23,7 +24,7 @@ function undoAll(): number {
 }
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  usePlanStore.getState().reset(furnishedDocument());
   clearHistory();
 });
 

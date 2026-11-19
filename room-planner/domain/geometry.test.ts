@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialDocument } from './catalog';
 import {
   footprintHalfExtents,
   moveItem,
@@ -13,12 +12,13 @@ import {
 import { boundsOf } from './polygon';
 import { footprintCorners, itemFootprint, roomBounds, roomOutline } from './shape';
 import type { Item, Point } from './types';
+import { furnishedDocument } from '../test/fixtures';
 
-const BOUNDS = roomBounds(createInitialDocument().room);
-const OUTLINE = roomOutline(createInitialDocument().room);
+const BOUNDS = roomBounds(furnishedDocument().room);
+const OUTLINE = roomOutline(furnishedDocument().room);
 
 function seed(id: string): Item {
-  const item = createInitialDocument().items.find((i) => i.id === id);
+  const item = furnishedDocument().items.find((i) => i.id === id);
   if (!item) throw new Error(`missing seed item ${id}`);
   return item;
 }

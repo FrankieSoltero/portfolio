@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
-import { createInitialDocument, PARTS } from '../domain/catalog';
+import { PARTS } from '../domain/catalog';
 import { boundsOf } from '../domain/polygon';
 import { footprintCorners, itemFootprint, partCorners, roomBounds, roomHeight } from '../domain/shape';
 import { obstaclePolygon } from '../domain/obstacles';
 import type { Item, Kind, Obstacle, Point } from '../domain/types';
-import { placedItem, rectRoom } from '../test/fixtures';
+import { furnishedDocument, placedItem, rectRoom } from '../test/fixtures';
 import { computeCameraPose } from './camera';
 import type { Vec3 } from './camera';
 import { buildPrisms, frontOf, makeProjector, obstaclePrisms, sortPrisms } from './blueprintScene';
@@ -13,7 +13,7 @@ import type { Prism } from './blueprintScene';
 import type { PaneRect } from './panes';
 
 function seed(id: string): Item {
-  const found = createInitialDocument().items.find(i => i.id === id);
+  const found = furnishedDocument().items.find(i => i.id === id);
   if (!found) throw new Error(`missing seed item ${id}`);
   return found;
 }
@@ -355,7 +355,7 @@ describe('sortPrisms', () => {
   });
 
   it('returns each rotated prism exactly once', () => {
-    const items = createInitialDocument().items.map((i, n) => ({ ...i, angle: (n % 4) * 90 }));
+    const items = furnishedDocument().items.map((i, n) => ({ ...i, angle: (n % 4) * 90 }));
     const { prisms } = buildPrisms(items);
     const sorted = sortPrisms(prisms, [-200, 300, 150]);
     expect(sorted).toHaveLength(prisms.length);

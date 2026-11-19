@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialDocument } from './catalog';
 import {
   BLOCKS_A_DOOR,
   COVERS_A_WINDOW,
@@ -12,7 +11,7 @@ import {
 } from './conflicts';
 import { signedArea } from './polygon';
 import type { Footprint } from './shape';
-import { placedItem, rectRoom, type PlacedItemSpec } from '../test/fixtures';
+import { furnishedDocument, placedItem, rectRoom, type PlacedItemSpec } from '../test/fixtures';
 import type { Door, Item, Obstacle, Point, WindowOpening } from './types';
 
 const ROOM = rectRoom(144, 168, 96);
@@ -42,8 +41,8 @@ function item(overrides: Partial<PlacedItemSpec> & Pick<PlacedItemSpec, 'id'>): 
 }
 
 describe('findConflicts', () => {
-  it('reports nothing for the seeded bed and desk', () => {
-    const doc = createInitialDocument();
+  it('reports nothing for the furnished plan\'s bed and desk', () => {
+    const doc = furnishedDocument();
     expect(findConflicts(doc.items, doc.room)).toEqual({});
   });
 
@@ -216,9 +215,9 @@ function column(id: string, x: number, y: number): Obstacle {
   return { id, shape: 'cylinder', label: 'Column', x, y, rotation: 0, width: 12, depth: 12, height: 96, elevation: 0 };
 }
 
-/** The seeded bed and desk. */
+/** The furnished plan's bed and desk. */
 function seedItems(): Item[] {
-  return createInitialDocument().items;
+  return furnishedDocument().items;
 }
 
 function seedBed(): Item {

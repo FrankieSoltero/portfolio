@@ -44,6 +44,7 @@ import {
 } from './actions';
 import { ROOM_PROBLEM_TEXT, usePlanStore } from './planStore';
 import { totalPrice, useConflicts, useSelectedItem, useWarnings } from './selectors';
+import { furnishedDocument } from '../test/fixtures';
 import { type UiState, useUiStore } from './uiStore';
 
 // Wraps findPlanIssues in a spy (calling the real one), so the selectors' shared memo can be counted.
@@ -97,26 +98,29 @@ function itemById(id: string): Item {
   return item;
 }
 
-/** Resets to the seeded plan with the seed bed centred on (x, y), there partly outside the room, so the walls do not stop it. */
+/** Resets to the furnished plan with the seed bed centred on (x, y), there partly outside the room, so the walls do not stop it. */
 function withBedOutsideAt(x: number, y: number): void {
-  const doc = createInitialDocument();
+  const doc = furnishedDocument();
   usePlanStore.getState().reset({ ...doc, items: doc.items.map((i) => (i.id === 'seed-bed' ? { ...i, x, y } : i)) });
 }
 
+// Most rows move, turn or price the bed and desk, so each starts from the furnished plan.
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
 });
 
 describe('planStore', () => {
-  it('starts as the seeded initial document', () => {
+  it('starts as the initial document: the room with no furniture', () => {
     expect(docOf(freshPlan)).toEqual(createInitialDocument());
+    expect(freshPlan.items).toEqual([]);
   });
 
   it('reset restores the initial document, or the given one', () => {
     usePlanStore.getState().removeItem('seed-bed');
     usePlanStore.getState().reset();
     expect(docOf(usePlanStore.getState())).toEqual(createInitialDocument());
+    expect(usePlanStore.getState().items).toEqual([]);
 
     const custom: PlanDocument = { ...createInitialDocument(), units: 'm', items: [] };
     usePlanStore.getState().reset(custom);
@@ -129,7 +133,7 @@ describe('planStore', () => {
     expect(freshPlan.obstacles).toEqual([]);
   });
 
-  it('reset carries all six document fields: a given door and box, then the seed again', () => {
+  it('reset carries all six document fields: a given door and box, then the starting plan again', () => {
     const door: Door = { id: 'd1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
     const box: Obstacle = { id: 'b1', shape: 'box', label: 'Box', x: 40, y: 120, rotation: 0, width: 24, depth: 24, height: 36, elevation: 0 };
     const custom: PlanDocument = { ...createInitialDocument(), openings: [door], obstacles: [box] };
@@ -992,11 +996,11 @@ describe('room edit actions', () => {
 
 describe('selectors', () => {
   it('totalPrice sums seed item prices', () => {
-    expect(totalPrice(createInitialDocument().items)).toBe(1310);
+    expect(totalPrice(furnishedDocument().items)).toBe(1310);
   });
 
   it('totalPrice counts a null price as 0', () => {
-    const [bed, desk] = createInitialDocument().items;
+    const [bed, desk] = furnishedDocument().items;
     expect(totalPrice([req(bed, 'bed'), { ...req(desk, 'desk'), price: null }])).toBe(890);
   });
 
@@ -1160,7 +1164,7 @@ describe('plan store: doors, windows and obstacles', () => {
   }
 
   function withPlan(fields: Partial<PlanDocument>): void {
-    usePlanStore.getState().reset({ ...createInitialDocument(), ...fields });
+    usePlanStore.getState().reset({ ...furnishedDocument(), ...fields });
   }
 
   function obstacleById(id: string): Obstacle {
@@ -1415,7 +1419,7 @@ describe('room edit actions with a door', () => {
   const NO_SNAP = { angleSnap: false, toleranceIn: 2 };
 
   beforeEach(() => {
-    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1] });
+    usePlanStore.getState().reset({ ...furnishedDocument(), openings: [D1] });
     useUiStore.getState().setMode('room');
   });
 
@@ -1473,20 +1477,20 @@ describe('issue selectors', () => {
   });
 
   it('with the seed plus a door: the bed blocks it and there are no warnings', () => {
-    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1] });
+    usePlanStore.getState().reset({ ...furnishedDocument(), openings: [D1] });
     const { result } = renderHook(() => ({ conflicts: useConflicts(), warnings: useWarnings() }));
     expect(result.current.conflicts).toEqual({ 'seed-bed': 'Blocks a door' });
     expect(result.current.warnings).toEqual({});
   });
 
   it('with the seed plus a window on c2: the desk covers it', () => {
-    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [W1] });
+    usePlanStore.getState().reset({ ...furnishedDocument(), openings: [W1] });
     const { result } = renderHook(() => useWarnings());
     expect(result.current).toEqual({ 'seed-desk': 'Covers a window' });
   });
 
   it('both return the same objects while the plan is unchanged, from one computation per change', () => {
-    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [W1] });
+    usePlanStore.getState().reset({ ...furnishedDocument(), openings: [W1] });
     const a = renderHook(() => ({ conflicts: useConflicts(), warnings: useWarnings() }));
     const b = renderHook(() => useWarnings());
     const first = a.result.current;
@@ -1508,7 +1512,7 @@ describe('issue selectors', () => {
   it('recompute when openings or obstacles change', () => {
     const { result } = renderHook(() => useConflicts());
     expect(result.current).toEqual({});
-    act(() => usePlanStore.getState().reset({ ...createInitialDocument(), openings: [D1] }));
+    act(() => usePlanStore.getState().reset({ ...furnishedDocument(), openings: [D1] }));
     expect(result.current).toEqual({ 'seed-bed': 'Blocks a door' });
     act(() => usePlanStore.getState().removeOpening('d1'));
     expect(result.current).toEqual({});
@@ -1525,7 +1529,7 @@ describe('door, window and obstacle actions', () => {
   const COLUMN: Obstacle = { id: 'col', shape: 'cylinder', label: 'Column', x: 100, y: 60, rotation: 0, width: 12, depth: 12, height: 96, elevation: 0 };
 
   function withPlan(fields: Partial<PlanDocument>): void {
-    usePlanStore.getState().reset({ ...createInitialDocument(), ...fields });
+    usePlanStore.getState().reset({ ...furnishedDocument(), ...fields });
   }
 
   function openingById(id: string): Door | WindowOpening {
@@ -1814,7 +1818,7 @@ describe('wall slide and length actions', () => {
   const Q: Corner[] = [c('q1', 0, 0), c('q2', 100, 0), c('q3', 150, 50), c('q4', 150, 150), c('q5', 0, 150)];
 
   function withRoom(outline: Corner[], fields: Partial<PlanDocument> = {}): void {
-    const doc = createInitialDocument();
+    const doc = furnishedDocument();
     usePlanStore.getState().reset({ ...doc, room: { ...doc.room, outline }, ...fields });
   }
 

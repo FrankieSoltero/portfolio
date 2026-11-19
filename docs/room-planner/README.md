@@ -117,8 +117,13 @@ lived in `src/`. That folder is `room-planner/` in this repository.
 - **The plan is saved in the browser.** Changes are saved automatically in `localStorage`
   under the key `room-planner:plan:v1`. The stored data is treated as untrusted and validated
   on load (`room-planner/domain/planSchema.ts`). It is never sent to a server. "Reset plan"
-  erases it. The stored document is `schemaVersion` 3 and carries `openings` and `obstacles`;
-  a version 2 document loads with both lists empty. The key is unchanged.
+  erases it and puts back the starting plan. The stored document is `schemaVersion` 3 and
+  carries `openings` and `obstacles`; a version 2 document loads with both lists empty. The key
+  is unchanged.
+- **The starting plan is an empty room.** With nothing saved, and after `Reset plan`, the planner
+  shows a 12 × 14 ft room, 8 ft tall, with no furniture, doors, windows or obstacles
+  (`createInitialDocument()` in `room-planner/domain/catalog.ts`). It used to hold a bed and a
+  desk. A plan already saved in a visitor's browser loads as it was, furniture included.
 - **Sharing.** A `Share` button in the header, after Undo and Redo, opens a panel with `Copy link`,
   `Download floor plan` (`room-plan.png`) and `Download 3D view` (`room-3d.png`). The link is
   `/room-planner#plan=1.<data>`: the whole plan, compressed, after the `#`, so it is never sent
@@ -263,16 +268,18 @@ Changed behaviour (stop at walls). This is on purpose:
   kept inside, and turned red. It now stops flush against the wall. This reverses a decision of
   the first slice.
 
-The checks on the final code: `npm run check` passes with 67 test files and 2,557 tests, and the
-build shows `/room-planner` at 105 kB First Load JS. `npm audit --omit=dev` reports 4 low
+The checks on the final code: `npm run check` passes with 67 test files and 2,560 tests (2,557
+before the starting plan was emptied on 2026-11-18), and the build shows `/room-planner` at
+105 kB First Load JS. `npm audit --omit=dev` reports 4 low
 severity findings (the KaTeX chain), the same as before the sharing work.
 
 Open questions for the owner (slice C):
 
 - Starting shapes are refused while doors or windows exist. Should they instead keep the openings
   that still fit?
-- `Add box` and `Add column` place the obstacle at the room's interior point, which in the seeded
-  room is on the bed. Should they find a free spot?
+- `Add box` and `Add column` place the obstacle at the room's interior point, which can be on a
+  piece of furniture (in the old furnished starting plan it was on the bed). Should they find a free
+  spot?
 - Door arcs are drawn above furniture. The plan drew them under; this changed after the live check
   (row X1), because the arc could not be seen in the one case where it matters. Is this the
   wanted look?

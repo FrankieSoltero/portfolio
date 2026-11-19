@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
-import { createInitialDocument } from '../domain/catalog';
 import { obstaclePolygon } from '../domain/obstacles';
 import { boundsOf } from '../domain/polygon';
 import { footprintCorners, itemFootprint, roomHeight } from '../domain/shape';
@@ -10,7 +9,7 @@ import type { CameraState, Conflicts, Corner, Door, Item, Obstacle, Opening, Poi
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from './camera';
 import type { CameraPose, Vec3 } from './camera';
-import { placedItem } from '../test/fixtures';
+import { furnishedDocument, placedItem } from '../test/fixtures';
 import { buildPrisms, makeProjector } from './blueprintScene';
 import { drawBlueprint } from './blueprintDraw';
 import type { BlueprintInput } from './blueprintDraw';
@@ -120,7 +119,7 @@ function at<T>(arr: readonly T[], i: number): T {
 }
 
 function seed(id: string): Item {
-  const found = createInitialDocument().items.find((i) => i.id === id);
+  const found = furnishedDocument().items.find((i) => i.id === id);
   if (!found) throw new Error(`missing seed item ${id}`);
   return found;
 }
@@ -131,7 +130,7 @@ const CRATE: Item = placedItem({ id: 'crate-1', kind: 'box', name: 'Crate', w: 4
 function input(over: Partial<{ items: readonly Item[]; selectedId: string | null; conflicts: Conflicts;
   units: Units; camera: CameraState; outline: readonly Corner[]; height: number; openings: readonly Opening[];
   obstacles: readonly Obstacle[] }> = {}): BlueprintInput {
-  const doc = createInitialDocument();
+  const doc = furnishedDocument();
   const camera = over.camera ?? { ...CONFIG.camera };
   const outline = over.outline ?? doc.room.outline;
   const height = over.height ?? roomHeight(doc.room);
@@ -271,7 +270,7 @@ describe('drawBlueprint', () => {
   });
 
   it('draws rug faces before any other box face and the labels last', () => {
-    const { paints, rects, texts } = draw(input({ items: [...createInitialDocument().items, RUG] }));
+    const { paints, rects, texts } = draw(input({ items: [...furnishedDocument().items, RUG] }));
     const faces = faceFills(paints);
     // The rug, seen from the default camera: its x0 side, its y1 side, then its top.
     expect(faces.slice(0, 3).map((f) => f.style)).toEqual([T.n200, T.a200, T.a100]);
@@ -505,7 +504,7 @@ describe('drawBlueprint', () => {
 });
 
 /** The seed room's corners: 144 × 168 × 96; walls c1 (top) and c2 (right) are far from the default camera. */
-const ROOM = createInitialDocument().room.outline;
+const ROOM = furnishedDocument().room.outline;
 const corner = (id: string): Corner => {
   const c = ROOM.find((k) => k.id === id);
   if (!c) throw new Error(`missing corner ${id}`);

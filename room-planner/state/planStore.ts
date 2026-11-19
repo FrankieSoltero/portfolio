@@ -106,7 +106,7 @@ export interface PlanState extends PlanDocument {
   setItemAngle(id: string, deg: number): void;
   /** Removes an item. Unknown ids are ignored. */
   removeItem(id: string): void;
-  /** Replaces the document with `doc`, or with the seeded initial document. */
+  /** Replaces the document with `doc`, or with the starting document (the room with no furniture). */
   reset(doc?: PlanDocument): void;
 }
 

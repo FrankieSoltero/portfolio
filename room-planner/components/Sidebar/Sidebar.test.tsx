@@ -9,6 +9,7 @@ import type { ProductLookup } from '../../services/productLookup';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { createFakePlanStore } from '../../test/fakePlanStore';
+import { furnishedDocument } from '../../test/fixtures';
 import { ItemList } from './ItemList';
 import { Sidebar } from './Sidebar';
 
@@ -16,7 +17,7 @@ import { Sidebar } from './Sidebar';
 afterEach(cleanup);
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
 });
 
@@ -63,7 +64,7 @@ describe('ItemList', () => {
     expect(heading).toHaveTextContent(/^03In this room$/);
   });
 
-  it('renders one <button> row per seeded item with name, price and dimensions', () => {
+  it('renders one <button> row per item of the furnished plan with name, price and dimensions', () => {
     const { container } = render(<ItemList />);
     const list = rows(container);
     expect(list).toHaveLength(2);
@@ -106,7 +107,7 @@ describe('ItemList', () => {
   it('shows Covers a window in an amber warning tag on an item in front of a low window', () => {
     // The desk stands against the right wall, y 104–159; this window spans y 110–146 with a 24 in sill.
     const win: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c2', offset: 110, width: 36, sill: 24, height: 48 };
-    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [win] });
+    usePlanStore.getState().reset({ ...furnishedDocument(), openings: [win] });
     render(<ItemList />);
     const tag = within(row(DESK)).getByText('Covers a window');
     expect(tag.tagName).toBe('SPAN');
@@ -119,7 +120,7 @@ describe('ItemList', () => {
   it('shows only the conflict on an item that has both a conflict and a warning', () => {
     // A window on the top wall, x 56–92, with a 24 in sill; the desk is moved onto the bed beside it.
     const win: WindowOpening = { id: 'w1', kind: 'window', wallId: 'c1', offset: 56, width: 36, sill: 24, height: 48 };
-    usePlanStore.getState().reset({ ...createInitialDocument(), openings: [win] });
+    usePlanStore.getState().reset({ ...furnishedDocument(), openings: [win] });
     usePlanStore.getState().moveItemTo('seed-desk', 53, 27.5);
     const { items, room, openings, obstacles } = usePlanStore.getState();
     expect(findPlanIssues(items, room, openings, obstacles).warnings['seed-desk']).toBe('Covers a window');

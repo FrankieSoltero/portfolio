@@ -13,6 +13,7 @@ import { useHistoryFieldGroups } from '../hooks/useHistoryFieldGroups';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { createMockProductLookup, SAMPLE_LINKS } from '../services/mockProductLookup';
 import type { PaneRect } from '../view/panes';
+import { furnishedDocument } from '../test/fixtures';
 import { computePlanLayout, type PlanLayout, toPane } from '../view/planLayout';
 import { addCornerOnWall, placePreview, removeSelected, removeSelectedCorner, rotateSelected } from './actions';
 import { clearHistory, redo, undo, useHistoryStore } from './historyStore';
@@ -107,7 +108,7 @@ function featureFields(name: string): HTMLElement {
 }
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
   clearHistory();
 });
@@ -502,7 +503,7 @@ describe('undo and redo, whole flows', () => {
     expect(undoAll()).toBe(1);
 
     // Add an item, select it, undo: the item is gone and selectedId is null.
-    usePlanStore.getState().reset();
+    usePlanStore.getState().reset(furnishedDocument());
     useUiStore.getState().reset();
     clearHistory();
     const product = await createMockProductLookup({ delayMs: 0 }).lookup(SAMPLE_LINKS.sofa);
@@ -566,7 +567,7 @@ describe('undo and redo, whole flows', () => {
 
     // Escape: nothing typed is applied; the slide after it, and a slide of another wall, are a step each.
     act(() => {
-      usePlanStore.getState().reset();
+      usePlanStore.getState().reset(furnishedDocument());
       useUiStore.getState().reset();
       useUiStore.getState().setMode('room');
     });

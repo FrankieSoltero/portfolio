@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newObstacle } from '../domain/obstacles';
 import { itemFootprint, roomHeight, roomOutline } from '../domain/shape';
 import type { Opening } from '../domain/types';
-import { placedItem, planDoc, rectRoom } from './fixtures';
+import { furnishedDocument, placedItem, planDoc, rectRoom } from './fixtures';
 
 describe('rectRoom', () => {
   it('outlines the rectangle from (0,0) clockwise with corners c1…c4 and keeps the height', () => {
@@ -78,5 +78,35 @@ describe('planDoc', () => {
     const doc = planDoc(room, [], 'ft', openings, obstacles);
     expect(doc).toEqual({ schemaVersion: 3, units: 'ft', room, items: [], openings, obstacles });
     expect(Object.keys(doc)).toEqual(['schemaVersion', 'units', 'room', 'items', 'openings', 'obstacles']);
+  });
+});
+
+describe('furnishedDocument', () => {
+  it('is the old seeded plan: the 144 x 168 in room with the bed and the desk', () => {
+    const model = { tier: 'retailer', label: '3D model from retailer', assetUrl: null };
+    expect(furnishedDocument()).toEqual({
+      schemaVersion: 3,
+      units: 'ft',
+      room: rectRoom(144, 168, 96),
+      items: [
+        { id: 'seed-bed', kind: 'bed', name: 'Low platform bed, queen', host: 'shop.example', sourceUrl: null, price: 890, w: 64, d: 85, h: 38, x: 72, y: 42.5, angle: 0, model },
+        { id: 'seed-desk', kind: 'desk', name: 'Tack writing desk', host: 'shop.example', sourceUrl: null, price: 420, w: 55, d: 26, h: 30, x: 131, y: 131.5, angle: 90, model },
+      ],
+      openings: [],
+      obstacles: [],
+    });
+    expect(Object.keys(furnishedDocument())).toEqual(['schemaVersion', 'units', 'room', 'items', 'openings', 'obstacles']);
+  });
+
+  it('returns a fresh object each call', () => {
+    const a = furnishedDocument();
+    const b = furnishedDocument();
+    expect(a).not.toBe(b);
+    expect(a.items).not.toBe(b.items);
+    expect(a.items[0]).not.toBe(b.items[0]);
+    expect(a.items[0]?.model).not.toBe(b.items[0]?.model);
+    expect(a.room.outline).not.toBe(b.room.outline);
+    expect(a.openings).not.toBe(b.openings);
+    expect(a.obstacles).not.toBe(b.obstacles);
   });
 });

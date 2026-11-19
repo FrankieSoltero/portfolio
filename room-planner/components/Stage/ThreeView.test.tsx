@@ -5,6 +5,7 @@ import { roomBounds, roomHeight, roomOutline } from '../../domain/shape';
 import type { Obstacle, Opening } from '../../domain/types';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
+import { furnishedDocument } from '../../test/fixtures';
 import { readTokens } from '../../styles/tokens';
 import type { Tokens } from '../../styles/tokens';
 import type { SceneInput } from '../../three/SceneRenderer';
@@ -87,7 +88,8 @@ function spyMarkWebgl(): ReturnType<typeof vi.fn<() => void>> {
 }
 
 beforeEach(() => {
-  usePlanStore.getState().reset();
+  // The furnished plan, so the view is drawn with items in it.
+  usePlanStore.getState().reset(furnishedDocument());
   useUiStore.getState().reset();
   sr.ctor.mockClear();
   sr.update.mockClear();
