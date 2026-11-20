@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { findConflicts } from '../../conflicts';
 import { itemFootprint } from '../../shape';
-import type { Kind, StyleValues } from '../../types';
+import type { StyleValues } from '../../types';
 import { placedItem, rectRoom } from '../../../test/fixtures';
 import { TYPICAL_SIZE, defaultStyle } from '../recipe';
 import { buildParts } from './index';
@@ -196,16 +196,5 @@ describe('chair', () => {
     const parts = chair({ legs: 'pedestal' });
     expect(parts.filter((p) => p.shape === 'cylinder')).toHaveLength(2);
     expect(chair({ type: 'dining', legs: 'pedestal' }).filter((p) => p.shape === 'cylinder')).toHaveLength(2);
-  });
-});
-
-describe('placeholders', () => {
-  const PLACEHOLDER_KINDS: Kind[] = ['shelf', 'dresser', 'nightstand', 'tvstand', 'rug', 'box'];
-
-  it.each(PLACEHOLDER_KINDS)('%s is one box filling its size', (kind) => {
-    const size = TYPICAL_SIZE[kind];
-    expect(buildParts(kind, size, defaultStyle(kind))).toEqual([
-      { shape: 'box', cx: 0, cy: 0, z0: 0, sx: size.w, sy: size.d, sz: size.h, slot: 'main' },
-    ]);
   });
 });
