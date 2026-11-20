@@ -884,3 +884,64 @@ Nine entries. Entry 1 was found by the Task 1 reviewer, entry 2 by the Task 5 im
 - **Root cause:** The regex ran over the whole file, not over the one section.
 - **Fix:** The plan file was corrected before it was committed.
 - **How to avoid:** Slice the section first, then match. Re-run the structure check after any scripted edit.
+
+
+## 2026-11-20 — Furniture generator
+
+Eight entries. Entry 1 was found by the Task 6 implementer, entries 2, 3, 4, 6 and 7 by task reviewers (Tasks 2, 6, 7, 3 and 6), entry 5 by the whole-branch review and entry 8 during the work itself. Items left as they are are listed under "Known limits of the generator" in `docs/room-planner/README.md`.
+
+### The plan's rule for a round piece was wrong (plan Amendment 2)
+- **Date:** 2026-11-20
+- **What happened:** The plan said a piece is round when it has "exactly one plan part that fills the footprint and is round". A round rug with a border has two round parts and a round table on legs has a round top over other parts, so both were drawn as squares. The Task 6 implementer found it.
+- **Root cause:** The rule was written from the simple cases and was never tried against every builder that can produce a round shape.
+- **Fix:** Plan Amendment 2 and commit `b542a3f`: a piece is round when any plan part is round and fills the footprint.
+- **How to avoid:** When a rule describes a shape, test it against every builder that can produce that shape before pinning it in a plan.
+
+### The shared invariants test changed one option at a time (Task 2 review)
+- **Date:** 2026-11-20
+- **What happened:** A one-seat sofa with a chaise had its chaise deck run 0.25 in past the seats, so the piece left its bounds when arms are off. It needs two options at once, so the one-at-a-time test passed. The Task 2 reviewer found it with a full sweep.
+- **Root cause:** The test covered each option alone, not their combinations.
+- **Fix:** Commit `de69641`, which also added two-option combinations to the shared test. Later builders enumerate every combination.
+- **How to avoid:** When the option space is small enough to enumerate, enumerate it.
+
+### One blueprint prism per part multiplied the depth sort's cost (Task 6 review)
+- **Date:** 2026-11-20
+- **What happened:** Drawing one blueprint prism per part multiplied the input of the pairwise depth sort. The Task 6 reviewer measured about 17 ms per draw for 10 pieces and 190 to 550 ms for 40.
+- **Root cause:** A change multiplied the input of an existing loop, and nobody measured the loop.
+- **Fix:** Commit `5a834dc`: the sort runs per piece. For 40 pieces a draw takes 2.6 to 5.2 ms.
+- **How to avoid:** When a change multiplies the input of an existing loop, measure that loop.
+
+### `updateItem` checked sizes the edit did not touch (Task 7 review)
+- **Date:** 2026-11-20
+- **What happened:** `updateItem` validated a piece's current sizes even when the edit did not change them. A piece loaded with a size outside the edit limits (the saved-plan format allows up to 720 in, the editor 240) refused every edit, including a rename. The Task 7 reviewer found it.
+- **Root cause:** The edit path re-validated stored data against limits stricter than the loader's.
+- **Fix:** Commit `46022b1`: an edit checks only the sizes it changes.
+- **How to avoid:** Validate what an edit changes. Never re-validate stored data against stricter limits than the loader's.
+
+### Ctrl/Cmd+Z did nothing in a select or colour input (whole-branch review)
+- **Date:** 2026-11-20
+- **What happened:** The shortcut did nothing while the Type dropdown or a colour picker had focus. The shortcut guard treated every select and every non-radio input as a text field. The whole-branch review found it.
+- **Root cause:** The guard's idea of "a text field" was too wide, and the two keyboard hooks each had their own copy.
+- **Fix:** Commit `9b29883`: the two hooks share one "is this a real text field" rule.
+- **How to avoid:** A new kind of form control needs a pass through every keyboard guard.
+
+### A round table's trestle feet and shelf stuck out past its top (Task 3 review)
+- **Date:** 2026-11-20
+- **What happened:** Under a round table top, the trestle feet and the lower shelf stuck out 2.5 to 6 in past the top. Every part was inside the piece's bounding box, so no test saw it. The Task 3 implementer flagged it and its reviewer measured it.
+- **Root cause:** The invariant checked the bounding box, which does not prove a part is inside a non-rectangular outline.
+- **Fix:** Commit `fd9b3d2`, with a test against the top's ellipse.
+- **How to avoid:** A bounding-box invariant does not prove a part is inside a non-rectangular outline.
+
+### View tests compared the views with the function the views call (Task 6 review)
+- **Date:** 2026-11-20
+- **What happened:** The view tests were rewritten to compare the plan, blueprint and picture against `planParts(item)`, the same function the views call. A wrong number inside it would have passed everywhere. The Task 6 reviewer found it.
+- **Root cause:** The expected values came from the code under test.
+- **Fix:** Commit `5a834dc`: literal expected values for the default sofa, bed and desk.
+- **How to avoid:** At least one test per data path must compare against numbers written by hand.
+
+### Two sessions shared one checkout
+- **Date:** 2026-11-20
+- **What happened:** The other session switched the shared checkout to its own branch, and two of this plan's doc commits landed there. That session then moved to a separate worktree and cherry-picked them back. Nothing was lost.
+- **Root cause:** Two sessions used one working tree.
+- **Fix:** Afterwards every commit in this plan checked `git branch --show-current` first (plan Amendment 1).
+- **How to avoid:** One working tree per session. Check the branch before each commit.

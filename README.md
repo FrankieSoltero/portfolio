@@ -49,7 +49,7 @@ byte-identical with zero build processing.
   under `room-planner:plan:v1`, validated on load and never sent to a server; "Reset
   plan" erases it. The room carries doors, windows and fixed obstacles (boxes, raised
   boxes, columns). Undo and redo history is kept for the visit in
-  `room-planner/state/historyStore.ts`. Product lookup is a mock (`services/mockProductLookup.ts`).
+  `room-planner/state/historyStore.ts`. Furniture is generated in the browser from a saved recipe (`room-planner/domain/furniture/`); there is no product lookup yet.
 - `app/room-planner/` — the `/room-planner` route: `page.tsx`, `PlannerLoader.tsx`
   (loads the planner client-side only) and `error.tsx` (load-failure screen).
 - `docs/room-planner/` — specs, plans, plan reviews, verification notes, the read-only
