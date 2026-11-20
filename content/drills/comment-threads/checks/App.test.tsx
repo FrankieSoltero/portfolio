@@ -61,6 +61,7 @@ describe("Comment threads", () => {
 
     expect(post("Beta").queryByText("Beta comment 1")).toBeInTheDocument();
     expect(screen.queryByText("Alpha comment 1")).toBeNull();
+    expect(shownCount()).toBe("Threads loaded: 2");
   });
 
   it("counts each thread once", async () => {

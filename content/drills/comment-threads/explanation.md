@@ -25,11 +25,11 @@ const comments = commentsByPost[post.id];
 
 **Rule to remember.** When several requests for different things can be in flight at once, store each answer under the id it belongs to, not in one shared slot that the last answer overwrites. Then a late answer can only ever land in its own place.
 
-## The count went up when a thread was opened again
+## The count of loaded threads was wrong
 
-**What you saw.** After Alpha and Beta had loaded, the line read `Threads loaded: 2`. Opening Alpha again and letting its answer arrive made it `Threads loaded: 3`, although only two different threads had ever been loaded.
+**What you saw.** When you opened Alpha and then Beta before either answer came back, both threads loaded, but the line read `Threads loaded: 1`. And after Alpha and Beta had loaded one at a time, the line read `Threads loaded: 2`, but opening Alpha again and letting its answer arrive made it `Threads loaded: 3`, although only two different threads had ever been loaded.
 
-**Why.** The count was a separate piece of state, bumped with `setThreadsLoaded(threadsLoaded + 1)` on every answer. That counts answers, not threads, so every repeated request added one more. It also starts from `threadsLoaded` as it was when the button was clicked: two requests started before either answer came back both compute the same next number, so the count can come out too low as well.
+**Why.** The count was a separate piece of state, bumped with `setThreadsLoaded(threadsLoaded + 1)` on every answer. That expression uses `threadsLoaded` as it was when the button was clicked: Alpha and Beta were both clicked while it was still `0`, so each answer set it to `0 + 1` and the second answer overwrote the first with the same `1`. It also counts answers, not threads, so a repeated request for a thread you already had added one more.
 
 **The fix.** Don't store the count at all. Work it out during render from the comments you already keep, so it can never disagree with them:
 
