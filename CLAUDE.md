@@ -10,7 +10,7 @@ the pixel-frame `box-shadow` recipes, every component, the icon system, content 
 and step-by-step "how to add a project/skill/section" recipes. Do not design or edit
 without reading it — the visual language is strict and easy to break.
 
-## Three sections (8-bit, papers, room planner)
+## Four sections (8-bit, papers, room planner, drills)
 - **`/` (8-bit character sheet)** — everything below applies to it. Lives in `public/`
   and is served as a static file (a rewrite in `next.config.ts` maps `/` to
   `public/index.html`). Still build-free.
@@ -35,6 +35,16 @@ without reading it — the visual language is strict and easy to break.
   in `beforeEach`. Every value read from storage must pass through `parsePlan`. Views read room and
   item geometry only through `room-planner/domain/shape.ts`. Run `npm run check` before
   committing. Docs in `docs/room-planner/`.
+- **`/drills` (React review drills)** — ten drills, each a folder in `content/drills/<slug>/`
+  read and validated by the loader `lib/drills.ts`. It wears the same hybrid 8-bit skin as
+  papers, with all styles scoped to `.drills` (`app/drills/drills.css`, enforced by
+  `drills/styles/scoping.test.ts`). Progress is kept in the browser under
+  `drills:progress:v1`. **Not released yet:** it lives on the unmerged local branch
+  `drills-content`, with no navigation link and no sitemap entry until the Drillbox runner
+  integration adds the in-browser workspace and progress display; never merge or push that
+  branch before then. `npm run test:drills` is the fairness gate (every drill red on its
+  starter, green on its solution) and `npm run test:drills-pages` is the built-page check
+  (run it after a build). Authoring guide and lessons log in `docs/drills/`.
 
 ## Files
 - `public/index.html` — the 8-bit site. Add/edit projects in the `quests` array and

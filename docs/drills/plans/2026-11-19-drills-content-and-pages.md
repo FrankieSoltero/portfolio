@@ -125,6 +125,9 @@ navigation link; the sitemap entries; the merge and deploy.
 | 16. Drill 9 `search-filters` | `content/drills/search-filters/**` | 2, 3 | standard |
 | 17. Drill 10 `posts-feed` | `content/drills/posts-feed/**` | 2, 3 | judgment |
 | 18. Docs | `CLAUDE.md`, `docs/drills/README.md`, `docs/drills/mistakes-and-fixes.md` | 1–17 | mechanical |
+| 19. Section styles (added during execution) | `app/drills/drills.css` | 5, 6, 7 | standard |
+
+Task 19 was added during execution because no task owned the page styles; its brief is kept in the execution ledger.
 
 Tasks 8–17 touch disjoint folders and may execute and be reviewed concurrently. Tasks 4
 and 5 are disjoint from 2 and 3. Task 7 follows Task 6 and Task 8 because its built-page
@@ -810,7 +813,7 @@ is cached, so reopening refetches.
 |-------|--------|----------|---------|
 | `opens the comments under the post that was clicked` | click Alpha; release `comments:1` | `Alpha comment 1` inside section `Alpha`; `Threads loaded: 1` | green |
 | `does not show another post's comments while a thread loads` | open Alpha, release; click Beta | section `Beta` shows `Loading comments…` and no `Alpha comment 1` | red |
-| `shows the last clicked post's comments whatever order responses arrive in` | click Alpha, click Beta; release `comments:2`, then `comments:1` | section `Beta` has `Beta comment 1`; no `Alpha comment 1` anywhere | red |
+| `shows the last clicked post's comments whatever order responses arrive in` | click Alpha, click Beta; release `comments:2`, then `comments:1` | section `Beta` has `Beta comment 1`; no `Alpha comment 1` anywhere; `Threads loaded: 2` | red |
 | `counts each thread once` | click Alpha, release `comments:1`; click Beta, release `comments:2`; assert `Threads loaded: 2`; click Alpha again; if `apiControl.pending()` includes `comments:1`, release it | `Threads loaded: 2` (the starter refetches, so its released response makes it `3`) | red |
 | `does not request a thread it already has` | open Alpha, release; open Beta, release; open Alpha | `apiControl.calls()` is `["comments:1", "comments:2"]`; Alpha's comments shown at once | red |
 
@@ -905,7 +908,7 @@ except the two author checks, which state their own releases.
 | `counts each thread once and does not ask twice` | open Alpha, release `comments:1`; open Beta, release `comments:2`; open Alpha; if `apiControl.pending()` includes `comments:1`, release it | `Threads loaded: 2`; `apiControl.calls()` contains `comments:1` exactly once | red |
 | `keeps a pin on its post when the order is reversed` | tick `Pin Alpha`; tick `Newest first` | `Pin Alpha` checked; `Pin Gamma` unchecked; first section is `Gamma` | red |
 | `shows an error under the post when its comments fail` | click comments for Alpha; fail `comments:1` | alert `Could not load comments` inside section `Alpha`; no `Loading comments…` | red |
-| `loads the comments on a second try after a failure` | fail `comments:1`; click comments for Alpha again; release `comments:1` | `Alpha comment 1` shown; no alert | red |
+| `loads the comments on a second try after a failure` | fail `comments:1`; click comments for Alpha again; release `comments:1` | alert `Could not load comments` inside section `Alpha` after the failure; then `Alpha comment 1` shown; no alert | red |
 
 ---
 
