@@ -1,6 +1,6 @@
 # Room Planner: furniture generator (slice G) — design
 
-Date: 2026-11-20. Status: awaiting the owner's approval.
+Date: 2026-11-20. Status: approved by the owner on 2026-11-20 ("yeah lets do it").
 
 ## Why
 
