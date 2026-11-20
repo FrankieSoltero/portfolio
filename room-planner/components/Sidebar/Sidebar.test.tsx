@@ -233,3 +233,50 @@ describe('Sidebar', () => {
     expect(screen.queryAllByRole('heading')).toHaveLength(4);
   });
 });
+
+describe('Sidebar adding a piece', () => {
+  /** The elements scrollIntoView was called on, with its options; jsdom has no scrollIntoView of its own. */
+  const scrolled: [Element, unknown][] = [];
+
+  afterEach(() => {
+    scrolled.length = 0;
+    Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+  });
+
+  function stubScrollIntoView(): void {
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value(this: Element, options: unknown) {
+        scrolled.push([this, options]);
+      },
+    });
+  }
+
+  it('scrolls the new row into view once, keeping focus on the type button', async () => {
+    stubScrollIntoView();
+    const { container } = render(<Sidebar planStore={createFakePlanStore()} />);
+    const chair = screen.getByRole('button', { name: 'Chair' });
+    await userEvent.setup().click(chair);
+    const added = rows(container).at(-1);
+    if (added === undefined) throw new Error('missing row');
+    expect(added).toHaveAttribute('aria-pressed', 'true');
+    expect(scrolled).toEqual([[added, { block: 'nearest' }]]);
+    expect(document.activeElement).toBe(chair);
+
+    // Later renders of the same selection do not scroll again.
+    const id = useUiStore.getState().selectedId;
+    if (id === null) throw new Error('nothing selected');
+    act(() => usePlanStore.getState().moveItemBy(id, 1, 0));
+    act(() => usePlanStore.getState().updateItem(id, { name: 'Reading chair' }));
+    expect(scrolled).toHaveLength(1);
+    expect(document.activeElement).toBe(chair);
+  });
+
+  it('adds a piece without error where the browser has no scrollIntoView', async () => {
+    expect('scrollIntoView' in Element.prototype).toBe(false);
+    const { container } = render(<Sidebar planStore={createFakePlanStore()} />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Chair' }));
+    expect(rows(container)).toHaveLength(3);
+    expect(rows(container).at(-1)).toHaveAttribute('aria-pressed', 'true');
+  });
+});

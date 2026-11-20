@@ -1,4 +1,4 @@
-import { Fragment, type JSX } from 'react';
+import { Fragment, useEffect, useRef, type JSX } from 'react';
 import { fmtFurnDims, fmtMoney } from '../../domain/units';
 import { usePlanStore } from '../../state/planStore';
 import { totalPrice, useConflicts, useWarnings } from '../../state/selectors';
@@ -11,7 +11,8 @@ import './itemList.css';
  * Sidebar section 03: one selectable row per placed item (name, price, dimensions and any
  * placement conflict, or else any warning such as covering a window), then the total of known prices. Each row is a real button, so it is
  * the keyboard route for selecting an item. In furnish mode the selected row is followed by the
- * piece's editor (ItemEditor), and the row is marked expanded.
+ * piece's editor (ItemEditor), and the row is marked expanded. When the selection changes, as when
+ * a piece is added, the selected row is scrolled into view without taking focus.
  */
 export function ItemList(): JSX.Element {
   const items = usePlanStore((s) => s.items);
@@ -21,6 +22,14 @@ export function ItemList(): JSX.Element {
   const roomMode = useUiStore((s) => s.mode === 'room');
   const conflicts = useConflicts();
   const warnings = useWarnings();
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Only on a change of selection, not on every render. jsdom and some old browsers lack scrollIntoView.
+  useEffect(() => {
+    if (selectedId === null) return;
+    const row = listRef.current?.querySelector<HTMLElement>('.item-row-selected');
+    if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+  }, [selectedId]);
 
   return (
     <section className="sidebar-section item-list-section">
@@ -29,7 +38,7 @@ export function ItemList(): JSX.Element {
         <span>In this room</span>
       </h6>
       {items.length === 0 && <div className="text-muted item-list-empty">Nothing placed yet.</div>}
-      <div className="item-list">
+      <div className="item-list" ref={listRef}>
         {items.map((item) => {
           const selected = item.id === selectedId;
           const editing = selected && !roomMode;
