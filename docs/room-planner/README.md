@@ -50,8 +50,7 @@ lived in `src/`. That folder is `room-planner/` in this repository.
   - one change of starting shape.
 
   A refused action, or one that changes nothing, adds no step. Undo covers everything saved in
-  the plan. It does not cover the units, the selection, the mode, the layout, the camera or the
-  product link field. A selection that points at something undo removed is cleared. Undo and
+  the plan. It does not cover the units, the selection, the mode, the layout or the camera. A selection that points at something undo removed is cleared. Undo and
   redo work the same in both modes and follow one timeline. The history lasts for the visit and
   holds 100 steps. A reload clears it, and so does `Reset plan`. While the cursor is in a text
   field, the keys leave the browser's own text undo alone.
@@ -117,9 +116,11 @@ lived in `src/`. That folder is `room-planner/` in this repository.
 - **The plan is saved in the browser.** Changes are saved automatically in `localStorage`
   under the key `room-planner:plan:v1`. The stored data is treated as untrusted and validated
   on load (`room-planner/domain/planSchema.ts`). It is never sent to a server. "Reset plan"
-  erases it and puts back the starting plan. The stored document is `schemaVersion` 3 and
-  carries `openings` and `obstacles`; a version 2 document loads with both lists empty. The key
-  is unchanged.
+  erases it and puts back the starting plan. The stored document is `schemaVersion` 4: it
+  carries `openings` and `obstacles`, and each piece carries its `style` and `colours` (see
+  "Furniture generator (slice G)"). A version 2 document loads with both lists empty, and a
+  version 1 to 3 document loads with each piece given its type's default recipe. The key is
+  unchanged.
 - **The starting plan is an empty room.** With nothing saved, and after `Reset plan`, the planner
   shows a 12 × 14 ft room, 8 ft tall, with no furniture, doors, windows or obstacles
   (`createInitialDocument()` in `room-planner/domain/catalog.ts`). It used to hold a bed and a
@@ -268,9 +269,8 @@ Changed behaviour (stop at walls). This is on purpose:
   kept inside, and turned red. It now stops flush against the wall. This reverses a decision of
   the first slice.
 
-The checks on the final code: `npm run check` passes with 67 test files and 2,560 tests (2,557
-before the starting plan was emptied on 2026-11-18), and the build shows `/room-planner` at
-105 kB First Load JS. `npm audit --omit=dev` reports 4 low
+The checks on the final code: `npm run check` passes with 76 test files and 2,846 tests, and the build
+shows `/room-planner` at 105 kB First Load JS (1.42 kB route size). `npm audit --omit=dev` reports 4 low
 severity findings (the KaTeX chain), the same as before the sharing work.
 
 Open questions for the owner (slice C):
@@ -287,6 +287,63 @@ Open questions for the owner (slice C):
 The limits on a plan (200 items, 64 corners, coordinates within ±120 ft) are enforced both
 when editing and when loading, so an edit can never produce a saved plan that fails to load.
 
+## Furniture generator (slice G)
+
+Furniture used to be a handful of plain boxes per type in one fixed colour, added from a
+placeholder product lookup that returned made-up data. Pieces are now built in the browser from
+a saved recipe. Nothing leaves the browser. The spec is
+[`specs/2026-11-20-furniture-generator-design.md`](specs/2026-11-20-furniture-generator-design.md)
+and the plan is [`plans/2026-11-20-furniture-generator.md`](plans/2026-11-20-furniture-generator.md)
+(Amendments 1 and 2).
+
+- **The recipe.** Every piece has a `style` (options that depend on its type, such as a sofa's
+  seats, arms, back, legs and chaise) and `colours` (`main` and `accent`, each `#rrggbb`). Width,
+  depth and height stay as before and always win: every part is fitted inside the piece's real
+  size, so collision checks and wall clearances did not change. Each type has a default recipe,
+  so a piece looks complete before anything is chosen. The recipe is defined in
+  `room-planner/domain/furniture/recipe.ts`.
+- **The 11 types.** Sofa, chair, bed, desk, table, shelf, rug and box, plus three new ones:
+  dresser, nightstand and TV stand.
+- **The parts kit and its three readers.** A pure function per type turns (type, size, recipe)
+  into a list of parts (`room-planner/domain/furniture/parts/`). It has no 3D library in it. The
+  3D view builds meshes from the parts (`room-planner/three/furnitureModels.ts`, using
+  three.js's own `RoundedBoxGeometry`; no new dependency). The floor plan, the blueprint and the
+  downloaded floor-plan picture read the same parts from above, through `planParts`
+  (`room-planner/domain/furniture/planParts.ts`), so the plan matches the 3D view. A piece is
+  drawn round when any of its plan parts is round and fills the footprint. An option that does
+  not fit a small or large piece is clamped, and the stored choice is kept so it returns when the
+  piece is resized. In the downloaded floor-plan picture a round piece is drawn with 48 points,
+  where the plan and the blueprint use 16.
+- **Adding by type.** Section 02 of the sidebar is a grid of the 11 types. Picking one places a
+  piece of a typical size in a free spot, selects it and opens its editor. The link box and its
+  sample buttons are gone.
+- **The editor.** A selected piece's row in "In this room" opens to show its name, its type, its
+  size, the type's style options as button groups, and two colour rows (swatches plus a custom
+  colour). Changes show at once in both views. Every change is one undo step, and dragging
+  through a custom colour is one step. Changing the type gives the piece the new type's default
+  recipe and keeps its size and colours. An edit checks only the sizes it changes, so a piece
+  loaded with a size above the editor's limit can still be renamed.
+- **Plan format 4.** The plan is saved and shared as `schemaVersion` 4. Plans and links of
+  versions 1 to 3 load as before, and each existing piece gets its type's default recipe and
+  its type's colours. A saved plan is stored as version 3 until the first edit. The recipe is
+  validated by `parsePlan` as strictly as the rest of the plan: only the listed option values,
+  colours only as `#rrggbb`, numbers only within their ranges.
+
+Known limits of the generator:
+
+- Colours are plain: no fabric patterns, wood grain or photos.
+- A sofa with a chaise collides as its full rectangle.
+- There is no product lookup until the next slice.
+- Some options do nothing in some combinations: the office chair's Legs, Lower shelf with a pedestal base, and Chaise on a sofa under 60 in wide.
+- A plan near the 200-piece limit is slow in the blueprint view.
+- When a piece stands on a rug, their names overlap in the downloaded floor-plan picture.
+- Size fields apply each keystroke, so a piece resizes while a number is being typed.
+
+The live check is in
+[`verification/2026-11-20-generator-live-check.md`](verification/2026-11-20-generator-live-check.md).
+The mistakes found while building it are in `mistakes-and-fixes.md` under
+"2026-11-20 — Furniture generator".
+
 ## Folders and files
 
 - `specs/` — design specs for the planner and for its move into the portfolio. The wall editing
@@ -295,7 +352,8 @@ when editing and when loading, so an edit can never produce a saved plan that fa
   [`specs/2026-11-16-undo-redo-design.md`](specs/2026-11-16-undo-redo-design.md). The stop at
   walls spec is
   [`specs/2026-11-16-stop-at-walls-design.md`](specs/2026-11-16-stop-at-walls-design.md). The
-  sharing spec is [`specs/2026-11-17-sharing-design.md`](specs/2026-11-17-sharing-design.md).
+  sharing spec is [`specs/2026-11-17-sharing-design.md`](specs/2026-11-17-sharing-design.md). The furniture generator spec is
+  [`specs/2026-11-20-furniture-generator-design.md`](specs/2026-11-20-furniture-generator-design.md).
 - `plans/` — implementation plans, one per spec. The room shape and saving work is in
   [`plans/2026-11-13-room-shape-and-saving.md`](plans/2026-11-13-room-shape-and-saving.md). The
   doors, windows and obstacles work is in
@@ -305,7 +363,8 @@ when editing and when loading, so an edit can never produce a saved plan that fa
   undo and redo work is in [`plans/2026-11-16-undo-redo.md`](plans/2026-11-16-undo-redo.md)
   (Amendments 1 to 5). The stop at walls work is in
   [`plans/2026-11-16-stop-at-walls.md`](plans/2026-11-16-stop-at-walls.md) (Amendment 1). The sharing work is in
-  [`plans/2026-11-17-sharing.md`](plans/2026-11-17-sharing.md) (Amendments 1 to 3).
+  [`plans/2026-11-17-sharing.md`](plans/2026-11-17-sharing.md) (Amendments 1 to 3). The furniture generator work is in
+  [`plans/2026-11-20-furniture-generator.md`](plans/2026-11-20-furniture-generator.md) (Amendments 1 and 2).
 - `plan-reviews/` — plan-review verdicts for those plans. The review of the room shape and
   saving plan is
   [`plan-reviews/2026-11-13-room-shape-and-saving-review.md`](plan-reviews/2026-11-13-room-shape-and-saving-review.md).
@@ -338,6 +397,9 @@ when editing and when loading, so an edit can never produce a saved plan that fa
   written wrongly and also showed the wall-length defect, and runs 2 and 3, on the final code,
   passed all of them
   ([`verification/2026-11-17-sharing-live-check.md`](verification/2026-11-17-sharing-live-check.md)).
+  The furniture generator check has 9 rows; all passed on the local dev server, and the run on the
+  Vercel preview is pending
+  ([`verification/2026-11-20-generator-live-check.md`](verification/2026-11-20-generator-live-check.md)).
 - `design_handoff/` — the original design reference (prototype, design system, README).
   It is read-only: it is not built or served.
 - `mistakes-and-fixes.md` — running log of mistakes and how they were fixed.

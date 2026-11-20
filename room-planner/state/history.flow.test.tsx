@@ -11,11 +11,10 @@ import { RoomEditLayer } from '../components/Stage/RoomEditLayer';
 import { WallLengthLabels } from '../components/Stage/WallLengthLabels';
 import { useHistoryFieldGroups } from '../hooks/useHistoryFieldGroups';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
-import { createMockProductLookup, SAMPLE_LINKS } from '../services/mockProductLookup';
 import type { PaneRect } from '../view/panes';
 import { furnishedDocument } from '../test/fixtures';
 import { computePlanLayout, type PlanLayout, toPane } from '../view/planLayout';
-import { addCornerOnWall, placePreview, removeSelected, removeSelectedCorner, rotateSelected } from './actions';
+import { addCornerOnWall, addFurnitureOfKind, removeSelected, removeSelectedCorner, rotateSelected } from './actions';
 import { clearHistory, redo, undo, useHistoryStore } from './historyStore';
 import { usePlanStore } from './planStore';
 import { useUiStore } from './uiStore';
@@ -119,16 +118,28 @@ afterEach(() => {
 });
 
 describe('undo and redo, whole flows', () => {
-  it('F1: adding furniture (placePreview of the mock sofa) is one step', async () => {
-    const product = await createMockProductLookup({ delayMs: 0 }).lookup(SAMPLE_LINKS.sofa);
+  it('F1: adding furniture (addFurnitureOfKind of a sofa) is one step: undo removes it, redo brings it back', () => {
     const before = doc();
-    useUiStore.getState().setLookup({ status: 'preview', product });
-    const id = placePreview();
+    const id = addFurnitureOfKind('sofa');
     expect(id).not.toBeNull();
     const after = doc();
     expect(after.items).toHaveLength(before.items.length + 1);
     expectUndoRedo(before, after);
     expect(undoAll()).toBe(1);
+  });
+
+  it('F1b: each updateItem of the bed is one step, and a patch that changes nothing makes none', () => {
+    const before = doc();
+    expect(usePlanStore.getState().updateItem('seed-bed', { w: 70 })).toBe(true);
+    const widened = doc();
+    expect(usePlanStore.getState().updateItem('seed-bed', { colours: { main: '#112233' } })).toBe(true);
+    const after = doc();
+    expect(usePlanStore.getState().updateItem('seed-bed', { w: 70, colours: { main: '#112233' } })).toBe(true);
+    expect(undo()).toBe(true);
+    expect(doc()).toEqual(widened);
+    expect(redo()).toBe(true);
+    expectUndoRedo(before, after, 2);
+    expect(undoAll()).toBe(2);
   });
 
   it('F2: removing the selected item (removeSelected) is one step', () => {
@@ -488,7 +499,7 @@ describe('undo and redo, whole flows', () => {
     expect(undoAll()).toBe(1);
   });
 
-  it('F17: undo clears a selection that points at something it removed, and restores no selection', async () => {
+  it('F17: undo clears a selection that points at something it removed, and restores no selection', () => {
     // Select an item, remove it, undo: the item is back and nothing is selected.
     useUiStore.getState().select('seed-bed');
     const before = doc();
@@ -506,10 +517,8 @@ describe('undo and redo, whole flows', () => {
     usePlanStore.getState().reset(furnishedDocument());
     useUiStore.getState().reset();
     clearHistory();
-    const product = await createMockProductLookup({ delayMs: 0 }).lookup(SAMPLE_LINKS.sofa);
     const seeded = doc();
-    useUiStore.getState().setLookup({ status: 'preview', product });
-    const id = placePreview();
+    const id = addFurnitureOfKind('sofa');
     expect(id).not.toBeNull();
     const added = doc();
     useUiStore.getState().select(id);

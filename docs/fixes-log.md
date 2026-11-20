@@ -242,3 +242,24 @@ MDX content, not user input.
 ### Lesson
 - The starting plan was also the shared test setup for about 30 test files. Test data that
   must stay fixed belongs in a test fixture, not in a production default the owner may change.
+
+## 2026-11-20 — Furniture generator
+
+### Changes
+- The Room Planner's "Add furniture" section was a placeholder product lookup: pasting a link or
+  pressing a sample button returned made-up data. It is removed. Furniture is now generated in the
+  browser from a saved recipe (a style and two colours per piece) and added by type: 11 types,
+  three of them new (dresser, nightstand, TV stand). A selected piece can be edited (size, style
+  options, colours, type), and every change is one undo step.
+- The 3D view, the floor plan, the blueprint and the downloaded floor-plan picture are all drawn
+  from the same list of parts (`room-planner/domain/furniture/`), so they match. Round pieces
+  (a round rug, a round table top) are drawn round in all of them; in the downloaded picture they
+  use 48 points so they are smooth at 2000 px.
+- The saved plan and the share link are `schemaVersion` 4. Versions 1 to 3 load as before, and
+  each existing piece gets its type's default recipe. The spec is
+  `docs/room-planner/specs/2026-11-20-furniture-generator-design.md`.
+- The root `README.md` no longer says product lookup is a mock.
+
+### Lesson
+- A placeholder that returns made-up data looks like a feature. Remove it when the real thing is
+  not ready, and say so, rather than leaving it in front of visitors.

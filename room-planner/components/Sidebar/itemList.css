@@ -31,6 +31,36 @@
 }
 .item-list-total-value { font-weight: 700; }
 
+/* The selected piece's editor, under its row. Every row of controls wraps and may shrink, so the
+   editor stays inside the 320px sidebar. */
+.item-editor {
+  display: flex; flex-direction: column; flex-wrap: wrap; gap: var(--space-3); min-width: 0;
+  padding: var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--color-divider);
+}
+.item-editor > * { min-width: 0; max-width: 100%; }
+.item-editor-caption {
+  display: block; font-size: 12px; margin-bottom: 5px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.item-editor-options {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; max-width: 100%;
+}
+/* A segmented option group wraps too, with no gap between its options (industry.css .seg). */
+.seg.item-editor-options { display: flex; flex-wrap: wrap; gap: 0; }
+.item-editor-options .seg-opt { flex: 1 1 auto; justify-content: center; }
+
+/* A colour swatch. Its colour is set on the element from the recipe's swatch table. */
+.item-swatch {
+  width: 24px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--color-divider); border-radius: 0;
+}
+.item-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--color-accent); }
+.item-editor-custom {
+  width: 36px; height: 24px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--color-divider); background: transparent;
+}
+
 /* A warning (furniture in front of a window): amber, and shown only when the item has no conflict. */
 .item-row-warning {
   grid-column: 1 / -1; justify-self: start;

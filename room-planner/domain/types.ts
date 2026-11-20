@@ -1,21 +1,27 @@
 export type Units = 'ft' | 'm';
-export type Kind = 'sofa' | 'chair' | 'bed' | 'desk' | 'table' | 'shelf' | 'rug' | 'box';
+export type Kind = 'sofa' | 'chair' | 'bed' | 'desk' | 'table' | 'shelf' | 'dresser' | 'nightstand' | 'tvstand' | 'rug' | 'box';
+/** A piece's style: one string value per option key of its kind (see STYLE_OPTIONS). */
+export type StyleValues = Readonly<Record<string, string>>;
+/** `#rrggbb`, lower case. */
+export interface ItemColours { main: string; accent: string }
 export type ModelTier = 'retailer' | 'generated' | 'parametric' | 'box';
 /** A room: its outline (corners in order, positive signed area) and its ceiling height, in inches. */
 export interface Room { outline: Corner[]; height: number }
 export interface ItemModel { tier: ModelTier; label: string; assetUrl: string | null }
 /**
  * A placed item. `x`, `y` are the centre of its footprint on the plan; `w` × `d` is its unturned
- * footprint, turned by `angle` degrees clockwise on the plan, in [0, 360).
+ * footprint, turned by `angle` degrees clockwise on the plan, in [0, 360). `style` and `colours`
+ * are its recipe: how the piece is built and painted.
  */
 export interface Item {
   id: string; kind: Kind; name: string; host: string; sourceUrl: string | null;
   price: number | null; w: number; d: number; h: number;
   x: number; y: number; angle: number; model: ItemModel;
+  style: StyleValues; colours: ItemColours;
 }
-/** The stored plan, version 3: the room, its furniture, its doors and windows, and its fixed obstacles. */
+/** The stored plan, version 4: the room, its furniture, its doors and windows, and its fixed obstacles. */
 export interface PlanDocument {
-  schemaVersion: 3; units: Units; room: Room; items: Item[]; openings: Opening[]; obstacles: Obstacle[];
+  schemaVersion: 4; units: Units; room: Room; items: Item[]; openings: Opening[]; obstacles: Obstacle[];
 }
 export interface ProductPreview {
   kind: Kind; name: string; host: string; sourceUrl: string; price: number | null;
@@ -27,8 +33,6 @@ export type RenderStyle = 'realistic' | 'blueprint';
 /** Whether the plan edits furniture or the room outline. */
 export type EditMode = 'furnish' | 'room';
 export interface CameraState { yaw: number; pitch: number; zoom: number }
-/** [u0,u1,v0,v1,z0,z1] fractions of width, depth, height; v=0 is the back edge */
-export type PartRect = readonly [number, number, number, number, number, number];
 export type Conflicts = Readonly<Record<string, string>>;
 /** A plan-space position in inches; x to the right, y down the screen. */
 export interface Point { x: number; y: number }

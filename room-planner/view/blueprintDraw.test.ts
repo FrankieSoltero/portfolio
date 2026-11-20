@@ -10,7 +10,7 @@ import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from './camera';
 import type { CameraPose, Vec3 } from './camera';
 import { furnishedDocument, placedItem } from '../test/fixtures';
-import { buildPrisms, makeProjector } from './blueprintScene';
+import { buildPrisms, makeProjector, sortByPiece } from './blueprintScene';
 import { drawBlueprint } from './blueprintDraw';
 import type { BlueprintInput } from './blueprintDraw';
 import type { PaneRect } from './panes';
@@ -19,6 +19,11 @@ import type { PaneRect } from './panes';
 vi.mock('../domain/shape', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../domain/shape')>();
   return { ...actual, itemFootprint: vi.fn(actual.itemFootprint) };
+});
+// Passthrough, so a test can see which painter's sort a frame uses.
+vi.mock('./blueprintScene', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./blueprintScene')>();
+  return { ...actual, sortByPiece: vi.fn(actual.sortByPiece) };
 });
 
 /** Distinct, readable stand-ins so every assertion names the token it expects. */
@@ -269,13 +274,28 @@ describe('drawBlueprint', () => {
     }
   });
 
+  it('sorts the furniture and obstacle prisms piece by piece, without the rugs', () => {
+    vi.mocked(sortByPiece).mockClear();
+    const items = [...furnishedDocument().items, RUG];
+    const inp = input({ items });
+    drawBlueprint(recordingContext().g, inp);
+    expect(sortByPiece).toHaveBeenCalledTimes(1);
+    const [solids, cam] = vi.mocked(sortByPiece).mock.calls[0] ?? [];
+    expect(solids).toEqual(buildPrisms(items).prisms);
+    expect(cam).toEqual(inp.pose.position);
+  });
+
   it('draws rug faces before any other box face and the labels last', () => {
     const { paints, rects, texts } = draw(input({ items: [...furnishedDocument().items, RUG] }));
     const faces = faceFills(paints);
-    // The rug, seen from the default camera: its x0 side, its y1 side, then its top.
-    expect(faces.slice(0, 3).map((f) => f.style)).toEqual([T.n200, T.a200, T.a100]);
-    expect(faces.slice(3).some((f) => f.style === T.a100)).toBe(false);
-    expect(faces.slice(3).some((f) => f.style === T.bg)).toBe(true);
+    // Each of the rug's parts, seen from the default camera: its x0 side, its y1 side, then its top.
+    const layers = buildPrisms([RUG]).rugs.length;
+    expect(layers).toBeGreaterThanOrEqual(1);
+    const rugFaces = 3 * layers;
+    expect(faces.slice(0, rugFaces).map((f) => f.style))
+      .toEqual(Array.from({ length: layers }, () => [T.n200, T.a200, T.a100]).flat());
+    expect(faces.slice(rugFaces).some((f) => f.style === T.a100)).toBe(false);
+    expect(faces.slice(rugFaces).some((f) => f.style === T.bg)).toBe(true);
     const lastPaint = Math.max(...paints.map((p) => p.index));
     expect(Math.min(...rects.map((r) => r.index), ...texts.map((t) => t.index))).toBeGreaterThan(lastPaint);
   });
@@ -717,19 +737,21 @@ describe('drawBlueprint obstacles', () => {
   });
 
   it('never draws the underside of raised furniture, even with the camera below it', () => {
-    // The desk's top part runs from 0.93 × 30 = 27.9 in to 30 in.
+    // The default desk's raised parts: its top, from 28.5 in to 30 in, and the drawer box under it.
     const desk = placedItem({ id: 'desk-1', kind: 'desk', name: 'Desk', w: 48, d: 24, h: 30, cx: 72, cy: 84 });
     const raised = buildPrisms([desk]).prisms.filter((p) => p.z0 > 0);
-    expect(raised).toHaveLength(1);
-    const top = at(raised, 0);
-    expect(top.z0).toBeCloseTo(27.9, 9);
+    expect(raised.length).toBeGreaterThanOrEqual(1);
+    const top = raised.reduce((a, b) => (b.z1 > a.z1 ? b : a));
+    expect(top.z0).toBeCloseTo(28.5, 9);
     const base = input({ items: [desk] });
     const inp = withCamera(base, [base.pose.position[0], base.pose.position[1], 10]);
-    const underside = projectAll(inp, top.pts.map((p): Vec3 => [p.x, p.y, top.z0]));
     const faces = faceFills(draw(inp).paints);
     expect(faces.length).toBeGreaterThan(0);
-    expect(faces.some((f) => sameKeys(f.coords, underside))).toBe(false);
-    // Only the camera-facing sides of the desk's three parts are painted: no top, no underside.
+    for (const r of raised) {
+      const underside = projectAll(inp, r.pts.map((p): Vec3 => [p.x, p.y, r.z0]));
+      expect(faces.some((f) => sameKeys(f.coords, underside))).toBe(false);
+    }
+    // Only the camera-facing sides of the desk's parts are painted: no top, no underside.
     expect(faces.every((f) => f.points === 4 && f.style !== T.bg)).toBe(true);
   });
 

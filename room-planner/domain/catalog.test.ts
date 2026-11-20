@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { placedItem } from '../test/fixtures';
-import { BOOK_COLOURS, LINEN, LOOKS, PARTS, createInitialDocument } from './catalog';
-import type { Door, Kind, Obstacle, WindowOpening } from './types';
-
-const KINDS: Kind[] = ['sofa', 'chair', 'bed', 'desk', 'table', 'shelf', 'rug', 'box'];
+import { BOOK_COLOURS, LINEN, createInitialDocument } from './catalog';
+import type { Door, Obstacle, WindowOpening } from './types';
 
 describe('createInitialDocument', () => {
   it('returns the starting plan: the room with no furniture', () => {
     const doc = createInitialDocument();
-    expect(doc.schemaVersion).toBe(3);
+    expect(doc.schemaVersion).toBe(4);
     expect(Object.keys(doc)).toEqual(['schemaVersion', 'units', 'room', 'items', 'openings', 'obstacles']);
     expect(doc.openings).toEqual([]);
     expect(doc.obstacles).toEqual([]);
@@ -38,28 +36,7 @@ describe('createInitialDocument', () => {
   });
 });
 
-describe('catalogue tables', () => {
-  it('has parts and looks for every kind', () => {
-    for (const k of KINDS) {
-      expect(PARTS[k].length).toBeGreaterThanOrEqual(1);
-      expect(LOOKS[k]).toBeDefined();
-    }
-  });
-
-  it('has valid part fractions', () => {
-    for (const k of KINDS) {
-      for (const [u0, u1, v0, v1, z0, z1] of PARTS[k]) {
-        for (const n of [u0, u1, v0, v1, z0, z1]) {
-          expect(n).toBeGreaterThanOrEqual(0);
-          expect(n).toBeLessThanOrEqual(1);
-        }
-        expect(u0).toBeLessThan(u1);
-        expect(v0).toBeLessThan(v1);
-        expect(z0).toBeLessThan(z1);
-      }
-    }
-  });
-
+describe('catalogue colours', () => {
   it('exports the linen and book colours', () => {
     expect(LINEN).toBe('#f3f1ec');
     expect(BOOK_COLOURS).toEqual(['#7c8a96', '#b9a48a', '#5f6b5c', '#a2584a', '#d8d2c4']);
@@ -70,7 +47,7 @@ describe('CONFIG', () => {
   it('has exactly the listed values', () => {
     expect(CONFIG).toEqual({
       roomMin: 36, roomMax: 720, furnitureSnap: 1,
-      previewDimMax: 240, showClearances: true, lookupDelayMs: 900,
+      itemDimMin: 0.25, itemDimMax: 240, showClearances: true,
       camera: { yaw: -0.65, pitch: 0.55, zoom: 1 },
       pitchMin: 0.12, pitchMax: 1.45, zoomMin: 0.6, zoomMax: 2.5,
       orbitYawPerPx: 0.008, orbitPitchPerPx: 0.006, zoomPerDelta: 0.001,

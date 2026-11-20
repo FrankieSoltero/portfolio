@@ -1,7 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ProductPreview } from '../domain/types';
 import { usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
 import { furnishedDocument } from '../test/fixtures';
@@ -25,22 +24,6 @@ const HINT_3D = 'Drag to orbit, scroll to zoom. Pick a piece from the list to hi
 const HINT_ROOM =
   'Drag a wall to move it, or a corner to change an angle. Double-click a wall to add a corner, or pick a door or window to place. Select something and press Delete to remove it.';
 
-function preview(overrides: Partial<ProductPreview>): ProductPreview {
-  return {
-    kind: 'box',
-    name: 'Plain box',
-    host: 'shop.example',
-    sourceUrl: 'https://shop.example/p/box',
-    price: null,
-    w: 20,
-    d: 20,
-    h: 20,
-    known: true,
-    model: { tier: 'box', label: 'Box', assetUrl: null },
-    ...overrides,
-  };
-}
-
 /** A 36 in ceiling makes the 38 in bed the only conflict (the 30 in desk still fits). */
 function oneConflict(): void {
   act(() => usePlanStore.getState().setRoomHeight(36));
@@ -50,8 +33,9 @@ function oneConflict(): void {
 function threeConflicts(): void {
   act(() => {
     usePlanStore.getState().setRoomHeight(36);
-    usePlanStore.getState().addItem(preview({ kind: 'shelf', name: 'Tall shelf', w: 36, d: 13, h: 78 }));
-    usePlanStore.getState().addItem(preview({ kind: 'sofa', name: 'Sofa', w: 84, d: 36, h: 33 }));
+    // A shelf is 36 × 13 × 78 in and a sofa 84 × 36 × 33 in.
+    usePlanStore.getState().addFurniture('shelf');
+    usePlanStore.getState().addFurniture('sofa');
   });
 }
 

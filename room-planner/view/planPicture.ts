@@ -3,9 +3,10 @@
  * draws only through the context it is given and touches no globals except Path2D, which turns a
  * door's SVG arc into a canvas path. Nothing is selected in the picture.
  */
+import { fillsFootprint, planParts, type PlanPart } from '../domain/furniture/planParts';
 import { obstacleFootprint, obstaclePolygon } from '../domain/obstacles';
 import { boundsOf, pointInPolygon } from '../domain/polygon';
-import { footprintCorners, itemFootprint, type Footprint } from '../domain/shape';
+import { footprintCorners, itemFootprint, planPartOutline, type Footprint } from '../domain/shape';
 import type { Conflicts, Corner, Item, Obstacle, Opening, Point, Units } from '../domain/types';
 import { fmtLen } from '../domain/units';
 import { doorDrawing, windowDrawing } from './planFeatures';
@@ -21,6 +22,8 @@ export const PLAN_PICTURE_CREDIT = 'Room Planner · frankiesoltero.com/room-plan
 
 /** Space around the plan on every side, in pixels. */
 const MARGIN = 160;
+/** Points in a round part's outline in the picture: 48 keeps an ellipse smooth at 2000 px (the plan and blueprint keep 16). */
+const ROUND_PICTURE_POINTS = 48;
 /** The plan's longer side is drawn this many pixels long. */
 const LONG_SIDE_PX = 2000 - 2 * MARGIN;
 
@@ -42,6 +45,8 @@ const GAP_WIDTH = 10;
 const WINDOW_WIDTH = 4;
 const LEAF_WIDTH = 3;
 const ARC_WIDTH = 2;
+/** Opacity of the part lines drawn inside each piece of furniture. */
+const PART_ALPHA = 0.4;
 
 const NAME_FONT = '500 26px Barlow, sans-serif';
 const LENGTH_FONT = '600 28px Barlow, sans-serif';
@@ -89,6 +94,29 @@ function shape(g: CanvasRenderingContext2D, pts: readonly Point[], layout: PlanL
   g.strokeStyle = conflict ? CONFLICT_INK : SHAPE_STROKE;
   g.lineWidth = SHAPE_WIDTH;
   g.stroke();
+}
+
+/**
+ * Draws a piece of furniture from above: its footprint filled and stroked, as the ellipse of its
+ * round part that fills the footprint when it has one (a round rug, a round table top), then each
+ * of its other plan parts' outlines stroked in the same colour at PART_ALPHA opacity, between a
+ * save and a restore so the opacity does not reach anything drawn after.
+ */
+function furniture(g: CanvasRenderingContext2D, item: Item, layout: PlanLayout, conflict: boolean): void {
+  const fp = itemFootprint(item);
+  const parts = planParts(item);
+  const roundWhole = (p: PlanPart): boolean => p.round && fillsFootprint(p);
+  const ellipse = parts.find(roundWhole);
+  shape(g, ellipse ? planPartOutline(fp, ellipse, ROUND_PICTURE_POINTS) : footprintCorners(fp), layout, FURNITURE_FILL, conflict);
+  g.save();
+  g.globalAlpha = PART_ALPHA;
+  for (const part of ellipse ? parts.filter((p) => !roundWhole(p)) : parts) {
+    trace(g, planPartOutline(fp, part, ROUND_PICTURE_POINTS), layout);
+    g.strokeStyle = conflict ? CONFLICT_INK : SHAPE_STROKE;
+    g.lineWidth = SHAPE_WIDTH;
+    g.stroke();
+  }
+  g.restore();
 }
 
 /** Strokes the straight line p–q, already in pane pixels. */
@@ -175,10 +203,8 @@ export function drawPlanPicture(g: CanvasRenderingContext2D, input: PlanPictureI
   g.fillStyle = FLOOR;
   g.fill();
 
-  const furniture = [...items.filter((i) => i.kind === 'rug'), ...items.filter((i) => i.kind !== 'rug')];
-  for (const item of furniture) {
-    shape(g, footprintCorners(itemFootprint(item)), layout, FURNITURE_FILL, conflicting(item.id));
-  }
+  const rugsFirst = [...items.filter((i) => i.kind === 'rug'), ...items.filter((i) => i.kind !== 'rug')];
+  for (const item of rugsFirst) furniture(g, item, layout, conflicting(item.id));
   for (const o of obstacles) shape(g, obstaclePolygon(o), layout, OBSTACLE_FILL, conflicting(o.id));
 
   trace(g, outline, layout);

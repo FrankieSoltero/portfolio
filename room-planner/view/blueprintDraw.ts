@@ -10,7 +10,7 @@ import { itemFootprint } from '../domain/shape';
 import type { Conflicts, Corner, Item, Obstacle, Opening, Point, Units } from '../domain/types';
 import { fmtLen, gridStepInches } from '../domain/units';
 import type { Tokens } from '../styles/tokens';
-import { buildPrisms, makeProjector, obstaclePrisms, sortPrisms } from './blueprintScene';
+import { buildPrisms, makeProjector, obstaclePrisms, sortByPiece } from './blueprintScene';
 import type { Prism } from './blueprintScene';
 import type { CameraPose, Vec3 } from './camera';
 import { wallHoles } from './wallHoles';
@@ -231,9 +231,9 @@ function label(g: CanvasRenderingContext2D, P: Project, T: Tokens, p: Vec3, txt:
 }
 
 /**
- * Draws one blueprint frame: floor, grid clipped to the floor, far walls far to near,
- * rugs then the painter-sorted furniture and obstacle prisms, near walls dashed (every wall
- * with its door and window holes), and the dimension labels on top.
+ * Draws one blueprint frame: floor, grid clipped to the floor, far walls far to near, rugs then
+ * the furniture and obstacle prisms painter-sorted piece by piece (`sortByPiece`), near walls
+ * dashed (every wall with its door and window holes), and the dimension labels on top.
  * The caller sets the device-pixel transform; everything here is in CSS pixels.
  */
 export function drawBlueprint(g: CanvasRenderingContext2D, input: BlueprintInput): void {
@@ -261,7 +261,7 @@ export function drawBlueprint(g: CanvasRenderingContext2D, input: BlueprintInput
 
   const { prisms, rugs } = buildPrisms(items);
   const solids = [...prisms, ...obstaclePrisms(input.obstacles)];
-  for (const b of [...rugs, ...sortPrisms(solids, cam)]) drawPrism(g, P, b, cam, input);
+  for (const b of [...rugs, ...sortByPiece(solids, cam)]) drawPrism(g, P, b, cam, input);
 
   for (const w of walls.filter((wall) => !wall.far)) {
     const near: PolyStyle = { stroke: T.text, dash: NEAR_WALL_DASH, alpha: NEAR_WALL_ALPHA };
