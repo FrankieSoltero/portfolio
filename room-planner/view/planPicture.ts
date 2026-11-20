@@ -3,7 +3,7 @@
  * draws only through the context it is given and touches no globals except Path2D, which turns a
  * door's SVG arc into a canvas path. Nothing is selected in the picture.
  */
-import { fillsFootprint, planParts } from '../domain/furniture/planParts';
+import { fillsFootprint, planParts, type PlanPart } from '../domain/furniture/planParts';
 import { obstacleFootprint, obstaclePolygon } from '../domain/obstacles';
 import { boundsOf, pointInPolygon } from '../domain/polygon';
 import { footprintCorners, itemFootprint, planPartOutline, type Footprint } from '../domain/shape';
@@ -95,18 +95,19 @@ function shape(g: CanvasRenderingContext2D, pts: readonly Point[], layout: PlanL
 }
 
 /**
- * Draws a piece of furniture from above: its footprint filled and stroked (as its ellipse when its
- * only part is round and fills the footprint), then each plan part's outline stroked in the same
- * colour at PART_ALPHA opacity, which is set back to 1 afterwards.
+ * Draws a piece of furniture from above: its footprint filled and stroked, as the ellipse of its
+ * round part that fills the footprint when it has one (a round rug, a round table top), then each
+ * of its other plan parts' outlines stroked in the same colour at PART_ALPHA opacity, which is set
+ * back to 1 afterwards.
  */
 function furniture(g: CanvasRenderingContext2D, item: Item, layout: PlanLayout, conflict: boolean): void {
   const fp = itemFootprint(item);
   const parts = planParts(item);
-  const only = parts.length === 1 ? parts[0] : undefined;
-  const roundWhole = only !== undefined && only.round && fillsFootprint(only);
-  shape(g, roundWhole ? planPartOutline(fp, only) : footprintCorners(fp), layout, FURNITURE_FILL, conflict);
+  const roundWhole = (p: PlanPart): boolean => p.round && fillsFootprint(p);
+  const ellipse = parts.find(roundWhole);
+  shape(g, ellipse ? planPartOutline(fp, ellipse) : footprintCorners(fp), layout, FURNITURE_FILL, conflict);
   g.globalAlpha = PART_ALPHA;
-  for (const part of parts) {
+  for (const part of ellipse ? parts.filter((p) => !roundWhole(p)) : parts) {
     trace(g, planPartOutline(fp, part), layout);
     g.strokeStyle = conflict ? CONFLICT_INK : SHAPE_STROKE;
     g.lineWidth = SHAPE_WIDTH;

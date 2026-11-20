@@ -1,6 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { buildParts } from '../domain/furniture/parts';
-import { cylinder } from '../domain/furniture/parts/types';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { planParts } from '../domain/furniture/planParts';
 import { defaultStyle } from '../domain/furniture/recipe';
 import { obstacleFootprint, obstaclePolygon } from '../domain/obstacles';
@@ -23,13 +21,6 @@ class FakePath2D {
 beforeAll(() => { vi.stubGlobal('Path2D', FakePath2D); });
 afterAll(() => { vi.unstubAllGlobals(); });
 
-// The real part builders by default; the round rug test hands its rug the one round part the rug
-// builder gives a round rug, so that it does not depend on that builder's other geometry.
-vi.mock('../domain/furniture/parts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../domain/furniture/parts')>();
-  return { ...actual, buildParts: vi.fn(actual.buildParts) };
-});
-afterEach(() => { vi.mocked(buildParts).mockReset(); });
 
 type Rec =
   | { type: 'call'; name: string; args: unknown[] }
@@ -268,21 +259,55 @@ describe('drawPlanPicture', () => {
     expect(paints.slice(3 + parts.length).every((p) => p.alpha === 1)).toBe(true);
   });
 
-  it('3. fills and strokes a round rug as its ellipse, not its rectangle', () => {
+  it('3. fills and strokes a round rug with a border as its ellipse, then strokes only its inner part', () => {
     const round: Item = { ...RUG, style: { ...defaultStyle('rug'), shape: 'round' } };
-    // One round part filling the footprint, the shape the rug builder gives a round rug.
-    vi.mocked(buildParts).mockReturnValue([{ ...cylinder('main', 0, 0, 0, 1, 60), sy: 40 }]);
-    const ellipse = pane(planPartOutline(itemFootprint(round), { rect: [0, 1, 0, 1], round: true, z0: 0, z1: 1 }));
+    const [outer, inner, ...rest] = planParts(round);
+    if (!outer || !inner) throw new Error('a bordered round rug has two parts');
+    expect(rest).toEqual([]);
+    const fp = itemFootprint(round);
+    const ellipse = pane(planPartOutline(fp, outer));
     const { paints } = draw(input({ items: [round] }));
-    const [fill, stroke, part] = [at(paints, 1), at(paints, 2), at(paints, 3)];
+    const [fill, stroke, part, walls] = [at(paints, 1), at(paints, 2), at(paints, 3), at(paints, 4)];
     expect(fill.coords).toHaveLength(16);
     expectPoints(fill.coords, ellipse);
     expect([fill.op, fill.style, fill.closed]).toEqual(['fill', '#e4e8ee', true]);
     expect([stroke.op, stroke.style, stroke.alpha]).toEqual(['stroke', '#3d4a63', 1]);
     expectPoints(stroke.coords, ellipse);
     expect([part.op, part.alpha]).toEqual(['stroke', 0.4]);
-    expectPoints(part.coords, ellipse);
+    expectPoints(part.coords, pane(planPartOutline(fp, inner)));
+    expect([walls.op, walls.lineWidth]).toEqual(['stroke', 10]);
     expect(paintsAt(paints, itemPane(round))).toEqual([]);
+  });
+
+  it('3. fills a round table on legs as its top\'s ellipse and strokes its other parts on it', () => {
+    const table: Item = { ...placedItem({ id: 'table-1', kind: 'table', name: 'Table', w: 44, d: 24, h: 16, cx: 72, cy: 84 }),
+      style: { ...defaultStyle('table'), top: 'round' } };
+    const fp = itemFootprint(table);
+    const parts = planParts(table);
+    const top = parts.find((p) => p.round && p.rect.join() === '0,1,0,1');
+    if (!top) throw new Error('no round top');
+    const others = parts.filter((p) => p !== top);
+    expect(others.length).toBeGreaterThan(1);
+    const { paints } = draw(input({ items: [table] }));
+    expectPoints(at(paints, 1).coords, pane(planPartOutline(fp, top)));
+    expect(at(paints, 1).op).toBe('fill');
+    others.forEach((p, j) => {
+      const stroke = at(paints, 3 + j);
+      expect([stroke.op, stroke.alpha]).toEqual(['stroke', 0.4]);
+      expectPoints(stroke.coords, pane(planPartOutline(fp, p)));
+    });
+    expect(at(paints, 3 + others.length).lineWidth).toBe(10);
+  });
+
+  it('3. fills a rectangle rug with a border as its rectangle and strokes both its parts', () => {
+    const { paints } = draw(input({ items: [RUG] }));
+    expectPoints(at(paints, 1).coords, itemPane(RUG));
+    const parts = partPanes(RUG);
+    expect(parts).toHaveLength(2);
+    parts.forEach((coords, j) => {
+      expect(at(paints, 3 + j).alpha).toBe(0.4);
+      expectPoints(at(paints, 3 + j).coords, coords);
+    });
   });
 
   it('3. paints a conflicting item in the conflict colours', () => {

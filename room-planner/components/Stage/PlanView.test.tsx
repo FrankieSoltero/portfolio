@@ -8,8 +8,8 @@ import { boundsOf } from '../../domain/polygon';
 import { itemFootprint, roomBounds, roomOutline } from '../../domain/shape';
 import { BLOCKS_A_DOOR, COVERS_A_WINDOW, findPlanIssues } from '../../domain/conflicts';
 import { buildParts } from '../../domain/furniture/parts';
-import { box, cylinder } from '../../domain/furniture/parts/types';
-import { planParts } from '../../domain/furniture/planParts';
+import { box } from '../../domain/furniture/parts/types';
+import { fillsFootprint, planParts } from '../../domain/furniture/planParts';
 import { defaultStyle } from '../../domain/furniture/recipe';
 import type { Door, Item, Obstacle, Opening, PlanDocument, Point, WindowOpening } from '../../domain/types';
 import { fmtLen } from '../../domain/units';
@@ -34,8 +34,8 @@ vi.mock('../../domain/shape', async (importOriginal) => {
   };
 });
 
-// The real part builders by default; single tests hand a rug or a box the parts its builder gives
-// it, so that they do not depend on those builders' other geometry.
+// The real part builders by default; single tests hand a piece made-up parts, to show a rule
+// (one part filling the footprint, or not) without depending on a builder's own geometry.
 vi.mock('../../domain/furniture/parts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../domain/furniture/parts')>();
   return { ...actual, buildParts: vi.fn(actual.buildParts) };
@@ -417,29 +417,56 @@ describe('PlanView', () => {
     expect(rotation(itemEl('seed-desk'))).toBe(90);
   });
 
-  it('marks a round part\'s hairline is-round and leaves the others square', () => {
+  it('draws a round table on legs as a round box with its leg hairlines, not its top again', () => {
     const table: Item = { ...placedItem({ id: 'table-1', kind: 'table', name: 'Table', w: 44, d: 24, h: 16, cx: 40, cy: 120 }),
       style: { ...defaultStyle('table'), top: 'round' } };
     usePlanStore.getState().reset(furnishedWith(table));
     render(<PlanView pane={MAIN} />);
-    const round = planParts(table).map((p) => p.round);
-    expect(round).toContain(true);
+    expect(itemEl('table-1')).toHaveClass('is-round');
+    // Every part but the round top that fills the footprint, in order, round ones marked is-round.
+    const shown = planParts(table).filter((p) => !(p.round && fillsFootprint(p)));
+    expect(shown.length).toBeGreaterThan(1);
     const hairlines = [...itemEl('table-1').querySelectorAll('.plan-part')];
-    expect(hairlines.map((el) => el.classList.contains('is-round'))).toEqual(round);
-    expect(itemEl('table-1')).not.toHaveClass('is-round');
+    expect(hairlines.map((el) => el.classList.contains('is-round'))).toEqual(shown.map((p) => p.round));
+    const boxes = partBoxes('table-1');
+    shown.forEach(({ rect: [u0, u1, v0, v1] }, i) =>
+      expectBoxClose(boxes[i], [u0 * 100, v0 * 100, (u1 - u0) * 100, (v1 - v0) * 100], 4));
   });
 
-  it('draws a round rug as a round box with no hairline', () => {
+  it('draws a round rug with a border as a round box with one hairline, its inner part', () => {
     const rug: Item = { ...RUG, style: { ...defaultStyle('rug'), shape: 'round' } };
     usePlanStore.getState().reset(furnishedWith(rug));
-    // One round part filling the footprint, the shape the rug builder gives a round rug.
-    vi.mocked(buildParts).mockImplementation((kind, size) =>
-      kind === 'rug' ? [{ ...cylinder('main', 0, 0, 0, size.h, size.w), sy: size.d }]
-        : [box('main', -size.w / 2, 0, -size.d / 2, size.d / 2, 0, size.h), box('main', 0, size.w / 2, -size.d / 2, size.d / 2, 0, size.h)]);
+    render(<PlanView pane={MAIN} />);
+    expect(itemEl('rug-1')).toHaveClass('is-round');
+    const parts = planParts(rug);
+    expect(parts).toHaveLength(2);
+    const inner = parts[1];
+    if (!inner) throw new Error('no inner part');
+    const [u0, u1, v0, v1] = inner.rect;
+    const boxes = partBoxes('rug-1');
+    expect(boxes).toHaveLength(1);
+    expectBoxClose(boxes[0], [u0 * 100, v0 * 100, (u1 - u0) * 100, (v1 - v0) * 100], 4);
+    expect(itemEl('rug-1').querySelector('.plan-part')).toHaveClass('is-round');
+    expect(itemEl('seed-bed')).not.toHaveClass('is-round');
+  });
+
+  it('draws a round rug without a border as a round box with no hairline', () => {
+    const rug: Item = { ...RUG, style: { ...defaultStyle('rug'), shape: 'round', border: 'no' } };
+    usePlanStore.getState().reset(furnishedWith(rug));
     render(<PlanView pane={MAIN} />);
     expect(itemEl('rug-1')).toHaveClass('is-round');
     expect(itemEl('rug-1').querySelectorAll('.plan-part')).toHaveLength(0);
-    expect(itemEl('seed-bed')).not.toHaveClass('is-round');
+  });
+
+  it('draws a rectangle rug with a border square, with both its parts as hairlines', () => {
+    usePlanStore.getState().reset(withRug());
+    render(<PlanView pane={MAIN} />);
+    expect(itemEl('rug-1')).not.toHaveClass('is-round');
+    const expected = planPartBoxes(RUG);
+    expect(expected).toHaveLength(2);
+    const boxes = partBoxes('rug-1');
+    expect(boxes).toHaveLength(2);
+    expected.forEach((box, i) => expectBoxClose(boxes[i], box, 4));
   });
 
   it('draws no hairline for a box whose one part fills its footprint', () => {

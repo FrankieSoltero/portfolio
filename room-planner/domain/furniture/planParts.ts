@@ -65,3 +65,8 @@ export function fillsFootprint(part: PlanPart): boolean {
   const [u0, u1, v0, v1] = part.rect;
   return u0 <= EDGE_TOLERANCE && v0 <= EDGE_TOLERANCE && u1 >= 1 - EDGE_TOLERANCE && v1 >= 1 - EDGE_TOLERANCE;
 }
+
+/** Whether the piece is round from above: any of its plan parts is round and fills the footprint (a round rug, a round table top). */
+export function isRoundPiece(parts: readonly PlanPart[]): boolean {
+  return parts.some((p) => p.round && fillsFootprint(p));
+}

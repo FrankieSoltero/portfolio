@@ -2,7 +2,7 @@ import type React from 'react';
 import { useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
 import { OUTSIDE_THE_ROOM } from '../../domain/conflicts';
-import { fillsFootprint, planParts } from '../../domain/furniture/planParts';
+import { fillsFootprint, isRoundPiece, planParts } from '../../domain/furniture/planParts';
 import { rectangleSize } from '../../domain/outline';
 import { itemFootprint, roomBounds, roomOutline } from '../../domain/shape';
 import type { Item } from '../../domain/types';
@@ -135,13 +135,17 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
         const label = labelBox(fp, layout);
         const isSelected = item.id === selectedId;
         const isConflict = conflicts[item.id] !== undefined;
-        const parts = planParts(item);
-        // A piece whose one part fills its footprint is drawn by its own box, round if the part is.
-        const whole = parts.length === 1 && parts[0] !== undefined && fillsFootprint(parts[0]) ? parts[0] : null;
+        const allParts = planParts(item);
+        // A round piece's box is the ellipse of its round part(s) filling the footprint, so only its
+        // other parts are drawn; any other piece whose one part fills its footprint is its box alone.
+        const isRound = isRoundPiece(allParts);
+        const parts = isRound
+          ? allParts.filter((p) => !(p.round && fillsFootprint(p)))
+          : allParts.length === 1 && allParts[0] !== undefined && fillsFootprint(allParts[0]) ? [] : allParts;
         const className = [
           'plan-item',
           item.kind === 'rug' && 'is-rug',
-          whole?.round && 'is-round',
+          isRound && 'is-round',
           isConflict && 'is-conflict',
           !isConflict && warnings[item.id] !== undefined && 'is-warning',
           isSelected && 'is-selected',
@@ -175,19 +179,18 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
             }}
             onKeyDown={(e) => onItemKey(item, e)}
           >
-            {whole === null &&
-              parts.map(({ rect: [u0, u1, v0, v1], round }, i) => (
-                <i
-                  key={i}
-                  className={round ? 'plan-part is-round' : 'plan-part'}
-                  style={{
-                    left: `${u0 * 100}%`,
-                    top: `${v0 * 100}%`,
-                    width: `${(u1 - u0) * 100}%`,
-                    height: `${(v1 - v0) * 100}%`,
-                  }}
-                />
-              ))}
+            {parts.map(({ rect: [u0, u1, v0, v1], round }, i) => (
+              <i
+                key={i}
+                className={round ? 'plan-part is-round' : 'plan-part'}
+                style={{
+                  left: `${u0 * 100}%`,
+                  top: `${v0 * 100}%`,
+                  width: `${(u1 - u0) * 100}%`,
+                  height: `${(v1 - v0) * 100}%`,
+                }}
+              />
+            ))}
             {label.width > LABEL_MIN_W && label.height > LABEL_MIN_H && (
               // Inside the turned item, so it turns back by the item's angle to reach its net tilt.
               <div

@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Item, Kind } from '../types';
 import { buildParts } from './parts';
 import { box, cylinder, type Part } from './parts/types';
-import { fillsFootprint, planParts } from './planParts';
+import { fillsFootprint, isRoundPiece, planParts } from './planParts';
 import { KIND_ORDER, TYPICAL_SIZE, defaultStyle } from './recipe';
 
-// The real builders by default; single tests hand-make the parts, so that kinds whose builders
-// are still being written (books, handles, round rugs) can be shown without their geometry.
+// The real builders by default; single tests hand-make the parts, so that a rule (detail parts,
+// the order, the cap) is shown without depending on a builder's own geometry.
 vi.mock('./parts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./parts')>();
   return { ...actual, buildParts: vi.fn(actual.buildParts) };
@@ -107,10 +107,13 @@ describe('planParts', () => {
     expect(planParts(piece('table')).every((p) => p.z1 < 16 || !p.round)).toBe(true);
   });
 
-  it('marks a round rug round', () => {
-    // A round rug as one cylinder filling the footprint, the shape its builder gives it.
-    nextParts([{ ...cylinder('main', 0, 0, 0, 0.5, 60), sy: 96 }]);
-    expect(planParts(piece('rug', { shape: 'round' }))).toEqual([{ rect: [0, 1, 0, 1], round: true, z0: 0, z1: 0.5 }]);
+  it('marks a round rug\'s parts round', () => {
+    expect(planParts(piece('rug', { shape: 'round', border: 'no' }))).toEqual([{ rect: [0, 1, 0, 1], round: true, z0: 0, z1: 0.5 }]);
+    // With a border: the main layer filling the footprint, then the inset soft layer on it.
+    const bordered = planParts(piece('rug', { shape: 'round' }));
+    expect(bordered).toHaveLength(2);
+    expect(bordered.every((p) => p.round)).toBe(true);
+    expect(bordered[0]?.rect).toEqual([0, 1, 0, 1]);
   });
 
   it('lists the default bed\'s parts lowest top first', () => {
@@ -162,5 +165,32 @@ describe('fillsFootprint', () => {
     expect(fillsFootprint(part([0, 0.99, 0, 1]))).toBe(false);
     expect(fillsFootprint(part([0, 1, 0.04, 1]))).toBe(false);
     expect(fillsFootprint(part([0, 1, 0, 0.5]))).toBe(false);
+  });
+});
+
+describe('isRoundPiece', () => {
+  it('is true for a round rug with a border: two round parts, the lower one filling the footprint', () => {
+    expect(isRoundPiece(planParts(piece('rug', { shape: 'round' })))).toBe(true);
+    expect(isRoundPiece(planParts(piece('rug', { shape: 'round', border: 'no' })))).toBe(true);
+  });
+
+  it('is true for a round table on legs', () => {
+    const parts = planParts(piece('table', { top: 'round' }));
+    expect(parts.length).toBeGreaterThan(1);
+    expect(isRoundPiece(parts)).toBe(true);
+  });
+
+  it('is false for a rectangle rug with a border, a rectangle table and a sofa', () => {
+    expect(isRoundPiece(planParts(piece('rug')))).toBe(false);
+    expect(isRoundPiece(planParts(piece('table')))).toBe(false);
+    expect(isRoundPiece(planParts(piece('sofa')))).toBe(false);
+  });
+
+  it('is false when the only round parts do not fill the footprint', () => {
+    expect(isRoundPiece([
+      { rect: [0, 1, 0, 1], round: false, z0: 0, z1: 1 },
+      { rect: [0.1, 0.9, 0.1, 0.9], round: true, z0: 0, z1: 2 },
+    ])).toBe(false);
+    expect(isRoundPiece([])).toBe(false);
   });
 });
