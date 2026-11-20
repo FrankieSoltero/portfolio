@@ -180,8 +180,9 @@ function boundingPrism(parts: readonly Prism[]): Prism {
  * rather than the number of parts: `sortPrisms` orders one bounding prism per piece (an item's
  * parts share its id; each obstacle is a piece of its own), then each piece's own parts are
  * ordered among themselves with `sortPrisms` and drawn in its place. Pieces do not interpenetrate
- * in a valid plan, so ordering whole pieces is sound; overlapping (conflicting) pieces may draw
- * imperfectly, as they could before. Returns each input prism exactly once.
+ * in a valid plan, so ordering whole pieces is sound. Overlapping (conflicting) pieces may draw
+ * imperfectly: a piece nested inside another's hull (a chair tucked under a desk, which is
+ * flagged as a conflict) is drawn wholly before or after it. Returns each input prism exactly once.
  */
 export function sortByPiece(prisms: readonly Prism[], cam: Vec3): Prism[] {
   const pieces = new Map<string, Prism[]>();
