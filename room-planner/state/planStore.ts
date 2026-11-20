@@ -44,7 +44,15 @@ export const ROOM_PROBLEM_TEXT: Readonly<Record<RoomProblem, string>> = {
 };
 
 /** What an item edit may change. */
-export interface ItemPatch { name?: string; kind?: Kind; w?: number; d?: number; h?: number; style?: Readonly<Record<string, string>>; colours?: Partial<ItemColours> }
+export interface ItemPatch {
+  name?: string;
+  kind?: Kind;
+  w?: number;
+  d?: number;
+  h?: number;
+  style?: Readonly<Record<string, string>>;
+  colours?: Partial<ItemColours>;
+}
 
 /**
  * The plan document plus the only operations allowed to change it. All lengths are inches; an
@@ -104,8 +112,9 @@ export interface PlanState extends PlanDocument {
   addFurniture(kind: Kind): string | null;
   /**
    * Applies a valid patch to the item; returns false and changes nothing when the item is missing or
-   * any given field is invalid. A name is trimmed and must then have 1 to 200 characters; `w`, `d`
-   * and `h` must be finite and within [CONFIG.itemDimMin, CONFIG.itemDimMax]; `kind` must be in
+   * any given field is invalid. A name is trimmed and must then have 1 to 200 characters; a `w`, `d`
+   * or `h` that differs from the stored one must be finite and within [CONFIG.itemDimMin,
+   * CONFIG.itemDimMax] (a stored size outside them, from a loaded plan, is kept); `kind` must be in
    * KIND_ORDER; `style` is merged over the current style and must pass completeStyle for the
    * (possibly new) kind; each colour goes through normaliseColour. A kind change sets the new kind's
    * default style (with any given `style` merged over it) and keeps size, colours and name, except
@@ -226,8 +235,11 @@ function patchedItem(item: Item, patch: ItemPatch): Item | null {
     name = KIND_LABELS[kind];
   }
 
+  // Only the sizes the patch changes are checked: a loaded plan may hold a size outside the edit
+  // limits (parsePlan accepts up to 720 in), and that must not block edits to other fields.
   const { w = item.w, d = item.d, h = item.h } = patch;
-  if (![w, d, h].every(isItemDim)) return null;
+  const sizesOk = ([[w, item.w], [d, item.d], [h, item.h]] as const).every(([next, stored]) => next === stored || isItemDim(next));
+  if (!sizesOk) return null;
 
   const baseStyle = kindChanged ? defaultStyle(kind) : item.style;
   const style = patch.style === undefined ? baseStyle : completeStyle(kind, { ...baseStyle, ...patch.style });

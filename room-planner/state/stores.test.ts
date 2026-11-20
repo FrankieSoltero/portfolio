@@ -532,6 +532,60 @@ describe('planStore: updateItem', () => {
     sofa();
     expectRefused('no-such-item', { w: 90 });
   });
+
+  it('is all or nothing: a valid width with an invalid colour is refused and the width is kept', () => {
+    const id = sofa();
+    expectRefused(id, { w: 90, colours: { main: 'red' } });
+    expect(itemById(id).w).toBe(84);
+  });
+
+  it('a name sent with a kind change is used instead of the new kind’s label', () => {
+    const id = sofa();
+    expect(usePlanStore.getState().updateItem(id, { kind: 'bed', name: 'Guest bed' })).toBe(true);
+    expect(itemById(id)).toMatchObject({ kind: 'bed', name: 'Guest bed' });
+  });
+
+  it('keeps the centre and angle of a turned, off-centre piece through size, style and kind changes', () => {
+    const id = sofa();
+    usePlanStore.getState().moveItemTo(id, 40, 120);
+    usePlanStore.getState().setItemAngle(id, 30);
+    const { x, y, angle } = itemById(id);
+    expect({ x, y, angle }).not.toEqual({ x: 72, y: 84, angle: 0 });
+    expect(usePlanStore.getState().updateItem(id, { w: 70, d: 30 })).toBe(true);
+    expect(usePlanStore.getState().updateItem(id, { style: { arms: 'none' } })).toBe(true);
+    expect(usePlanStore.getState().updateItem(id, { kind: 'chair' })).toBe(true);
+    expect(itemById(id)).toMatchObject({ kind: 'chair', w: 70, d: 30, x, y, angle });
+  });
+
+  describe('a piece whose stored size is outside the edit limits (a loaded plan may hold one)', () => {
+    /** Loads a plan whose bed is 300 in wide (parsePlan accepts sizes up to 720 in); returns its id. */
+    function wideBed(): string {
+      const doc = furnishedDocument();
+      usePlanStore.getState().reset({ ...doc, items: doc.items.map((i) => (i.id === 'seed-bed' ? { ...i, w: 300 } : i)) });
+      return 'seed-bed';
+    }
+
+    it('accepts a name or colour edit, keeping the stored width', () => {
+      const id = wideBed();
+      expect(usePlanStore.getState().updateItem(id, { name: 'x' })).toBe(true);
+      expect(usePlanStore.getState().updateItem(id, { colours: { main: '#112233' } })).toBe(true);
+      expect(itemById(id)).toMatchObject({ name: 'x', w: 300, colours: { main: '#112233' } });
+    });
+
+    it('treats sending the unchanged width as a no-op, and refuses a different out-of-range width', () => {
+      const id = wideBed();
+      const before = usePlanStore.getState();
+      const listener = vi.fn();
+      const unsubscribe = usePlanStore.subscribe(listener);
+      expect(usePlanStore.getState().updateItem(id, { w: 300 })).toBe(true);
+      unsubscribe();
+      expect(usePlanStore.getState()).toBe(before);
+      expect(listener).not.toHaveBeenCalled();
+      expectRefused(id, { w: 310 });
+      expect(usePlanStore.getState().updateItem(id, { w: 200 })).toBe(true);
+      expect(itemById(id).w).toBe(200);
+    });
+  });
 });
 
 describe('uiStore', () => {
