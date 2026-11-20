@@ -1,0 +1,23 @@
+/* app/hybrid-skin.css
+   Shared tokens for the hybrid 8-bit skin, used by /papers and /drills.
+   Imported by app/papers/layout.tsx and app/drills/layout.tsx before each section's
+   own stylesheet. :where() adds no specificity, so every section rule still wins. */
+
+:where(.papers, .drills) {
+  /* Sweetie-16 (matches public/index.html / STYLE_GUIDE.md) */
+  --night: #1a1c2c;
+  --panel: #0e1530;
+  --deep: #29366f;
+  --dim: #333c57;
+  --steel: #566c86;
+  --mist: #94b0c2;
+  --white: #f4f4f4;
+  --cyan: #73eff7;
+  --slime: #a7f070;
+  --gold: #ffcd75;
+  --ember: #ef7d57;
+
+  /* pixel frame recipes */
+  --frame4: 0 -4px #000, 0 4px #000, -4px 0 #000, 4px 0 #000;
+  --frame3: 0 -3px #000, 0 3px #000, -3px 0 #000, 3px 0 #000;
+}

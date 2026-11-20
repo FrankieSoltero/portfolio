@@ -1,0 +1,160 @@
+/* app/drills/drills.css
+   Hybrid 8-bit skin for /drills: section shell, header, footer and base type.
+   Tokens (Sweetie-16 palette, pixel frames) come from app/hybrid-skin.css, imported first.
+   Every selector is scoped under the .drills root class. Square corners and hard-edged
+   shadows only; body prose and code stay in readable faces, pixel type is for chrome. */
+
+.drills {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  background: var(--night);
+  color: var(--white);
+  line-height: 1.7;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+.drills ::selection {
+  background: var(--gold);
+  color: var(--night);
+}
+
+/* ---- links & focus ---- */
+
+.drills a {
+  color: var(--cyan);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.drills a:hover {
+  color: var(--gold);
+}
+
+.drills :focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+/* ---- header / footer chrome ---- */
+
+.drills .drills-header {
+  background: var(--panel);
+  border-bottom: 4px solid #000;
+}
+
+.drills .drills-header nav,
+.drills .drills-page,
+.drills .drills-footer p {
+  box-sizing: border-box;
+  max-width: 44rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
+.drills .drills-header nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-top: 0.9rem;
+  padding-bottom: 0.9rem;
+  font-family: var(--font-pixel), monospace;
+  font-size: 9px;
+  line-height: 1.8;
+}
+
+.drills .drills-header a {
+  text-decoration: none;
+}
+
+.drills .drills-header a:hover {
+  color: var(--gold);
+  text-decoration: underline;
+}
+
+.drills .drills-header .drills-home {
+  color: var(--gold);
+}
+
+.drills .drills-header .drills-wordmark {
+  color: var(--white);
+}
+
+.drills .drills-page {
+  flex: 1;
+  width: 100%;
+  padding-top: 3rem;
+  padding-bottom: 4rem;
+}
+
+.drills .drills-footer {
+  background: var(--panel);
+  border-top: 4px solid #000;
+}
+
+.drills .drills-footer p {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0.9rem;
+  padding-bottom: 1.2rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 1.05rem;
+  color: var(--mist);
+}
+
+/* ---- base type ---- */
+
+.drills h1,
+.drills h2,
+.drills h3 {
+  font-family: var(--font-pixel), monospace;
+  font-weight: 400;
+  color: var(--white);
+  text-wrap: balance;
+}
+
+.drills h1 {
+  font-size: 15px;
+  line-height: 2;
+  margin: 0 0 0.75rem;
+}
+
+.drills h2 {
+  font-size: 11px;
+  line-height: 1.9;
+  color: var(--gold);
+  margin: 2.75rem 0 0.9rem;
+}
+
+.drills h3 {
+  font-size: 10px;
+  line-height: 1.9;
+  color: var(--mist);
+  margin: 2.25rem 0 0.7rem;
+}
+
+.drills p {
+  margin: 0 0 1.1rem;
+  max-width: 62ch;
+}
+
+.drills ul,
+.drills ol {
+  padding-left: 1.4rem;
+  margin: 0 0 1.1rem;
+}
+
+.drills li {
+  margin-bottom: 0.4rem;
+}
+
+.drills code,
+.drills pre {
+  font-family: var(--font-code), ui-monospace, monospace;
+}
