@@ -144,6 +144,8 @@ describe("Posts feed", () => {
     openComments("Alpha");
     await fail("comments:1");
 
+    expect(post("Alpha").queryByRole("alert")?.textContent ?? null).toBe("Could not load comments");
+
     openComments("Alpha");
     await release("comments:1");
 
