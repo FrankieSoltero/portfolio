@@ -47,7 +47,7 @@ describe('CONFIG', () => {
   it('has exactly the listed values', () => {
     expect(CONFIG).toEqual({
       roomMin: 36, roomMax: 720, furnitureSnap: 1,
-      previewDimMax: 240, showClearances: true, lookupDelayMs: 900,
+      itemDimMin: 0.25, itemDimMax: 240, showClearances: true,
       camera: { yaw: -0.65, pitch: 0.55, zoom: 1 },
       pitchMin: 0.12, pitchMax: 1.45, zoomMin: 0.6, zoomMax: 2.5,
       orbitYawPerPx: 0.008, orbitPitchPerPx: 0.006, zoomPerDelta: 0.001,

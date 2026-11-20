@@ -1,11 +1,10 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { act } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createInitialDocument } from '../../domain/catalog';
 import { findPlanIssues } from '../../domain/conflicts';
-import type { ProductPreview, WindowOpening } from '../../domain/types';
-import type { ProductLookup } from '../../services/productLookup';
+import type { WindowOpening } from '../../domain/types';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { createFakePlanStore } from '../../test/fakePlanStore';
@@ -24,25 +23,10 @@ beforeEach(() => {
 const BED = 'Low platform bed, queen';
 const DESK = 'Tack writing desk';
 
-/** A ProductLookup that is never expected to be called. */
-function fakeLookup(): ProductLookup {
-  return { lookup: vi.fn(() => new Promise<ProductPreview>(() => undefined)) };
-}
-
-function preview(overrides: Partial<ProductPreview>): ProductPreview {
-  return {
-    kind: 'box',
-    name: 'Plain box',
-    host: 'shop.example',
-    sourceUrl: 'https://shop.example/p/box',
-    price: null,
-    w: 20,
-    d: 20,
-    h: 20,
-    known: true,
-    model: { tier: 'box', label: 'Box', assetUrl: null },
-    ...overrides,
-  };
+/** Adds a box (which has no price) through the store and names it `name`. */
+function addNamedBox(name: string): void {
+  const id = usePlanStore.getState().addFurniture('box');
+  if (id === null || !usePlanStore.getState().updateItem(id, { name })) throw new Error('box not added');
 }
 
 /** The item row button whose accessible name starts with `name` (other rows may name it in a conflict tag). */
@@ -151,7 +135,7 @@ describe('ItemList', () => {
     render(<ItemList />);
     expect(screen.getByText('$1,310')).toBeInTheDocument();
     act(() => {
-      usePlanStore.getState().addItem(preview({ name: 'Mystery stool', price: null }));
+      addNamedBox('Mystery stool');
     });
     expect(screen.getByText('$1,310')).toBeInTheDocument();
     expect(within(row('Mystery stool')).getByText('No price')).toBeInTheDocument();
@@ -170,7 +154,7 @@ describe('ItemList', () => {
 
   it('renders an item name containing markup as literal text', () => {
     act(() => {
-      usePlanStore.getState().addItem(preview({ name: '<b>x</b>' }));
+      addNamedBox('<b>x</b>');
     });
     const { container } = render(<ItemList />);
     const last = rows(container).at(-1);
@@ -182,14 +166,14 @@ describe('ItemList', () => {
 
 describe('Sidebar', () => {
   it('is an aside.sidebar with sections 01, 02, 03, 04 in DOM order: Room, Add furniture, In this room, Plan', () => {
-    const { container } = render(<Sidebar lookup={fakeLookup()} planStore={createFakePlanStore()} />);
+    const { container } = render(<Sidebar planStore={createFakePlanStore()} />);
     const aside = container.querySelector('aside');
     expect(aside).not.toBeNull();
     expect(aside).toHaveClass('sidebar');
     const nums = Array.from(container.querySelectorAll('.sidebar-heading-num')).map((n) => n.textContent);
     expect(nums).toEqual(['01', '02', '03', '04']);
     const headings = screen.getAllByRole('heading', { level: 6 }).map((h) => h.textContent);
-    expect(headings).toEqual(['01Room', '02Add furniture from a link', '03In this room', '04Plan']);
+    expect(headings).toEqual(['01Room', '02Add furniture', '03In this room', '04Plan']);
   });
 
   it('still has exactly the four section headings in room mode with a door, a window and an obstacle selected', () => {
@@ -203,10 +187,10 @@ describe('Sidebar', () => {
     });
     useUiStore.getState().setMode('room');
     useUiStore.getState().selectObstacle('b1');
-    render(<Sidebar lookup={fakeLookup()} planStore={createFakePlanStore()} />);
+    render(<Sidebar planStore={createFakePlanStore()} />);
     expect(screen.getByRole('group', { name: 'Doors, windows and obstacles' })).toBeInTheDocument();
     const headings = screen.getAllByRole('heading', { level: 6 }).map((h) => h.textContent);
-    expect(headings).toEqual(['01Room', '02Add furniture from a link', '03In this room', '04Plan']);
+    expect(headings).toEqual(['01Room', '02Add furniture', '03In this room', '04Plan']);
     expect(screen.queryAllByRole('heading')).toHaveLength(4);
   });
 });

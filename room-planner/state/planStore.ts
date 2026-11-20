@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
-import { defaultColours, defaultStyle } from '../domain/furniture/recipe';
+import {
+  completeStyle,
+  defaultColours,
+  defaultStyle,
+  KIND_LABELS,
+  KIND_ORDER,
+  normaliseColour,
+  TYPICAL_SIZE,
+} from '../domain/furniture/recipe';
 import { moveItem, placeItem, rotateItemBy, setItemAngle, shiftItem, storedAngle } from '../domain/geometry';
 import {
   moveObstacle,
@@ -20,10 +28,10 @@ import {
   validateOpenings,
 } from '../domain/openings';
 import { OUTLINE_PROBLEM_TEXT, type OutlineProblem, type OutlineResult } from '../domain/outline';
+import { PRODUCT_TEXT_LIMITS } from '../domain/planSchema';
 import { interiorPoint, round2 } from '../domain/polygon';
 import { roomBounds, roomOutline } from '../domain/shape';
-import type { Corner, Item, Obstacle, PlanDocument, ProductPreview, Units } from '../domain/types';
-import { capProductText } from '../services/productLookup';
+import type { Corner, Item, ItemColours, ItemModel, Kind, Obstacle, PlanDocument, Units } from '../domain/types';
 
 /** Why a room edit (its outline, doors and windows, or obstacles) was refused. */
 export type RoomProblem = OutlineProblem | OpeningProblem | ObstacleProblem;
@@ -34,6 +42,9 @@ export const ROOM_PROBLEM_TEXT: Readonly<Record<RoomProblem, string>> = {
   ...OPENING_PROBLEM_TEXT,
   ...OBSTACLE_PROBLEM_TEXT,
 };
+
+/** What an item edit may change. */
+export interface ItemPatch { name?: string; kind?: Kind; w?: number; d?: number; h?: number; style?: Readonly<Record<string, string>>; colours?: Partial<ItemColours> }
 
 /**
  * The plan document plus the only operations allowed to change it. All lengths are inches; an
@@ -84,12 +95,24 @@ export interface PlanState extends PlanDocument {
   /** Removes an obstacle. Unknown ids are ignored. */
   removeObstacle(id: string): void;
   /**
-   * Appends the preview as a new unrotated item centred near the room's interior point, placed by
-   * placeItem (the grid rule of a move, without the stop at the walls), its text capped by
-   * capProductText, in its kind's default style and colours; returns its new id. When the plan
-   * already has CONFIG.maxItems items, changes nothing and returns null.
+   * Adds a piece of `kind` at its typical size, default style and colours, named by its kind's
+   * label, unrotated, centred on `interiorPoint(room.outline)` and placed there by
+   * `placeItem(item, x, y, roomBounds(room), CONFIG.furnitureSnap)` (the grid rule of a move,
+   * without the stop at the walls). Returns the new id, or null (changing nothing) when
+   * the plan already has CONFIG.maxItems items.
    */
-  addItem(preview: ProductPreview): string | null;
+  addFurniture(kind: Kind): string | null;
+  /**
+   * Applies a valid patch to the item; returns false and changes nothing when the item is missing or
+   * any given field is invalid. A name is trimmed and must then have 1 to 200 characters; `w`, `d`
+   * and `h` must be finite and within [CONFIG.itemDimMin, CONFIG.itemDimMax]; `kind` must be in
+   * KIND_ORDER; `style` is merged over the current style and must pass completeStyle for the
+   * (possibly new) kind; each colour goes through normaliseColour. A kind change sets the new kind's
+   * default style (with any given `style` merged over it) and keeps size, colours and name, except
+   * that a name still equal to the old kind's label becomes the new kind's label. The centre and
+   * angle never change. A patch that changes nothing returns true without a write.
+   */
+  updateItem(id: string, patch: ItemPatch): boolean;
   /**
    * Moves an item towards (x, y), its footprint's bounding-box min corner on the furniture grid,
    * through moveItem: a piece wholly inside the room stops flush at a wall it would cross. Unknown
@@ -181,6 +204,47 @@ function sameOutline(a: readonly Corner[], b: readonly Corner[]): boolean {
   return a.length === b.length && a.every((c, i) => c.id === b[i].id && c.x === b[i].x && c.y === b[i].y);
 }
 
+/** The model of every piece added by type: built from its recipe by the planner. */
+const PLANNER_MODEL: ItemModel = { tier: 'parametric', label: 'Built by the planner', assetUrl: null };
+
+/** True when `v` is a length a piece may have: finite and within [CONFIG.itemDimMin, CONFIG.itemDimMax]. */
+function isItemDim(v: number): boolean {
+  return Number.isFinite(v) && v >= CONFIG.itemDimMin && v <= CONFIG.itemDimMax;
+}
+
+/** `item` with `patch` applied by the rules of updateItem, or null when any given field is invalid. */
+function patchedItem(item: Item, patch: ItemPatch): Item | null {
+  const kind = patch.kind ?? item.kind;
+  if (!KIND_ORDER.includes(kind)) return null;
+  const kindChanged = kind !== item.kind;
+
+  let name = item.name;
+  if (patch.name !== undefined) {
+    name = patch.name.trim();
+    if (name.length < 1 || name.length > PRODUCT_TEXT_LIMITS.nameMax) return null;
+  } else if (kindChanged && item.name === KIND_LABELS[item.kind]) {
+    name = KIND_LABELS[kind];
+  }
+
+  const { w = item.w, d = item.d, h = item.h } = patch;
+  if (![w, d, h].every(isItemDim)) return null;
+
+  const baseStyle = kindChanged ? defaultStyle(kind) : item.style;
+  const style = patch.style === undefined ? baseStyle : completeStyle(kind, { ...baseStyle, ...patch.style });
+  if (style === null) return null;
+
+  const colours = { ...item.colours };
+  for (const key of ['main', 'accent'] as const) {
+    const given = patch.colours?.[key];
+    if (given === undefined) continue;
+    const colour = normaliseColour(given);
+    if (colour === null) return null;
+    colours[key] = colour;
+  }
+
+  return { ...item, kind, name, w, d, h, style, colours };
+}
+
 function documentFields(doc: PlanDocument): PlanDocument {
   return {
     schemaVersion: doc.schemaVersion,
@@ -255,32 +319,46 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   removeObstacle: (id) =>
     set((s) => (s.obstacles.some((o) => o.id === id) ? { obstacles: s.obstacles.filter((o) => o.id !== id) } : s)),
 
-  addItem: (preview) => {
+  addFurniture: (kind) => {
     const { room, items } = get();
     if (items.length >= CONFIG.maxItems) return null;
     const id = crypto.randomUUID();
     const centre = interiorPoint(room.outline);
-    const { name, host, sourceUrl } = capProductText(preview);
     const unplaced: Item = {
       id,
-      kind: preview.kind,
-      name,
-      host,
-      sourceUrl,
-      price: preview.price,
-      w: preview.w,
-      d: preview.d,
-      h: preview.h,
+      kind,
+      name: KIND_LABELS[kind],
+      host: '',
+      sourceUrl: null,
+      price: null,
+      ...TYPICAL_SIZE[kind],
       x: 0,
       y: 0,
       angle: 0,
-      model: { ...preview.model },
-      style: defaultStyle(preview.kind),
-      colours: defaultColours(preview.kind),
+      model: { ...PLANNER_MODEL },
+      style: defaultStyle(kind),
+      colours: defaultColours(kind),
     };
     const item = placeItem(unplaced, centre.x, centre.y, roomBounds(room), CONFIG.furnitureSnap);
     set((s) => ({ items: [...s.items, item] }));
     return id;
+  },
+
+  updateItem: (id, patch) => {
+    const item = get().items.find((i) => i.id === id);
+    if (item === undefined) return false;
+    const next = patchedItem(item, patch);
+    if (next === null) return false;
+    const unchanged =
+      next.kind === item.kind &&
+      next.name === item.name &&
+      next.w === item.w &&
+      next.d === item.d &&
+      next.h === item.h &&
+      sameEntries([next.style, next.colours], [item.style, item.colours]);
+    // No write for a patch that changes nothing, so the undo history records no step.
+    if (!unchanged) set((s) => ({ items: s.items.map((i) => (i.id === id ? next : i)) }));
+    return true;
   },
 
   // Pointer moves call this every frame; a move that lands on the same spot changes nothing.

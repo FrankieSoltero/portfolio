@@ -35,8 +35,8 @@ export type ParseResult = { ok: true; doc: PlanDocument } | { ok: false; newer: 
 const CURRENT_VERSION = 4;
 
 /**
- * Lengths, in characters, of the text a stored item takes from a looked-up product. Exported so
- * the lookup caps what it builds to what a saved plan accepts (see capProductText).
+ * Lengths, in characters, of an item's stored text. Exported so an item edit (updateItem) and a
+ * product's text (capProductText) keep to what a saved plan accepts.
  */
 export const PRODUCT_TEXT_LIMITS = {
   urlMax: 2048,

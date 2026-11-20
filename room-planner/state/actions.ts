@@ -16,11 +16,11 @@ import {
   wallsOf,
 } from '../domain/outline';
 import { interiorPoint } from '../domain/polygon';
-import type { Corner, Obstacle, Point } from '../domain/types';
+import type { Corner, Kind, Obstacle, Point } from '../domain/types';
 import { ROOM_PROBLEM_TEXT, type RoomProblem, usePlanStore } from './planStore';
 import { useUiStore } from './uiStore';
 
-/** Cross-store actions: operations on the plan driven by the UI selection or lookup state. */
+/** Cross-store actions: operations on the plan driven by the UI selection, mode and notices. */
 
 /** Turns the selected item `deg` degrees clockwise (a quarter turn by default); no-op when nothing is selected. */
 export function rotateSelected(deg = 90): void {
@@ -37,18 +37,20 @@ export function removeSelected(): void {
   useUiStore.getState().select(null);
 }
 
+/** The notice shown when a piece cannot be added because the plan already has CONFIG.maxItems. */
+const PLAN_FULL_NOTICE = 'This plan is full. Remove a piece to add another.';
+
 /**
- * Places the previewed product in the room, selects it and ends the lookup; returns the new item's
- * id. Returns null and changes nothing when not in preview, or when the plan is full (the preview
- * is kept, so it can be placed once an item is removed).
+ * Adds a piece of `kind`, selects it and returns its id; null when the plan is full, in which case
+ * the notice 'This plan is full. Remove a piece to add another.' is shown.
  */
-export function placePreview(): string | null {
-  const ui = useUiStore.getState();
-  if (ui.lookup.status !== 'preview') return null;
-  const id = usePlanStore.getState().addItem(ui.lookup.product);
-  if (id === null) return null;
-  ui.select(id);
-  ui.setLookup({ status: 'idle' });
+export function addFurnitureOfKind(kind: Kind): string | null {
+  const id = usePlanStore.getState().addFurniture(kind);
+  if (id === null) {
+    useUiStore.getState().setNotice(PLAN_FULL_NOTICE);
+    return null;
+  }
+  useUiStore.getState().select(id);
   return id;
 }
 

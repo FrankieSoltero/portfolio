@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { CONFIG } from './config';
 import { createInitialDocument } from './domain/catalog';
-import type { ProductLookup } from './services/productLookup';
 import { clearHistory, undo } from './state/historyStore';
 import { usePlanStore } from './state/planStore';
 import { useUiStore } from './state/uiStore';
@@ -20,18 +19,6 @@ vi.mock('./components/Stage/BlueprintView', () => ({
   BlueprintView: (): JSX.Element => <div data-testid="blueprint-marker" />,
 }));
 
-// The real Sidebar, wrapped to record every lookup provider it is rendered with.
-const seenLookups = vi.hoisted((): ProductLookup[] => []);
-vi.mock('./components/Sidebar/Sidebar', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./components/Sidebar/Sidebar')>();
-  return {
-    Sidebar: (props: Parameters<typeof actual.Sidebar>[0]): JSX.Element => {
-      seenLookups.push(props.lookup);
-      return <actual.Sidebar {...props} />;
-    },
-  };
-});
-
 // Vitest globals are off, so Testing Library cannot register its own cleanup.
 afterEach(() => {
   cleanup();
@@ -41,7 +28,6 @@ afterEach(() => {
 beforeEach(() => {
   usePlanStore.getState().reset();
   useUiStore.getState().reset();
-  seenLookups.length = 0;
 });
 
 /** A fake store holding a saved plan with the bed and the desk in it. */
@@ -95,27 +81,15 @@ describe('App', () => {
     expect(desk().angle).toBe(180);
   });
 
-  it('creates the lookup provider once and passes the same instance to Sidebar on re-render', async () => {
-    const { rerender, store } = await renderApp();
-    act(() => useUiStore.getState().select('seed-bed'));
-    rerender(<App planStore={store} />);
-    expect(seenLookups.length).toBeGreaterThanOrEqual(2);
-    const [first] = seenLookups;
-    expect(typeof first?.lookup).toBe('function');
-    for (const lookup of seenLookups) expect(lookup).toBe(first);
-  });
-
-  it('places the Sofa sample: three rows, $2,600 total, 2 conflicts', async () => {
+  it('adds a sofa from section 02: three rows, the sofa selected, the $1,310 total unchanged, 2 conflicts', async () => {
     const { container } = await renderApp();
-    vi.useFakeTimers();
     fireEvent.click(screen.getByRole('button', { name: 'Sofa' }));
-    await act(async () => {
-      vi.advanceTimersByTime(900);
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Place in room' }));
 
     expect(container.querySelectorAll('button.item-row')).toHaveLength(3);
-    expect(screen.getByText('$2,600')).toBeInTheDocument();
+    const sofa = usePlanStore.getState().items.find((i) => i.kind === 'sofa');
+    expect(useUiStore.getState().selectedId).toBe(sofa?.id);
+    // A piece added by type has no price.
+    expect(screen.getByText('$1,310')).toBeInTheDocument();
     expect(screen.getByText('2 conflicts')).toHaveClass('tag-conflict');
   });
 });
@@ -125,10 +99,10 @@ describe('App: undo history', () => {
     clearHistory();
   });
 
-  it('wires the text-field groups: three changes while the product link field is focused make one step', async () => {
+  it('wires the text-field groups: three changes while the ceiling field is focused make one step', async () => {
     // Wait for the load (which clears the history) before the changes.
     await renderApp();
-    screen.getByRole('textbox', { name: 'Product link' }).focus();
+    screen.getByLabelText('Ceiling').focus();
     act(() => {
       for (let i = 0; i < 3; i++) usePlanStore.getState().moveItemBy('seed-bed', 1, 0);
     });

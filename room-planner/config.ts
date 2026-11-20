@@ -3,9 +3,10 @@ export const CONFIG = {
   roomMin: 36,
   roomMax: 720,
   furnitureSnap: 1,
-  previewDimMax: 240,
+  // A piece's width, depth and height stay within [itemDimMin, itemDimMax].
+  itemDimMin: 0.25,
+  itemDimMax: 240,
   showClearances: true,
-  lookupDelayMs: 900,
   camera: { yaw: -0.65, pitch: 0.55, zoom: 1 },
   pitchMin: 0.12,
   pitchMax: 1.45,
