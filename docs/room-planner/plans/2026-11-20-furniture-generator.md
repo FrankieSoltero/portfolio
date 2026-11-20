@@ -906,3 +906,24 @@ Minor review findings folded in before any code was written:
   furniture outline's.
 - Every commit in this plan is made only after `git branch --show-current` prints
   `furniture-generator` (another session shares this repository through a separate worktree).
+
+## Amendment 2 (2026-11-20, after Task 6's first commit `a52dd29`)
+
+Task 6's rule for a round piece ("exactly one plan part that fills the footprint and is round")
+was wrong: a round rug with a border has two round parts and a round table has a round top over
+legs, so both were drawn as square boxes, against the spec ("the plan always matches the 3D
+view") and live-check row 4. The rule is replaced:
+
+- **A piece is round when any of its plan parts is round and fills the footprint**
+  (`fillsFootprint(part)`), whatever other parts it has.
+- `planParts.ts` exports `isRoundPiece(parts: readonly PlanPart[]): boolean` with that rule.
+- `PlanView`: a round piece's own box gets class `is-round`. Its plan parts are still drawn as
+  `.plan-part` hairlines, except the round part(s) that fill the footprint, which the box itself
+  already shows.
+- Picture: a round piece is filled and stroked as its ellipse (the 16-point outline of the
+  filling round part) instead of its rectangle; the other parts are stroked on top as before.
+- Blueprint: unchanged (it already draws each part's own outline).
+
+Behavior rows added to Task 6: round rug with border (two round parts) → box `is-round`, one
+`.plan-part` (the inner part), picture fills the ellipse; round table on legs → box `is-round`,
+leg hairlines present; rectangle rug with border → not round.
