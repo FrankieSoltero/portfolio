@@ -200,7 +200,7 @@ describe('chair', () => {
 });
 
 describe('placeholders', () => {
-  const PLACEHOLDER_KINDS: Kind[] = ['bed', 'desk', 'table', 'shelf', 'dresser', 'nightstand', 'tvstand', 'rug', 'box'];
+  const PLACEHOLDER_KINDS: Kind[] = ['shelf', 'dresser', 'nightstand', 'tvstand', 'rug', 'box'];
 
   it.each(PLACEHOLDER_KINDS)('%s is one box filling its size', (kind) => {
     const size = TYPICAL_SIZE[kind];

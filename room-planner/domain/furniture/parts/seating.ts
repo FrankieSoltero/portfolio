@@ -37,7 +37,7 @@ function pick<T extends string>(value: string | undefined, allowed: readonly T[]
  * side across and clamp(0.06 h, 0.75, 2) tall (at most half of `top`); column
  * clamp(0.14 × the shorter side, 1.5, 5) across (at most half the base).
  */
-function pedestal(size: PieceSize, top: number): Part[] {
+export function pedestal(size: PieceSize, top: number): Part[] {
   const short = Math.min(size.w, size.d);
   const baseDiameter = 0.7 * short;
   const baseTop = Math.min(clamp(0.06 * size.h, 0.75, 2), 0.5 * top);
