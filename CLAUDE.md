@@ -42,8 +42,8 @@ without reading it — the visual language is strict and easy to break.
   `drills:progress:v1`. **Not released yet:** it lives on the unmerged local branch
   `drills-content`, with no navigation link and no sitemap entry until the Drillbox runner
   integration adds the in-browser workspace and progress display; never merge or push that
-  branch before then. `npm run test:drills` is the fairness gate (every drill red on its
-  starter, green on its solution) and `npm run test:drills-pages` is the built-page check
+  branch before then. `npm run test:drills` is the fairness gate (every drill needs at least
+  one failing check on its starter and every check passing on its solution) and `npm run test:drills-pages` is the built-page check
   (run it after a build). Authoring guide and lessons log in `docs/drills/`.
 
 ## Files
