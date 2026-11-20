@@ -7,10 +7,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint --no-error-on-unmatched-pattern room-planner app/room-planner",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.drills.json",
+    "lint": "eslint --no-error-on-unmatched-pattern room-planner app/room-planner drills app/drills lib/drills.ts scripts",
     "test": "vitest run --passWithNoTests",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "test:drills": "node scripts/drills-fairness.mts",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run test:drills && npm run build"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",
