@@ -11,7 +11,7 @@ import type { Item, Obstacle, Point } from '../domain/types';
 import { furnishedDocument, placedItem, rectRoom } from '../test/fixtures';
 import { computeCameraPose } from './camera';
 import type { Vec3 } from './camera';
-import { buildPrisms, frontOf, makeProjector, obstaclePrisms, sortPrisms } from './blueprintScene';
+import { buildPrisms, frontOf, makeProjector, obstaclePrisms, sortByPiece, sortPrisms } from './blueprintScene';
 import type { Prism } from './blueprintScene';
 import type { PaneRect } from './panes';
 
@@ -321,6 +321,99 @@ describe('sortPrisms', () => {
     const sorted = sortPrisms(prisms, [-200, 300, 150]);
     expect(sorted).toHaveLength(prisms.length);
     expect(new Set(sorted)).toEqual(new Set(prisms));
+  });
+});
+
+describe('sortByPiece', () => {
+  /** A default piece of `kind`, unturned, centred at (100, 100). */
+  function piece(kind: Item['kind'], w: number, d: number, h: number, style: Record<string, string> = {}): Item {
+    const it = placedItem({ id: `${kind}-1`, kind, w, d, h, cx: 100, cy: 100 });
+    return { ...it, style: { ...it.style, ...style } };
+  }
+
+  /** Where each of the piece's prisms (by its index in buildPrisms) lands in the sorted order. */
+  function drawOrder(it: Item, cam: Vec3): number[] {
+    const { prisms } = buildPrisms([it]);
+    const sorted = sortByPiece(prisms, cam);
+    expect(sorted).toHaveLength(prisms.length);
+    return prisms.map((p) => sorted.indexOf(p));
+  }
+
+  it('draws a sofa\'s back frame before its seat cushions from the front, and after them from behind', () => {
+    const sofa = piece('sofa', 84, 36, 33);
+    const parts = planParts(sofa);
+    // buildPrisms keeps planParts' order: the back frame has the highest top, and the seat
+    // cushions reach the front edge above the deck.
+    const back = parts.length - 1;
+    const cushions = parts.flatMap((p, i) => (p.rect[3] === 1 && p.z0 > 11 ? [i] : []));
+    expect(cushions).toHaveLength(3);
+    const front = drawOrder(sofa, [100, 400, 60]);
+    const behind = drawOrder(sofa, [100, -200, 60]);
+    for (const c of cushions) {
+      expect(front[back]).toBeLessThan(front[c] ?? -1);
+      expect(behind[back]).toBeGreaterThan(behind[c] ?? Infinity);
+    }
+  });
+
+  it('draws a tall headboard before the mattress from the foot of the bed, and after it from the head', () => {
+    const bed = piece('bed', 64, 85, 38, { headboard: 'tall' });
+    const parts = planParts(bed);
+    const headboard = parts.length - 1;
+    expect(parts[headboard]?.rect[2]).toBe(0);
+    // The mattress: the part that sits on the frame and covers the most of the bed.
+    const mattress = parts.findIndex((p) => p.z0 > 5 && p.rect[3] - p.rect[2] > 0.9);
+    expect(mattress).toBeGreaterThan(-1);
+    const foot = drawOrder(bed, [100, 400, 80]);
+    const head = drawOrder(bed, [100, -200, 80]);
+    expect(foot[headboard]).toBeLessThan(foot[mattress] ?? -1);
+    expect(head[headboard]).toBeGreaterThan(head[mattress] ?? Infinity);
+  });
+
+  it('draws a table\'s legs before its top from above, and after it from below the top', () => {
+    const table = piece('table', 44, 24, 30, { shelf: 'no' });
+    const parts = planParts(table);
+    const top = parts.length - 1;
+    const legs = parts.flatMap((p, i) => (p.z0 === 0 ? [i] : []));
+    expect(legs).toHaveLength(4);
+    const above = drawOrder(table, [100, 300, 200]);
+    const low = drawOrder(table, [100, 300, 5]);
+    for (const leg of legs) {
+      expect(above[leg]).toBeLessThan(above[top] ?? -1);
+      expect(low[leg]).toBeGreaterThan(low[top] ?? Infinity);
+    }
+  });
+
+  it('keeps each piece\'s parts together and orders the pieces as whole pieces, far to near', () => {
+    const near = placedItem({ id: 'near', kind: 'sofa', w: 84, d: 36, h: 33, cx: 100, cy: 200 });
+    const far = placedItem({ id: 'far', kind: 'bed', w: 64, d: 85, h: 38, cx: 100, cy: 60 });
+    const column = obstacle('col', 'cylinder', 200, 130, 12, 12, 96);
+    const { prisms } = buildPrisms([near, far]);
+    const all = [...prisms, ...obstaclePrisms([column])];
+    const sorted = sortByPiece(all, [100, 600, 120]);
+    expect(new Set(sorted)).toEqual(new Set(all));
+    expect(sorted).toHaveLength(all.length);
+    const ids = sorted.map((p) => p.itemId);
+    // Runs of one piece each, in the order far bed, then the column and the sofa.
+    const runs = ids.filter((id, i) => id !== ids[i - 1]);
+    expect(runs).toHaveLength(3);
+    expect(runs[0]).toBe('far');
+    expect(runs.indexOf('near')).toBeGreaterThan(0);
+  });
+
+  it('keeps an obstacle apart from an item that has the same id', () => {
+    const it = placedItem({ id: 'same', kind: 'table', w: 44, d: 24, h: 30, cx: 100, cy: 100 });
+    const ob = obstacle('same', 'box', 100, 300, 20, 20, 40);
+    const { prisms } = buildPrisms([it]);
+    const all = [...prisms, ...obstaclePrisms([ob])];
+    const sorted = sortByPiece(all, [100, 600, 60]);
+    expect(sorted).toHaveLength(all.length);
+    // The obstacle stands between the camera and the table, so it is drawn last, on its own.
+    expect(sorted[sorted.length - 1]?.obstacle).toBe(true);
+    expect(sorted.slice(0, -1).every((p) => !p.obstacle)).toBe(true);
+  });
+
+  it('returns nothing for no prisms', () => {
+    expect(sortByPiece([], [0, 0, 0])).toEqual([]);
   });
 });
 

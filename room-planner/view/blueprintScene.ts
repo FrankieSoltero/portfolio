@@ -141,6 +141,64 @@ export function sortPrisms(prisms: readonly Prism[], cam: Vec3): Prism[] {
   return order;
 }
 
+/** The convex hull of the points, with positive signed area and no repeated or collinear points. */
+function convexHull(points: readonly Point[]): Point[] {
+  const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (pts.length < 3) return pts;
+  const cross = (o: Point, a: Point, b: Point): number => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = (list: readonly Point[]): Point[] => {
+    const out: Point[] = [];
+    for (const p of list) {
+      while (out.length >= 2) {
+        const a = out[out.length - 2];
+        const b = out[out.length - 1];
+        if (a === undefined || b === undefined || cross(a, b, p) > 0) break;
+        out.pop();
+      }
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(pts), ...half([...pts].reverse())];
+}
+
+/** One prism around all of a piece's parts: the convex hull of their outlines, from the lowest bottom to the highest top. */
+function boundingPrism(parts: readonly Prism[]): Prism {
+  const first = parts[0];
+  if (first === undefined || parts.length === 1) return first ?? { pts: [], z0: 0, z1: 0, itemId: '', kind: 'box' };
+  return {
+    pts: convexHull(parts.flatMap((p) => p.pts)),
+    z0: Math.min(...parts.map((p) => p.z0)),
+    z1: Math.max(...parts.map((p) => p.z1)),
+    itemId: first.itemId, kind: first.kind, ...(first.obstacle ? { obstacle: true as const } : {}),
+  };
+}
+
+/**
+ * Painter's order, far to near, sorted in two levels so the cost follows the number of pieces
+ * rather than the number of parts: `sortPrisms` orders one bounding prism per piece (an item's
+ * parts share its id; each obstacle is a piece of its own), then each piece's own parts are
+ * ordered among themselves with `sortPrisms` and drawn in its place. Pieces do not interpenetrate
+ * in a valid plan, so ordering whole pieces is sound; overlapping (conflicting) pieces may draw
+ * imperfectly, as they could before. Returns each input prism exactly once.
+ */
+export function sortByPiece(prisms: readonly Prism[], cam: Vec3): Prism[] {
+  const pieces = new Map<string, Prism[]>();
+  for (const p of prisms) {
+    const key = `${p.obstacle ? 'obstacle' : 'item'}:${p.itemId}`;
+    const group = pieces.get(key);
+    if (group) group.push(p);
+    else pieces.set(key, [p]);
+  }
+  const partsOf = new Map<Prism, Prism[]>();
+  for (const parts of pieces.values()) partsOf.set(boundingPrism(parts), parts);
+  return sortPrisms([...partsOf.keys()], cam).flatMap((bound) => {
+    const parts = partsOf.get(bound) ?? [];
+    return parts.length > 1 ? sortPrisms(parts, cam) : parts;
+  });
+}
+
 /**
  * Perspective projector from plan space to pane pixels, matching the 3D camera.
  * The camera target lands at the centre of the safe area, `[safeW / 2, paneH / 2]`.

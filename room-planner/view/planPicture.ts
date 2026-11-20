@@ -97,8 +97,8 @@ function shape(g: CanvasRenderingContext2D, pts: readonly Point[], layout: PlanL
 /**
  * Draws a piece of furniture from above: its footprint filled and stroked, as the ellipse of its
  * round part that fills the footprint when it has one (a round rug, a round table top), then each
- * of its other plan parts' outlines stroked in the same colour at PART_ALPHA opacity, which is set
- * back to 1 afterwards.
+ * of its other plan parts' outlines stroked in the same colour at PART_ALPHA opacity, between a
+ * save and a restore so the opacity does not reach anything drawn after.
  */
 function furniture(g: CanvasRenderingContext2D, item: Item, layout: PlanLayout, conflict: boolean): void {
   const fp = itemFootprint(item);
@@ -106,6 +106,7 @@ function furniture(g: CanvasRenderingContext2D, item: Item, layout: PlanLayout, 
   const roundWhole = (p: PlanPart): boolean => p.round && fillsFootprint(p);
   const ellipse = parts.find(roundWhole);
   shape(g, ellipse ? planPartOutline(fp, ellipse) : footprintCorners(fp), layout, FURNITURE_FILL, conflict);
+  g.save();
   g.globalAlpha = PART_ALPHA;
   for (const part of ellipse ? parts.filter((p) => !roundWhole(p)) : parts) {
     trace(g, planPartOutline(fp, part), layout);
@@ -113,7 +114,7 @@ function furniture(g: CanvasRenderingContext2D, item: Item, layout: PlanLayout, 
     g.lineWidth = SHAPE_WIDTH;
     g.stroke();
   }
-  g.globalAlpha = 1;
+  g.restore();
 }
 
 /** Strokes the straight line p–q, already in pane pixels. */

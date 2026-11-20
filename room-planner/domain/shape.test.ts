@@ -87,7 +87,7 @@ function rectPart(u0: number, u1: number, v0: number, v1: number, round = false)
 }
 
 describe('planPartOutline', () => {
-  it('places a rectangle part of a 60×40 item as partCorners did, at each quarter turn', () => {
+  it('places a rectangle part of a 60×40 item at each quarter turn', () => {
     // Fixed values the Task 2 comparison with the quarter-turn part mapping produced, for the
     // 60×40 item whose axis-aligned footprint's top-left was (30, 50), and the former first sofa
     // part [.08, .92, .28, 1].

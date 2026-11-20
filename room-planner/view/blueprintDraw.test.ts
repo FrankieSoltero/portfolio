@@ -10,7 +10,7 @@ import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from './camera';
 import type { CameraPose, Vec3 } from './camera';
 import { furnishedDocument, placedItem } from '../test/fixtures';
-import { buildPrisms, makeProjector } from './blueprintScene';
+import { buildPrisms, makeProjector, sortByPiece } from './blueprintScene';
 import { drawBlueprint } from './blueprintDraw';
 import type { BlueprintInput } from './blueprintDraw';
 import type { PaneRect } from './panes';
@@ -19,6 +19,11 @@ import type { PaneRect } from './panes';
 vi.mock('../domain/shape', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../domain/shape')>();
   return { ...actual, itemFootprint: vi.fn(actual.itemFootprint) };
+});
+// Passthrough, so a test can see which painter's sort a frame uses.
+vi.mock('./blueprintScene', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./blueprintScene')>();
+  return { ...actual, sortByPiece: vi.fn(actual.sortByPiece) };
 });
 
 /** Distinct, readable stand-ins so every assertion names the token it expects. */
@@ -267,6 +272,17 @@ describe('drawBlueprint', () => {
       expect(paints.some((p) => p.op === 'fill' && p.path === w.path)).toBe(false);
       expect(w.index).toBeGreaterThan(lastFill);
     }
+  });
+
+  it('sorts the furniture and obstacle prisms piece by piece, without the rugs', () => {
+    vi.mocked(sortByPiece).mockClear();
+    const items = [...furnishedDocument().items, RUG];
+    const inp = input({ items });
+    drawBlueprint(recordingContext().g, inp);
+    expect(sortByPiece).toHaveBeenCalledTimes(1);
+    const [solids, cam] = vi.mocked(sortByPiece).mock.calls[0] ?? [];
+    expect(solids).toEqual(buildPrisms(items).prisms);
+    expect(cam).toEqual(inp.pose.position);
   });
 
   it('draws rug faces before any other box face and the labels last', () => {

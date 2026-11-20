@@ -61,9 +61,10 @@ interface Text {
 
 interface Rect { index: number; args: unknown[]; fillStyle: unknown }
 
-/** Replays the log, tracking context state, into paints, texts and filled rects. */
+/** Replays the log, tracking context state (saved and restored as a canvas does), into paints, texts and filled rects. */
 function replay(log: readonly Rec[]): { paints: Paint[]; texts: Text[]; rects: Rect[] } {
-  const state: Record<string, unknown> = {};
+  let state: Record<string, unknown> = {};
+  const saved: Record<string, unknown>[] = [];
   let coords: [number, number][] = [];
   let closed = false;
   let depth = 0;
@@ -78,8 +79,12 @@ function replay(log: readonly Rec[]): { paints: Paint[]; texts: Text[]; rects: R
       case 'beginPath': coords = []; closed = false; break;
       case 'moveTo': case 'lineTo': coords.push([Number(r.args[0]), Number(r.args[1])]); break;
       case 'closePath': closed = true; break;
-      case 'save': depth++; break;
-      case 'restore': depth--; if (depth === 0) { translate = null; rotate = null; } break;
+      case 'save': depth++; saved.push({ ...state }); break;
+      case 'restore':
+        depth--;
+        state = saved.pop() ?? state;
+        if (depth === 0) { translate = null; rotate = null; }
+        break;
       case 'translate': translate = [Number(r.args[0]), Number(r.args[1])]; break;
       case 'rotate': rotate = Number(r.args[0]); break;
       case 'fill': case 'stroke':
@@ -252,10 +257,17 @@ describe('drawPlanPicture', () => {
     // The footprint is filled and stroked as before, at full opacity.
     expectPoints(at(paints, 1).coords, itemPane(SOFA));
     expect([at(paints, 1).op, at(paints, 1).alpha, at(paints, 2).op, at(paints, 2).alpha]).toEqual(['fill', 1, 'stroke', 1]);
-    // globalAlpha is back to 1 before anything else is painted.
+    // The part strokes sit between a save and its restore, so the opacity is back before anything else is painted.
+    const firstPart = at(strokes, 0).index;
     const lastPart = at(strokes, strokes.length - 1).index;
-    const alphaSets = log.filter((r, i) => i > lastPart && r.type === 'set' && r.name === 'globalAlpha');
-    expect(alphaSets[0]).toEqual({ type: 'set', name: 'globalAlpha', value: 1 });
+    const calls = log.map((r, i) => ({ r, i })).filter(({ r }) => r.type === 'call' && (r.name === 'save' || r.name === 'restore'));
+    const save = calls.filter(({ r, i }) => r.type === 'call' && r.name === 'save' && i < firstPart).pop();
+    const restore = calls.find(({ r, i }) => r.type === 'call' && r.name === 'restore' && i > lastPart);
+    expect(save).toBeDefined();
+    expect(restore).toBeDefined();
+    expect(calls.filter(({ i }) => i > (save?.i ?? Infinity) && i < (restore?.i ?? -1))).toEqual([]);
+    const alphaSets = log.filter((r, i) => r.type === 'set' && r.name === 'globalAlpha' && (i < (save?.i ?? 0) || i > lastPart));
+    expect(alphaSets).toEqual([]);
     expect(paints.slice(3 + parts.length).every((p) => p.alpha === 1)).toBe(true);
   });
 

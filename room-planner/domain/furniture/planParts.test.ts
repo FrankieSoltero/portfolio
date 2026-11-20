@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Item, Kind } from '../types';
 import { buildParts } from './parts';
 import { box, cylinder, type Part } from './parts/types';
-import { fillsFootprint, isRoundPiece, planParts } from './planParts';
+import { fillsFootprint, isRoundPiece, planParts, type PlanPart } from './planParts';
 import { KIND_ORDER, TYPICAL_SIZE, defaultStyle } from './recipe';
 
 // The real builders by default; single tests hand-make the parts, so that a rule (detail parts,
@@ -149,6 +149,46 @@ describe('planParts', () => {
       expect(p.rect[1]).toBeCloseTo((k + 21) / 60, 12);
       expect(p.rect[2]).toBeCloseTo((k + 20) / 60, 12);
     });
+  });
+});
+
+describe('planParts of the default pieces, pinned', () => {
+  /** The part's rect and heights, each to 4 decimal places. */
+  function expectPart(part: PlanPart | undefined, rect: readonly number[], z0: number, z1: number, round = false): void {
+    if (!part) throw new Error('missing part');
+    rect.forEach((f, i) => expect(part.rect[i], `rect[${i}]`).toBeCloseTo(f, 4));
+    expect(part.z0, 'z0').toBeCloseTo(z0, 4);
+    expect(part.z1, 'z1').toBeCloseTo(z1, 4);
+    expect(part.round).toBe(round);
+  }
+
+  it('gives the default 84 × 36 × 33 sofa 14 parts: legs, deck, seat and back cushions, arms and back frame', () => {
+    const parts = planParts(piece('sofa'));
+    expect(parts).toHaveLength(14);
+    expectPart(parts[0], [0.017143, 0.046905, 0.04, 0.109444], 0, 4.95);
+    expectPart(parts[4], [0.1, 0.9, 0.24, 1], 4.95, 11.55);
+    expectPart(parts[5], [0.1, 0.362698, 0.42, 1], 11.55, 16.5);
+    expectPart(parts[8], [0, 0.1, 0, 1], 4.95, 24.75);
+    expectPart(parts[9], [0.9, 1, 0, 1], 4.95, 24.75);
+    expectPart(parts[13], [0.1, 0.9, 0, 0.24], 4.95, 29.7);
+  });
+
+  it('gives the default 64 × 85 × 38 bed 7 parts: base, frame, mattress, duvet, pillows and headboard', () => {
+    const parts = planParts(piece('bed'));
+    expect(parts).toHaveLength(7);
+    expectPart(parts[1], [0, 1, 0.03, 1], 2.28, 11.4);
+    expectPart(parts[2], [0.015625, 0.984375, 0.041765, 0.988235], 11.4, 20.9);
+    expectPart(parts[4], [0.046875, 0.484375, 0.053529, 0.280682], 20.9, 24.7);
+    expectPart(parts[6], [0, 1, 0, 0.03], 0, 32.3);
+  });
+
+  it('gives the default 55 × 26 × 30 desk 6 parts: four round legs, a drawer box and the top', () => {
+    const parts = planParts(piece('desk'));
+    expect(parts).toHaveLength(6);
+    expectPart(parts[0], [0.022455, 0.039, 0.0475, 0.0825], 0, 28.5, true);
+    expectPart(parts[3], [0.961, 0.977545, 0.9175, 0.9525], 0, 28.5, true);
+    expectPart(parts[4], [0.661, 0.961, 0.038462, 0.961538], 22.5, 28.5);
+    expectPart(parts[5], [0, 1, 0, 1], 28.5, 30);
   });
 });
 
