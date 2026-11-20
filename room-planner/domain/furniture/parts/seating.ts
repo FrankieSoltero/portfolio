@@ -108,7 +108,11 @@ function sofaBody(size: PieceSize, spec: SofaSpec): Part[] {
   if (chaise === 'none') {
     parts.push(box('main', xLeft, xRight, yFrame, d / 2, legTop, deck));
   } else {
-    const split = chaise === 'left' ? slots[0].x1 + gap / 2 : slots[seats - 1].x0 - gap / 2;
+    // Half way across the gap after the chaise seat; with one seat the chaise is the whole seat room.
+    const split =
+      chaise === 'left'
+        ? (seats > 1 ? slots[0].x1 + gap / 2 : xRight)
+        : (seats > 1 ? slots[seats - 1].x0 - gap / 2 : xLeft);
     const [chaiseX0, chaiseX1] = chaise === 'left' ? [xLeft, split] : [split, xRight];
     parts.push(box('main', chaiseX0, chaiseX1, yFrame, d / 2, legTop, deck));
     if (seats > 1) {
@@ -140,11 +144,12 @@ function sofaBody(size: PieceSize, spec: SofaSpec): Part[] {
     parts.push(backCushion(xLeft, xRight));
   }
 
-  // Legs at the corners; beside a chaise the short side's front leg moves back under the body.
+  // Legs at the corners; beside a chaise the short side's front leg moves back under the body
+  // (with one seat the deck runs full depth across the width, so it stays at the corner).
   const legs = legsOf(size, spec.legs, legTop, clamp(0.04 * Math.min(w, d), 0.25, 2));
   const shortSide = chaise === 'left' ? 1 : -1;
   for (const leg of legs) {
-    const moveBack = chaise !== 'none' && leg.cy > 0 && Math.sign(leg.cx) === shortSide;
+    const moveBack = chaise !== 'none' && seats > 1 && leg.cy > 0 && Math.sign(leg.cx) === shortSide;
     parts.push(moveBack ? { ...leg, cy: leg.cy - (d / 2 - yShort) } : leg);
   }
   return parts;

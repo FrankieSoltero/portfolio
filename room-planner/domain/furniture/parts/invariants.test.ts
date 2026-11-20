@@ -46,6 +46,7 @@ function violations(parts: readonly Part[], size: PieceSize): string[] {
     if (p.radius !== undefined && (p.shape !== 'rounded' || p.radius > Math.min(p.sx, p.sy, p.sz) / 2 + EPS)) {
       bad.push(`#${i} radius ${p.radius}`);
     }
+    if (p.shape === 'rounded' && (p.radius === undefined || !(p.radius >= 0))) bad.push(`#${i} rounded radius ${p.radius}`);
     if (p.taper !== undefined && (p.shape !== 'cylinder' || !(p.taper > 0 && p.taper <= 1))) bad.push(`#${i} taper ${p.taper}`);
   });
   return bad;
@@ -71,6 +72,34 @@ describe('parts invariants', () => {
     forEveryCase(kind, (size, style, label) => {
       expect(buildParts(kind, size, style, 3), label).toEqual(buildParts(kind, size, style, 3));
     });
+  });
+
+  it('sofa: every seats × chaise × arms and legs × chaise pair stays inside the piece', () => {
+    const values = (key: string) => STYLE_OPTIONS.sofa.find((o) => o.key === key)?.values.map((v) => v.value) ?? [];
+    const base = defaultStyle('sofa');
+    const styles: StyleValues[] = [];
+    for (const chaise of values('chaise')) {
+      for (const seats of values('seats')) {
+        for (const arms of values('arms')) styles.push({ ...base, seats, chaise, arms });
+      }
+      for (const legs of values('legs')) styles.push({ ...base, legs, chaise });
+    }
+    expect(styles).toHaveLength(3 * (6 * 4 + 4));
+    const sizes: PieceSize[] = [
+      { w: 84, d: 36, h: 33 }, { w: 60, d: 36, h: 30 }, { w: 96, d: 62, h: 33 }, { w: 240, d: 12, h: 12 },
+    ];
+    for (const style of styles) {
+      for (const size of sizes) {
+        const label = `sofa ${JSON.stringify(style)} ${JSON.stringify(size)}`;
+        expect(violations(buildParts('sofa', size, style), size), label).toEqual([]);
+      }
+    }
+  });
+
+  it.each(['left', 'right'])('sofa: one seat, no arms and a %s chaise stays inside the piece', (chaise) => {
+    const size: PieceSize = { w: 84, d: 36, h: 33 };
+    const style = { ...defaultStyle('sofa'), seats: '1', arms: 'none', chaise };
+    expect(violations(buildParts('sofa', size, style), size)).toEqual([]);
   });
 
   it.each(KIND_ORDER)('%s: the seed changes only detail parts', (kind) => {
