@@ -152,6 +152,45 @@ describe('ItemList', () => {
     expect(rows(container)[0]).toHaveTextContent('163 × 216 × 97 cm');
   });
 
+  it('shows the item editor right after the selected row, inside the list, and marks the row expanded', async () => {
+    const { container } = render(<ItemList />);
+    expect(container.querySelector('[data-item-editor]')).toBeNull();
+    await userEvent.setup().click(row(DESK));
+    const editor = container.querySelector('[data-item-editor]');
+    expect(editor).not.toBeNull();
+    expect(row(DESK).nextElementSibling).toBe(editor);
+    expect(editor?.parentElement).toHaveClass('item-list');
+    expect(row(DESK)).toHaveAttribute('aria-pressed', 'true');
+    expect(row(DESK)).toHaveAttribute('aria-expanded', 'true');
+    expect(row(BED)).not.toHaveAttribute('aria-expanded');
+    expect(container.querySelectorAll('[data-item-editor]')).toHaveLength(1);
+  });
+
+  it('shows no item editor with nothing selected or in room mode', () => {
+    const { container } = render(<ItemList />);
+    expect(container.querySelector('[data-item-editor]')).toBeNull();
+    // A selection left over in room mode (select() itself ignores items there) shows no editor.
+    act(() => useUiStore.setState({ mode: 'room', selectedId: 'seed-desk' }));
+    expect(container.querySelector('[data-item-editor]')).toBeNull();
+    expect(row(DESK)).not.toHaveAttribute('aria-expanded');
+    act(() => useUiStore.setState({ mode: 'furnish' }));
+    expect(container.querySelector('[data-item-editor]')).not.toBeNull();
+  });
+
+  it('moves the editor to another item, with that item’s values, when it is selected', async () => {
+    const { container } = render(<ItemList />);
+    const user = userEvent.setup();
+    await user.click(row(DESK));
+    await user.click(row(BED));
+    const editor = container.querySelector<HTMLElement>('[data-item-editor]');
+    if (editor === null) throw new Error('no editor');
+    expect(row(BED).nextElementSibling).toBe(editor);
+    expect(within(editor).getByRole('textbox', { name: 'Name' })).toHaveValue(BED);
+    expect(within(editor).getByRole('combobox', { name: 'Type' })).toHaveValue('bed');
+    expect(within(editor).getByRole('spinbutton', { name: 'Width (in)' })).toHaveValue(64);
+    expect(container.querySelectorAll('[data-item-editor]')).toHaveLength(1);
+  });
+
   it('renders an item name containing markup as literal text', () => {
     act(() => {
       addNamedBox('<b>x</b>');

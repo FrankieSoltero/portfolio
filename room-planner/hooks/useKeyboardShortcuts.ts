@@ -32,6 +32,16 @@ function inFormField(target: EventTarget | null, includeRadio: boolean): boolean
   return false;
 }
 
+/**
+ * True when the event target is inside the item editor (`[data-item-editor]`) and is a form field,
+ * radios included, or, when `includeButton` is set, a button. The editor's radios and swatch
+ * buttons take keys of their own, so item shortcuts must not act on them.
+ */
+function inItemEditor(target: EventTarget | null, includeButton: boolean): boolean {
+  if (!(target instanceof Element) || target.closest('[data-item-editor]') === null) return false;
+  return inFormField(target, true) || (includeButton && target instanceof HTMLButtonElement);
+}
+
 /** The kinds of thing a key press acts on. A wall's id is its starting corner's id, so the key names the kind too. */
 type KeyedKind = 'item' | 'corner' | 'wall' | 'opening' | 'obstacle';
 
@@ -137,8 +147,9 @@ function onKeyDown(e: KeyboardEvent): void {
 
   const arrow = ARROWS[e.key];
   if (arrow) {
-    // Every input, radios included, keeps its native arrow behaviour (segmented controls).
-    if (inFormField(e.target, true)) return;
+    // Every input, radios included, keeps its native arrow behaviour (segmented controls), and so
+    // does a button in the item editor.
+    if (inFormField(e.target, true) || inItemEditor(e.target, true)) return;
     e.preventDefault();
     const step = e.shiftKey ? CONFIG.nudgeStepLarge : CONFIG.nudgeStep;
     keyed('item', selectedId, () => nudgeSelected(arrow[0] * step, arrow[1] * step));
@@ -148,16 +159,21 @@ function onKeyDown(e: KeyboardEvent): void {
   // Prototype lines 275–281: text fields swallow these keys, a focused radio does not.
   if (inFormField(e.target, false)) return;
   // Shift decides the step, not the letter's case: caps-lock R without Shift is a coarse turn.
+  // In the item editor a radio swallows R, and a radio or button swallows Delete and Backspace.
   if (e.key === 'r' || e.key === 'R') {
+    if (inItemEditor(e.target, false)) return;
     keyed('item', selectedId, () => rotateSelected(e.shiftKey ? ROTATE_STEP_FINE : ROTATE_STEP_COARSE));
-  } else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
-  else if (e.key === 'Escape') useUiStore.getState().select(null);
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (!inItemEditor(e.target, true)) removeSelected();
+  } else if (e.key === 'Escape') useUiStore.getState().select(null);
 }
 
 /**
  * Workspace shortcuts. In both modes Ctrl or Cmd+Z undoes and Ctrl or Cmd+Shift+Z or Ctrl+Y redoes,
  * except in a text field, where the browser's own text undo runs. Furnish mode acts on the selected
- * item: R turns it 90°, Shift+R 15°, Delete/Backspace remove, Escape deselect, arrows nudge. Room
+ * item: R turns it 90°, Shift+R 15°, Delete/Backspace remove, Escape deselect, arrows nudge. R,
+ * Delete, Backspace and the arrows do not act on a field or radio in the item editor, nor Delete,
+ * Backspace and the arrows on a button there. Room
  * mode acts on the selected corner, wall, door or window, or obstacle, and Escape also disarms the
  * door and window tools (see onRoomKeyDown). Key presses on one thing that come close together
  * are one undo step; Delete and Backspace are always a step of their own.

@@ -1,6 +1,7 @@
-import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SelectionBar } from '../components/SelectionBar';
+import { ItemList } from '../components/Sidebar/ItemList';
 import { CONFIG } from '../config';
 import type { Corner, Door, Item, Obstacle } from '../domain/types';
 import { clearHistory, redo, runKeyed, undo, useHistoryStore } from '../state/historyStore';
@@ -685,6 +686,95 @@ describe('useKeyboardShortcuts with focus in the selection bar Angle field', () 
     const ev = press(angleField(), key, { shiftKey: true });
     expect(bed()).toMatchObject({ x: 72, y: 42.5, angle: 0 });
     expect(ev.defaultPrevented).toBe(false);
+  });
+});
+
+describe('useKeyboardShortcuts with focus in the item editor', () => {
+  const ARROW_KEYS = ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'];
+
+  function Workspace() {
+    useKeyboardShortcuts();
+    return <ItemList />;
+  }
+
+  function editor(): HTMLElement {
+    const el = document.querySelector<HTMLElement>('[data-item-editor]');
+    if (el === null) throw new Error('no editor');
+    return el;
+  }
+
+  function headboardLow(): HTMLElement {
+    return within(screen.getByRole('radiogroup', { name: 'Headboard' })).getByRole('radio', { name: 'Low' });
+  }
+
+  /** Focuses `el` and presses each key on it, with and without Shift; the bed must stay put, unturned and in the plan. */
+  function expectNoItemShortcut(el: HTMLElement, keys: string[]): void {
+    el.focus();
+    for (const key of keys) {
+      press(el, key);
+      press(el, key, { shiftKey: true });
+    }
+    expect(bed()).toMatchObject({ x: 72, y: 42.5, angle: 0 });
+    expect(useUiStore.getState().selectedId).toBe(BED);
+  }
+
+  beforeEach(() => {
+    act(() => useUiStore.getState().select(BED));
+    render(<Workspace />);
+  });
+
+  it('Delete, Backspace, R and the arrows in the Name field do not remove, turn or move the item', () => {
+    expectNoItemShortcut(screen.getByRole('textbox', { name: 'Name' }), ['Delete', 'Backspace', 'r', 'R', ...ARROW_KEYS]);
+  });
+
+  it('Delete, Backspace, R and the arrows on the Type select do not act on the item', () => {
+    expectNoItemShortcut(screen.getByRole('combobox', { name: 'Type' }), ['Delete', 'Backspace', 'r', ...ARROW_KEYS]);
+  });
+
+  it('Delete, Backspace, R and the arrows on a custom colour input do not act on the item', () => {
+    expectNoItemShortcut(screen.getByLabelText('Custom main colour'), ['Delete', 'Backspace', 'r', ...ARROW_KEYS]);
+  });
+
+  it('Delete, Backspace and the arrows on a swatch button do not remove or move the item', () => {
+    const swatch = within(screen.getByRole('group', { name: 'Main colour' })).getByRole('button', { name: 'Navy' });
+    expectNoItemShortcut(swatch, ['Delete', 'Backspace', ...ARROW_KEYS]);
+  });
+
+  it('the arrows, R, Delete and Backspace on an option radio do not act on the item', () => {
+    expectNoItemShortcut(headboardLow(), [...ARROW_KEYS, 'r', 'Delete', 'Backspace']);
+  });
+
+  it('an arrow on an option radio keeps its native behaviour (no preventDefault)', () => {
+    const radio = headboardLow();
+    radio.focus();
+    expect(press(radio, 'ArrowRight').defaultPrevented).toBe(false);
+  });
+
+  it('Delete on the item row still removes the item', () => {
+    const row = screen.getByRole('button', { name: /^Low platform bed, queen/ });
+    row.focus();
+    act(() => {
+      press(row, 'Delete');
+    });
+    expect(bed()).toBeUndefined();
+  });
+
+  it('undo works from a swatch button and redo from an option radio', () => {
+    act(() => {
+      usePlanStore.getState().updateItem(BED, { name: 'Renamed' });
+    });
+    const swatch = within(editor()).getAllByRole('button')[0];
+    swatch.focus();
+    act(() => {
+      press(swatch, 'z', { ctrlKey: true });
+    });
+    expect(bed()?.name).toBe('Low platform bed, queen');
+    const radio = headboardLow();
+    radio.focus();
+    act(() => {
+      press(radio, 'z', { ctrlKey: true, shiftKey: true });
+    });
+    expect(bed()?.name).toBe('Renamed');
   });
 });
 
