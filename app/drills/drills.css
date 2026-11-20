@@ -284,7 +284,7 @@
 }
 
 .drills .drills-pip-empty {
-  color: var(--dim);
+  color: var(--steel);
 }
 
 /* ---- drill page ---- */
@@ -332,6 +332,7 @@
 .drills .drills-prose {
   font-size: 17px;
   line-height: 1.7;
+  overflow-wrap: break-word;
 }
 
 .drills .drills-prose > :first-child {
