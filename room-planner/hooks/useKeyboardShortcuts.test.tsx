@@ -801,6 +801,32 @@ describe('useKeyboardShortcuts with focus in the item editor', () => {
     expect(bed()?.name).toBe('Renamed');
   });
 
+  it.each([
+    ['an option radio', headboardLow],
+    ['a swatch button', () => within(screen.getByRole('group', { name: 'Main colour' })).getByRole('button', { name: 'Navy' })],
+  ])('Escape on %s deselects and moves focus to the item row', (_name, target) => {
+    const el = target();
+    el.focus();
+    act(() => {
+      press(el, 'Escape');
+    });
+    expect(useUiStore.getState().selectedId).toBeNull();
+    expect(document.querySelector('[data-item-editor]')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Low platform bed, queen/ }));
+  });
+
+  it('Escape outside the editor deselects and leaves focus where it was', () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    appended.push(outside);
+    outside.focus();
+    act(() => {
+      press(outside, 'Escape');
+    });
+    expect(useUiStore.getState().selectedId).toBeNull();
+    expect(document.activeElement).toBe(outside);
+  });
+
   it('Ctrl+Z in the Name field is left to the browser', () => {
     act(() => {
       usePlanStore.getState().updateItem(BED, { name: 'Renamed' });

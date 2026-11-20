@@ -167,7 +167,13 @@ function onKeyDown(e: KeyboardEvent): void {
     keyed('item', selectedId, () => rotateSelected(e.shiftKey ? ROTATE_STEP_FINE : ROTATE_STEP_COARSE));
   } else if (e.key === 'Delete' || e.key === 'Backspace') {
     if (!inItemEditor(e.target, true)) removeSelected();
-  } else if (e.key === 'Escape') useUiStore.getState().select(null);
+  } else if (e.key === 'Escape') {
+    // Deselecting closes the editor; focus inside it would fall to the page, so it moves to the row.
+    if (e.target instanceof Element && e.target.closest('[data-item-editor]') !== null) {
+      document.querySelector<HTMLElement>('.item-row-selected')?.focus();
+    }
+    useUiStore.getState().select(null);
+  }
 }
 
 /**
@@ -175,7 +181,8 @@ function onKeyDown(e: KeyboardEvent): void {
  * except in a text field (see isTextField), where the browser's own text undo runs. Furnish mode acts on the selected
  * item: R turns it 90°, Shift+R 15°, Delete/Backspace remove, Escape deselect, arrows nudge. R,
  * Delete, Backspace and the arrows do not act on a field or radio in the item editor, nor Delete,
- * Backspace and the arrows on a button there. Room
+ * Backspace and the arrows on a button there. Escape in the item editor moves focus to the item's
+ * row before it deselects, since the editor closes. Room
  * mode acts on the selected corner, wall, door or window, or obstacle, and Escape also disarms the
  * door and window tools (see onRoomKeyDown). Key presses on one thing that come close together
  * are one undo step; Delete and Backspace are always a step of their own.
