@@ -4,7 +4,7 @@ import { CONFIG } from '../config';
 import { boundsOf } from '../domain/polygon';
 import { itemFootprint, roomBounds, roomHeight } from '../domain/shape';
 import type { Conflicts, Corner, Door, Item, Obstacle, Opening, WindowOpening } from '../domain/types';
-import { furnishedDocument, rectRoom } from '../test/fixtures';
+import { furnishedDocument, placedItem, rectRoom } from '../test/fixtures';
 import type { Tokens } from '../styles/tokens';
 import { computeCameraPose } from '../view/camera';
 import type { PaneRect } from '../view/panes';
@@ -235,6 +235,24 @@ describe('SceneRenderer', () => {
     const resized = items.map((i) => (i.id === 'seed-desk' ? { ...i, w: 60 } : i));
     sr.update(input({ items: resized }));
     const after = groupOf('seed-desk');
+    expect(after).toBeDefined();
+    expect(after).not.toBe(before);
+    expect(lastScene().children).not.toContain(before);
+    expect(watch.disposed()).toBe(watch.total);
+  });
+
+  it('reuses a sofa group when it only moves, and rebuilds it when its style changes, disposing every resource once', () => {
+    const sofa = placedItem({ id: 'sofa', kind: 'sofa', w: 84, d: 36, h: 33, cx: 72, cy: 40 });
+    const tapered = { ...sofa, style: { ...sofa.style, legs: 'tapered' } };
+    sr.update(input({ items: [tapered] }));
+    const before = groupOf('sofa');
+    if (!before) throw new Error('no sofa group');
+    const watch = watchDisposal(before);
+    sr.update(input({ items: [{ ...tapered, x: 60, y: 50 }] }));
+    expect(groupOf('sofa')).toBe(before);
+    expect(watch.disposed()).toBe(0);
+    sr.update(input({ items: [{ ...tapered, x: 60, y: 50, style: { ...tapered.style, arms: 'rounded' } }] }));
+    const after = groupOf('sofa');
     expect(after).toBeDefined();
     expect(after).not.toBe(before);
     expect(lastScene().children).not.toContain(before);
