@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.drills.json",
     "lint": "eslint --no-error-on-unmatched-pattern room-planner app/room-planner drills app/drills lib/drills.ts scripts content/drills/*/solution",
     "test": "vitest run --passWithNoTests",
-    "test:drills": "node scripts/drills-fairness.mts",
-    "test:drills-pages": "node scripts/drills-pages-check.mts",
+    "test:drills": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/drills-fairness.mts",
+    "test:drills-pages": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/drills-pages-check.mts",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:drills && npm run build && npm run test:drills-pages"
   },
   "dependencies": {

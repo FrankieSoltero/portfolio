@@ -179,11 +179,15 @@ function parseDrill(dir: string, slug: string): Drill {
   };
 }
 
-/** Files under `dir` as sorted forward-slash relative paths; [] if `dir` is missing. */
+/**
+ * Files under `dir` as sorted forward-slash relative paths; [] if `dir` is missing.
+ * Entries whose name starts with "." (.DS_Store and the like) are skipped.
+ */
 function listFiles(dir: string, prefix = ""): string[] {
   if (!fs.existsSync(dir)) return [];
   const out: string[] = [];
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name.startsWith(".")) continue;
     const rel = prefix ? `${prefix}/${e.name}` : e.name;
     if (e.isDirectory()) out.push(...listFiles(path.join(dir, e.name), rel));
     else if (e.isFile()) out.push(rel);

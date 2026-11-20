@@ -58,6 +58,20 @@ describe("getAllDrills", () => {
     expect(drill.checks).toEqual({ "App.test.tsx": "// check source\n" });
   });
 
+  it("skips dotfiles in starter, solution and checks", () => {
+    writeDrill(root, "dotfiles", {
+      files: {
+        "starter/.DS_Store": "junk",
+        "solution/.DS_Store": "junk",
+        "checks/.hidden.test.tsx": "// hidden\n",
+      },
+    });
+    const [drill] = getAllDrills(root);
+    expect(drill.files.map((f) => f.path)).toEqual(["App.tsx", "api.ts"]);
+    expect(drill.solutionFiles.map((f) => f.path)).toEqual(["App.tsx"]);
+    expect(Object.keys(drill.checks)).toEqual(["App.test.tsx"]);
+  });
+
   it("marks api.ts read-only and App.tsx editable", () => {
     writeDrill(root, "ro");
     const [drill] = getAllDrills(root);
