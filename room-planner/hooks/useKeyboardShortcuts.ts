@@ -13,6 +13,7 @@ import {
 } from '../state/actions';
 import { redo, runKeyed, undo } from '../state/historyStore';
 import { useUiStore } from '../state/uiStore';
+import { isTextField } from './textField';
 
 /** R turns the selected item by the coarse step; Shift+R by the fine step (degrees clockwise). */
 export const ROTATE_STEP_COARSE = 90;
@@ -130,8 +131,9 @@ function onRoomKeyDown(e: KeyboardEvent): void {
 function onKeyDown(e: KeyboardEvent): void {
   const history = historyKey(e);
   if (history !== null) {
-    // In a text field the browser's own text undo runs instead.
-    if (inFormField(e.target, false)) return;
+    // In a text field the browser's own text undo runs instead. A select, a colour input and the
+    // like have none, so there the plan's undo runs.
+    if (isTextField(e.target)) return;
     e.preventDefault();
     if (history === 'undo') undo();
     else redo();
@@ -170,7 +172,7 @@ function onKeyDown(e: KeyboardEvent): void {
 
 /**
  * Workspace shortcuts. In both modes Ctrl or Cmd+Z undoes and Ctrl or Cmd+Shift+Z or Ctrl+Y redoes,
- * except in a text field, where the browser's own text undo runs. Furnish mode acts on the selected
+ * except in a text field (see isTextField), where the browser's own text undo runs. Furnish mode acts on the selected
  * item: R turns it 90°, Shift+R 15°, Delete/Backspace remove, Escape deselect, arrows nudge. R,
  * Delete, Backspace and the arrows do not act on a field or radio in the item editor, nor Delete,
  * Backspace and the arrows on a button there. Room

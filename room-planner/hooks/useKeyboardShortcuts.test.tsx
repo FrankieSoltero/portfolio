@@ -776,6 +776,41 @@ describe('useKeyboardShortcuts with focus in the item editor', () => {
     });
     expect(bed()?.name).toBe('Renamed');
   });
+
+  // Neither has a text undo of its own, so leaving the key to the browser would swallow it.
+  it.each([
+    ['the Type select', () => screen.getByRole('combobox', { name: 'Type' })],
+    ['a custom colour input', () => screen.getByLabelText('Custom main colour')],
+  ])('Ctrl+Z on %s undoes and Ctrl+Shift+Z redoes', (_name, field) => {
+    act(() => {
+      usePlanStore.getState().updateItem(BED, { name: 'Renamed' });
+    });
+    const el = field();
+    el.focus();
+    let undoEv: KeyboardEvent | undefined;
+    act(() => {
+      undoEv = press(el, 'z', { ctrlKey: true });
+    });
+    expect(undoEv?.defaultPrevented).toBe(true);
+    expect(bed()?.name).toBe('Low platform bed, queen');
+    let redoEv: KeyboardEvent | undefined;
+    act(() => {
+      redoEv = press(el, 'z', { ctrlKey: true, shiftKey: true });
+    });
+    expect(redoEv?.defaultPrevented).toBe(true);
+    expect(bed()?.name).toBe('Renamed');
+  });
+
+  it('Ctrl+Z in the Name field is left to the browser', () => {
+    act(() => {
+      usePlanStore.getState().updateItem(BED, { name: 'Renamed' });
+    });
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    name.focus();
+    const ev = press(name, 'z', { ctrlKey: true });
+    expect(ev.defaultPrevented).toBe(false);
+    expect(bed()?.name).toBe('Renamed');
+  });
 });
 
 describe('useKeyboardShortcuts lifecycle', () => {
@@ -888,6 +923,7 @@ describe('useKeyboardShortcuts undo and redo keys', () => {
   it.each([
     ['input', 'text', { ctrlKey: true }],
     ['input', 'text', { metaKey: true, shiftKey: true }],
+    ['input', 'number', { ctrlKey: true }],
     ['textarea', undefined, { metaKey: true }],
     ['textarea', undefined, { ctrlKey: true, shiftKey: true }],
   ] as const)('In a text field: z with focus in %s %s and %o does nothing and is not prevented', (tag, type, init) => {
@@ -903,7 +939,10 @@ describe('useKeyboardShortcuts undo and redo keys', () => {
   it.each([
     ['a radio', () => focused('input', 'radio')],
     ['a button', focusedButton],
-  ] as const)('On a radio or button: Ctrl+Z with focus on %s calls undo', (_name, target) => {
+    ['a select', () => focused('select')],
+    ['a colour input', () => focused('input', 'color')],
+    ['a checkbox', () => focused('input', 'checkbox')],
+  ] as const)('On a field with no text undo: Ctrl+Z with focus on %s calls undo', (_name, target) => {
     const ev = press(target(), 'z', { ctrlKey: true });
     expect(undo).toHaveBeenCalledTimes(1);
     expect(ev.defaultPrevented).toBe(true);
