@@ -131,7 +131,7 @@ export const COLOUR_PATTERN = /^#[0-9a-f]{6}$/;
 /** Either case, for reading a colour before it is lower-cased. */
 const ANY_CASE_COLOUR = /^#[0-9a-fA-F]{6}$/;
 
-/** Each kind's former fixed colours (from catalog LOOKS), so an upgraded plan keeps its look. */
+/** Each kind's former fixed colours (from the old catalogue colour table), so an upgraded plan keeps its look. */
 const DEFAULT_COLOURS: Readonly<Record<Kind, ItemColours>> = {
   sofa: { main: '#6f7f8c', accent: '#3b2f27' },
   chair: { main: '#b5673f', accent: '#2e2a27' },

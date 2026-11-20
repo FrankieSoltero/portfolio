@@ -1,8 +1,8 @@
 import type React from 'react';
 import { useState, type JSX } from 'react';
 import { CONFIG } from '../../config';
-import { PARTS } from '../../domain/catalog';
 import { OUTSIDE_THE_ROOM } from '../../domain/conflicts';
+import { fillsFootprint, planParts } from '../../domain/furniture/planParts';
 import { rectangleSize } from '../../domain/outline';
 import { itemFootprint, roomBounds, roomOutline } from '../../domain/shape';
 import type { Item } from '../../domain/types';
@@ -135,10 +135,13 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
         const label = labelBox(fp, layout);
         const isSelected = item.id === selectedId;
         const isConflict = conflicts[item.id] !== undefined;
-        const parts = PARTS[item.kind];
+        const parts = planParts(item);
+        // A piece whose one part fills its footprint is drawn by its own box, round if the part is.
+        const whole = parts.length === 1 && parts[0] !== undefined && fillsFootprint(parts[0]) ? parts[0] : null;
         const className = [
           'plan-item',
           item.kind === 'rug' && 'is-rug',
+          whole?.round && 'is-round',
           isConflict && 'is-conflict',
           !isConflict && warnings[item.id] !== undefined && 'is-warning',
           isSelected && 'is-selected',
@@ -172,11 +175,11 @@ export function PlanView({ pane }: { pane: PaneRect }): JSX.Element {
             }}
             onKeyDown={(e) => onItemKey(item, e)}
           >
-            {parts.length > 1 &&
-              parts.map(([u0, u1, v0, v1], i) => (
+            {whole === null &&
+              parts.map(({ rect: [u0, u1, v0, v1], round }, i) => (
                 <i
                   key={i}
-                  className="plan-part"
+                  className={round ? 'plan-part is-round' : 'plan-part'}
                   style={{
                     left: `${u0 * 100}%`,
                     top: `${v0 * 100}%`,

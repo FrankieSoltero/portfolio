@@ -1,11 +1,15 @@
+import type { PlanPart } from './furniture/planParts';
 import { boundsOf } from './polygon';
-import type { Bounds, Item, PartRect, Point, Room } from './types';
+import type { Bounds, Item, Point, Room } from './types';
 
 /**
  * Shape accessors the views read from: the room's outline and height, and each item's
  * footprint as a centre, unrotated size and angle. Views read the stored room and items only
  * through these. Angles are degrees, clockwise as seen on the plan (x right, y down).
  */
+
+/** Points on the outline of a round plan part. */
+const ROUND_PART_POINTS = 16;
 
 /** An item's footprint: centre (cx, cy), unrotated width w and depth d, and angle in degrees. */
 export interface Footprint { cx: number; cy: number; w: number; d: number; angle: number }
@@ -52,10 +56,22 @@ export function footprintCorners(fp: Footprint): [Point, Point, Point, Point] {
   return rectCorners(fp, 0, 1, 0, 1);
 }
 
-/** A part's corners from its [u0,u1,v0,v1] fractions of the unrotated footprint, turned with it. */
-export function partCorners(fp: Footprint, part: PartRect): [Point, Point, Point, Point] {
-  const [u0, u1, v0, v1] = part;
-  return rectCorners(fp, u0, u1, v0, v1);
+/**
+ * Corners of a plan part on the plan, turned with the footprint: 4 for a rectangle, 16 for a round part (an ellipse inscribed in its rectangle).
+ * A rectangle runs back-left, back-right, front-right, front-left; an ellipse starts at its right end
+ * (local +x) and runs the same way round, so both have positive signed area.
+ */
+export function planPartOutline(fp: Footprint, part: PlanPart): Point[] {
+  const [u0, u1, v0, v1] = part.rect;
+  if (!part.round) return rectCorners(fp, u0, u1, v0, v1);
+  const cx = ((u0 + u1) / 2 - 0.5) * fp.w;
+  const cy = ((v0 + v1) / 2 - 0.5) * fp.d;
+  const rx = ((u1 - u0) / 2) * fp.w;
+  const ry = ((v1 - v0) / 2) * fp.d;
+  return Array.from({ length: ROUND_PART_POINTS }, (_, i) => {
+    const t = (2 * Math.PI * i) / ROUND_PART_POINTS;
+    return toPlan(fp, cx + rx * Math.cos(t), cy + ry * Math.sin(t));
+  });
 }
 
 /** The angle in degrees wrapped into [0, 360). */

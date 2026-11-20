@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { placedItem } from '../test/fixtures';
-import { BOOK_COLOURS, LINEN, LOOKS, PARTS, createInitialDocument } from './catalog';
-import type { Door, Kind, Obstacle, WindowOpening } from './types';
-
-const KINDS: Kind[] = ['sofa', 'chair', 'bed', 'desk', 'table', 'shelf', 'dresser', 'nightstand', 'tvstand', 'rug', 'box'];
+import { BOOK_COLOURS, LINEN, createInitialDocument } from './catalog';
+import type { Door, Obstacle, WindowOpening } from './types';
 
 describe('createInitialDocument', () => {
   it('returns the starting plan: the room with no furniture', () => {
@@ -38,35 +36,7 @@ describe('createInitialDocument', () => {
   });
 });
 
-describe('catalogue tables', () => {
-  it('has parts and looks for every kind', () => {
-    for (const k of KINDS) {
-      expect(PARTS[k].length).toBeGreaterThanOrEqual(1);
-      expect(LOOKS[k]).toBeDefined();
-    }
-  });
-
-  it('draws the dresser, nightstand and TV stand like the box until the parts kit replaces both tables', () => {
-    for (const k of ['dresser', 'nightstand', 'tvstand'] as const) {
-      expect(PARTS[k]).toEqual(PARTS.box);
-      expect(LOOKS[k]).toEqual(LOOKS.box);
-    }
-  });
-
-  it('has valid part fractions', () => {
-    for (const k of KINDS) {
-      for (const [u0, u1, v0, v1, z0, z1] of PARTS[k]) {
-        for (const n of [u0, u1, v0, v1, z0, z1]) {
-          expect(n).toBeGreaterThanOrEqual(0);
-          expect(n).toBeLessThanOrEqual(1);
-        }
-        expect(u0).toBeLessThan(u1);
-        expect(v0).toBeLessThan(v1);
-        expect(z0).toBeLessThan(z1);
-      }
-    }
-  });
-
+describe('catalogue colours', () => {
   it('exports the linen and book colours', () => {
     expect(LINEN).toBe('#f3f1ec');
     expect(BOOK_COLOURS).toEqual(['#7c8a96', '#b9a48a', '#5f6b5c', '#a2584a', '#d8d2c4']);

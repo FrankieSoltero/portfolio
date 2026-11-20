@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { PARTS } from './catalog';
+import type { PlanPart } from './furniture/planParts';
 import { signedArea } from './polygon';
 import {
   footprintCorners,
   itemFootprint,
   normaliseAngle,
-  partCorners,
+  planPartOutline,
   roomBounds,
   roomHeight,
   roomOutline,
@@ -81,10 +81,16 @@ describe('footprintCorners', () => {
   });
 });
 
-describe('partCorners', () => {
-  it('places the first sofa part of a 60×40 item at each quarter turn', () => {
+/** A rectangular plan part over the fractions [u0, u1] × [v0, v1]. */
+function rectPart(u0: number, u1: number, v0: number, v1: number, round = false): PlanPart {
+  return { rect: [u0, u1, v0, v1], round, z0: 0, z1: 1 };
+}
+
+describe('planPartOutline', () => {
+  it('places a rectangle part of a 60×40 item as partCorners did, at each quarter turn', () => {
     // Fixed values the Task 2 comparison with the quarter-turn part mapping produced, for the
-    // 60×40 item whose axis-aligned footprint's top-left was (30, 50).
+    // 60×40 item whose axis-aligned footprint's top-left was (30, 50), and the former first sofa
+    // part [.08, .92, .28, 1].
     const cases: [number, number, number, [number, number][]][] = [
       [0, 60, 70, [[34.8, 61.2], [85.2, 61.2], [85.2, 90], [34.8, 90]]],
       [90, 50, 80, [[58.8, 54.8], [58.8, 105.2], [30, 105.2], [30, 54.8]]],
@@ -92,7 +98,7 @@ describe('partCorners', () => {
       [270, 50, 80, [[41.2, 105.2], [41.2, 54.8], [70, 54.8], [70, 105.2]]],
     ];
     for (const [angle, x, y, expected] of cases) {
-      expectPoints(partCorners(itemFootprint({ x, y, w: 60, d: 40, angle }), PARTS.sofa[0]), expected);
+      expectPoints(planPartOutline(itemFootprint({ x, y, w: 60, d: 40, angle }), rectPart(0.08, 0.92, 0.28, 1)), expected);
     }
   });
 
@@ -100,14 +106,36 @@ describe('partCorners', () => {
     // The 20×20 part [0, 0.5, 0, 0.5] of a 40×40 item centred at the origin, turned 45°.
     const r = 10 * Math.SQRT2;
     expectPoints(
-      partCorners(itemFootprint({ x: 0, y: 0, w: 40, d: 40, angle: 45 }), [0, 0.5, 0, 0.5, 0, 1]),
+      planPartOutline(itemFootprint({ x: 0, y: 0, w: 40, d: 40, angle: 45 }), rectPart(0, 0.5, 0, 0.5)),
       [[0, -2 * r], [r, -r], [0, 0], [-r, -r]],
     );
   });
 
-  it('lists the part corners back-left, back-right, front-right, front-left', () => {
+  it('lists a rectangle part\'s corners back-left, back-right, front-right, front-left', () => {
     const fp: Footprint = { cx: 72, cy: 42.5, w: 64, d: 85, angle: 0 };
-    expectPoints(partCorners(fp, [0, 0.5, 0, 0.2, 0, 1]), [[40, 0], [72, 0], [72, 17], [40, 17]]);
+    expectPoints(planPartOutline(fp, rectPart(0, 0.5, 0, 0.2)), [[40, 0], [72, 0], [72, 17], [40, 17]]);
+  });
+
+  it('outlines a round part as 16 points on the ellipse inscribed in its rectangle, turned with the footprint', () => {
+    const fp: Footprint = { cx: 30, cy: -12, w: 50, d: 30, angle: 30 };
+    const part = rectPart(0.2, 0.6, 0.1, 0.5, true);
+    const pts = planPartOutline(fp, part);
+    expect(pts).toHaveLength(16);
+    // Local centre and radii of the ellipse: x in [-15, 5], y in [-12, 0].
+    const [lcx, lcy, rx, ry] = [-5, -6, 10, 6];
+    const rad = (30 * Math.PI) / 180;
+    for (const p of pts) {
+      // Back into the footprint's own frame, then onto the unit circle.
+      const dx = p.x - fp.cx;
+      const dy = p.y - fp.cy;
+      const lx = dx * Math.cos(rad) + dy * Math.sin(rad);
+      const ly = -dx * Math.sin(rad) + dy * Math.cos(rad);
+      expect(Math.abs(((lx - lcx) / rx) ** 2 + ((ly - lcy) / ry) ** 2 - 1)).toBeLessThan(1e-6);
+    }
+    // The first point is at the ellipse's right end, turned 30° clockwise about the centre.
+    const first = { x: fp.cx + 5 * Math.cos(rad) + 6 * Math.sin(rad), y: fp.cy + 5 * Math.sin(rad) - 6 * Math.cos(rad) };
+    expectPoints(pts.slice(0, 1), [[first.x, first.y]]);
+    expect(signedArea(pts)).toBeGreaterThan(0);
   });
 });
 

@@ -3,9 +3,10 @@
  * draws only through the context it is given and touches no globals except Path2D, which turns a
  * door's SVG arc into a canvas path. Nothing is selected in the picture.
  */
+import { fillsFootprint, planParts } from '../domain/furniture/planParts';
 import { obstacleFootprint, obstaclePolygon } from '../domain/obstacles';
 import { boundsOf, pointInPolygon } from '../domain/polygon';
-import { footprintCorners, itemFootprint, type Footprint } from '../domain/shape';
+import { footprintCorners, itemFootprint, planPartOutline, type Footprint } from '../domain/shape';
 import type { Conflicts, Corner, Item, Obstacle, Opening, Point, Units } from '../domain/types';
 import { fmtLen } from '../domain/units';
 import { doorDrawing, windowDrawing } from './planFeatures';
@@ -42,6 +43,8 @@ const GAP_WIDTH = 10;
 const WINDOW_WIDTH = 4;
 const LEAF_WIDTH = 3;
 const ARC_WIDTH = 2;
+/** Opacity of the part lines drawn inside each piece of furniture. */
+const PART_ALPHA = 0.4;
 
 const NAME_FONT = '500 26px Barlow, sans-serif';
 const LENGTH_FONT = '600 28px Barlow, sans-serif';
@@ -89,6 +92,27 @@ function shape(g: CanvasRenderingContext2D, pts: readonly Point[], layout: PlanL
   g.strokeStyle = conflict ? CONFLICT_INK : SHAPE_STROKE;
   g.lineWidth = SHAPE_WIDTH;
   g.stroke();
+}
+
+/**
+ * Draws a piece of furniture from above: its footprint filled and stroked (as its ellipse when its
+ * only part is round and fills the footprint), then each plan part's outline stroked in the same
+ * colour at PART_ALPHA opacity, which is set back to 1 afterwards.
+ */
+function furniture(g: CanvasRenderingContext2D, item: Item, layout: PlanLayout, conflict: boolean): void {
+  const fp = itemFootprint(item);
+  const parts = planParts(item);
+  const only = parts.length === 1 ? parts[0] : undefined;
+  const roundWhole = only !== undefined && only.round && fillsFootprint(only);
+  shape(g, roundWhole ? planPartOutline(fp, only) : footprintCorners(fp), layout, FURNITURE_FILL, conflict);
+  g.globalAlpha = PART_ALPHA;
+  for (const part of parts) {
+    trace(g, planPartOutline(fp, part), layout);
+    g.strokeStyle = conflict ? CONFLICT_INK : SHAPE_STROKE;
+    g.lineWidth = SHAPE_WIDTH;
+    g.stroke();
+  }
+  g.globalAlpha = 1;
 }
 
 /** Strokes the straight line p–q, already in pane pixels. */
@@ -175,10 +199,8 @@ export function drawPlanPicture(g: CanvasRenderingContext2D, input: PlanPictureI
   g.fillStyle = FLOOR;
   g.fill();
 
-  const furniture = [...items.filter((i) => i.kind === 'rug'), ...items.filter((i) => i.kind !== 'rug')];
-  for (const item of furniture) {
-    shape(g, footprintCorners(itemFootprint(item)), layout, FURNITURE_FILL, conflicting(item.id));
-  }
+  const rugsFirst = [...items.filter((i) => i.kind === 'rug'), ...items.filter((i) => i.kind !== 'rug')];
+  for (const item of rugsFirst) furniture(g, item, layout, conflicting(item.id));
   for (const o of obstacles) shape(g, obstaclePolygon(o), layout, OBSTACLE_FILL, conflicting(o.id));
 
   trace(g, outline, layout);

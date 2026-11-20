@@ -1,36 +1,38 @@
 /**
  * Blueprint (2D canvas) scene maths: furniture part and obstacle prisms, painter's-order
  * sorting and the perspective projector. Pure, in plan space (x right, y down, z up).
- * Geometry comes only from the shape accessors (`itemFootprint`, `partCorners`, `obstaclePolygon`).
+ * Geometry comes only from the shape accessors (`itemFootprint`, `planPartOutline`, `obstaclePolygon`)
+ * and each item's plan parts (`planParts`).
  * Ported from prototype lines 463–470 (`front`), 586–599 (projection) and 621–641 (boxes, ordering).
  */
 import { CONFIG } from '../config';
-import { PARTS } from '../domain/catalog';
+import { planParts } from '../domain/furniture/planParts';
 import { obstaclePolygon } from '../domain/obstacles';
-import { itemFootprint, partCorners } from '../domain/shape';
+import { itemFootprint, planPartOutline } from '../domain/shape';
 import type { Item, Kind, Obstacle, Point } from '../domain/types';
 import type { CameraPose, Vec3 } from './camera';
 
 /**
  * One part of an item, or one fixed obstacle, as an upright prism: a convex plan polygon of
  * 3 or more points with positive signed area, extruded from z0 to z1. A furniture part has four
- * corners (back-left, back-right, front-right, front-left); an obstacle is flagged `obstacle`.
+ * corners (back-left, back-right, front-right, front-left), or 16 points when it is round; an
+ * obstacle is flagged `obstacle`.
  */
 export interface Prism { pts: readonly Point[]; z0: number; z1: number; itemId: string; kind: Kind; obstacle?: true }
 
 /** Smallest camera-space depth the projector divides by, so points behind the camera stay finite. */
 const MIN_DEPTH = 1;
 
-/** Splits every item into part prisms; rug parts go to `rugs`, everything else to `prisms`. */
+/** Splits every item into one prism per plan part; rug parts go to `rugs`, everything else to `prisms`. */
 export function buildPrisms(items: readonly Item[]): { prisms: Prism[]; rugs: Prism[] } {
   const prisms: Prism[] = [];
   const rugs: Prism[] = [];
   for (const it of items) {
     const fp = itemFootprint(it);
-    for (const part of PARTS[it.kind]) {
+    for (const part of planParts(it)) {
       const p: Prism = {
-        pts: partCorners(fp, part),
-        z0: part[4] * it.h, z1: part[5] * it.h,
+        pts: planPartOutline(fp, part),
+        z0: part.z0, z1: part.z1,
         itemId: it.id, kind: it.kind,
       };
       (it.kind === 'rug' ? rugs : prisms).push(p);

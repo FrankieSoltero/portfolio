@@ -207,6 +207,12 @@
   border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
   pointer-events: none;
 }
+/* A round part (a round table top, a pedestal), or a piece that is one round part (a round rug),
+   is the ellipse inscribed in its box. */
+.plan-part.is-round,
+.plan-item.is-round {
+  border-radius: 50%;
+}
 /* The label's box as the footprint appears on screen, centred on the item; its size and the
    rotation that keeps the text upright are inline. */
 .plan-outline-label {

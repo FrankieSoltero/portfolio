@@ -1,16 +1,30 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
-import { PARTS } from '../domain/catalog';
+import { buildParts } from '../domain/furniture/parts';
+import { cylinder } from '../domain/furniture/parts/types';
+import { planParts } from '../domain/furniture/planParts';
+import { KIND_ORDER, defaultStyle } from '../domain/furniture/recipe';
 import { boundsOf } from '../domain/polygon';
-import { footprintCorners, itemFootprint, partCorners, roomBounds, roomHeight } from '../domain/shape';
+import { footprintCorners, itemFootprint, planPartOutline, roomBounds, roomHeight } from '../domain/shape';
 import { obstaclePolygon } from '../domain/obstacles';
-import type { Item, Kind, Obstacle, Point } from '../domain/types';
+import type { Item, Obstacle, Point } from '../domain/types';
 import { furnishedDocument, placedItem, rectRoom } from '../test/fixtures';
 import { computeCameraPose } from './camera';
 import type { Vec3 } from './camera';
 import { buildPrisms, frontOf, makeProjector, obstaclePrisms, sortPrisms } from './blueprintScene';
 import type { Prism } from './blueprintScene';
 import type { PaneRect } from './panes';
+
+// The real part builders by default; the round rug test hands its rug the one round part the rug
+// builder gives a round rug, so that it does not depend on that builder's other geometry.
+vi.mock('../domain/furniture/parts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../domain/furniture/parts')>();
+  return { ...actual, buildParts: vi.fn(actual.buildParts) };
+});
+
+afterEach(() => {
+  vi.mocked(buildParts).mockReset();
+});
 
 function seed(id: string): Item {
   const found = furnishedDocument().items.find(i => i.id === id);
@@ -36,7 +50,6 @@ function prismFrom(id: string, pts: readonly Point[], z0 = 0, z1 = 10): Prism {
   return { pts, z0, z1, itemId: id, kind: 'box' };
 }
 
-const KINDS = Object.keys(PARTS) as Kind[];
 /** Quarter turns; turn n is an angle of n × 90 degrees. */
 const ROTS = [0, 1, 2, 3] as const;
 type QuarterTurn = (typeof ROTS)[number];
@@ -44,86 +57,23 @@ type QuarterTurn = (typeof ROTS)[number];
 const CENTRE_OF_BOX_AT_20_35: Record<QuarterTurn, { cx: number; cy: number }> = {
   0: { cx: 45, cy: 50 }, 1: { cx: 35, cy: 60 }, 2: { cx: 45, cy: 50 }, 3: { cx: 35, cy: 60 },
 };
-/**
- * Plan rectangles [minX, maxX, minY, maxY] of each part of that box, per kind and quarter turn, as
- * the slice A quarter-turn part mapping placed them (values copied from that passing comparison).
- */
-const ONE_BOX: readonly (readonly (readonly [number, number, number, number])[])[] = [
-  [[20, 70, 35, 65]],
-  [[20, 50, 35, 85]],
-  [[20, 70, 35, 65]],
-  [[20, 50, 35, 85]],
-];
-const QUARTER_TURN_PART_BOXES: Record<Kind, readonly (readonly (readonly [number, number, number, number])[])[]> = {
-  sofa: [
-    [[24, 66, 43.4, 65], [20, 70, 35, 43.4], [20, 24, 43.4, 65], [66, 70, 43.4, 65]],
-    [[20, 41.6, 39, 81], [41.6, 50, 35, 85], [20, 41.6, 35, 39], [20, 41.6, 81, 85]],
-    [[24, 66, 35, 56.6], [20, 70, 56.6, 65], [66, 70, 35, 56.6], [20, 24, 35, 56.6]],
-    [[28.4, 50, 39, 81], [20, 28.4, 35, 85], [28.4, 50, 81, 85], [28.4, 50, 35, 39]],
-  ],
-  chair: [
-    [[26, 64, 42.5, 65], [20, 70, 35, 42.5], [20, 26, 42.5, 65], [64, 70, 42.5, 65]],
-    [[20, 42.5, 41, 79], [42.5, 50, 35, 85], [20, 42.5, 35, 41], [20, 42.5, 79, 85]],
-    [[26, 64, 35, 57.5], [20, 70, 57.5, 65], [64, 70, 35, 57.5], [20, 26, 35, 57.5]],
-    [[27.5, 50, 41, 79], [20, 27.5, 35, 85], [27.5, 50, 79, 85], [27.5, 50, 35, 41]],
-  ],
-  bed: [
-    [[20, 70, 36.2, 65], [20, 70, 35, 36.2], [24, 43, 37.4, 42.8], [47, 66, 37.4, 42.8]],
-    [[20, 48.8, 35, 85], [48.8, 50, 35, 85], [42.2, 47.6, 39, 58], [42.2, 47.6, 62, 81]],
-    [[20, 70, 35, 63.8], [20, 70, 63.8, 65], [47, 66, 57.2, 62.6], [24, 43, 57.2, 62.6]],
-    [[21.2, 50, 35, 85], [20, 21.2, 35, 85], [22.4, 27.8, 62, 81], [22.4, 27.8, 39, 58]],
-  ],
-  desk: [
-    [[20, 70, 35, 65], [21, 23, 36.8, 63.2], [67, 69, 36.8, 63.2]],
-    [[20, 50, 35, 85], [21.8, 48.2, 36, 38], [21.8, 48.2, 82, 84]],
-    [[20, 70, 35, 65], [67, 69, 36.8, 63.2], [21, 23, 36.8, 63.2]],
-    [[20, 50, 35, 85], [21.8, 48.2, 82, 84], [21.8, 48.2, 36, 38]],
-  ],
-  table: [
-    [[20, 70, 35, 65], [23, 26, 38, 62], [64, 67, 38, 62]],
-    [[20, 50, 35, 85], [23, 47, 38, 41], [23, 47, 79, 82]],
-    [[20, 70, 35, 65], [64, 67, 38, 62], [23, 26, 38, 62]],
-    [[20, 50, 35, 85], [23, 47, 79, 82], [23, 47, 38, 41]],
-  ],
-  shelf: [
-    [[20, 70, 35, 65]],
-    [[20, 50, 35, 85]],
-    [[20, 70, 35, 65]],
-    [[20, 50, 35, 85]],
-  ],
-  // Drawn as one box, like the box itself, until the parts kit replaces PARTS.
-  dresser: ONE_BOX,
-  nightstand: ONE_BOX,
-  tvstand: ONE_BOX,
-  rug: [
-    [[20, 70, 35, 65]],
-    [[20, 50, 35, 85]],
-    [[20, 70, 35, 65]],
-    [[20, 50, 35, 85]],
-  ],
-  box: [
-    [[20, 70, 35, 65]],
-    [[20, 50, 35, 85]],
-    [[20, 70, 35, 65]],
-    [[20, 50, 35, 85]],
-  ],
-};
 
 describe('buildPrisms', () => {
-  it('makes one prism per part from partCorners of the item footprint, for every kind and quarter turn', () => {
-    for (const kind of KINDS) {
+  it('makes one prism per plan part from planPartOutline of the item footprint, for every kind and quarter turn', () => {
+    for (const kind of KIND_ORDER) {
       for (const rot of ROTS) {
         const it = placedItem({ id: `${kind}-${rot}`, kind, w: 50, d: 30, h: 40, ...CENTRE_OF_BOX_AT_20_35[rot], angle: rot * 90 });
         const { prisms, rugs } = buildPrisms([it]);
         const mine = kind === 'rug' ? rugs : prisms;
         const other = kind === 'rug' ? prisms : rugs;
+        const parts = planParts(it);
         expect(other).toHaveLength(0);
-        expect(mine).toHaveLength(PARTS[kind].length);
-        PARTS[kind].forEach((part, i) => {
+        expect(mine).toHaveLength(parts.length);
+        parts.forEach((part, i) => {
           const p = at(mine, i);
-          expect(p.pts).toEqual(partCorners(itemFootprint(it), part));
-          expect(p.z0).toBeCloseTo(part[4] * 40, 10);
-          expect(p.z1).toBeCloseTo(part[5] * 40, 10);
+          expect(p.pts).toEqual(planPartOutline(itemFootprint(it), part));
+          expect(p.z0).toBe(part.z0);
+          expect(p.z1).toBe(part.z1);
           expect(p.itemId).toBe(`${kind}-${rot}`);
           expect(p.kind).toBe(kind);
         });
@@ -131,66 +81,67 @@ describe('buildPrisms', () => {
     }
   });
 
-  it('covers the same plan rectangle as the old quarter-turn part box, for every kind and quarter turn', () => {
-    for (const kind of KINDS) {
+  it('keeps every prism inside the turned footprint, for every kind and quarter turn', () => {
+    for (const kind of KIND_ORDER) {
       for (const rot of ROTS) {
         const it = placedItem({ kind, w: 50, d: 30, h: 40, ...CENTRE_OF_BOX_AT_20_35[rot], angle: rot * 90 });
         const { prisms, rugs } = buildPrisms([it]);
-        const expected = at(QUARTER_TURN_PART_BOXES[kind], rot);
-        expect(expected).toHaveLength(PARTS[kind].length);
-        PARTS[kind].forEach((_part, i) => {
-          const [minX, maxX, minY, maxY] = at(expected, i);
-          const b = boundsOf(at(kind === 'rug' ? rugs : prisms, i).pts);
-          expect(b.minX).toBeCloseTo(minX, 9);
-          expect(b.maxX).toBeCloseTo(maxX, 9);
-          expect(b.minY).toBeCloseTo(minY, 9);
-          expect(b.maxY).toBeCloseTo(maxY, 9);
-        });
+        const fb = boundsOf(footprintCorners(itemFootprint(it)));
+        for (const p of [...prisms, ...rugs]) {
+          const b = boundsOf(p.pts);
+          expect(b.minX).toBeGreaterThanOrEqual(fb.minX - 1e-9);
+          expect(b.maxX).toBeLessThanOrEqual(fb.maxX + 1e-9);
+          expect(b.minY).toBeGreaterThanOrEqual(fb.minY - 1e-9);
+          expect(b.maxY).toBeLessThanOrEqual(fb.maxY + 1e-9);
+        }
       }
     }
   });
 
-  it('turns each bed part into a prism scaled by height and offset by position', () => {
-    const { prisms, rugs } = buildPrisms([seed('seed-bed')]);
-    expect(rugs).toHaveLength(0);
-    expect(prisms).toHaveLength(4);
-    const first = at(prisms, 0);
-    expect(first.pts[0].x).toBeCloseTo(40, 10);
-    expect(first.pts[0].y).toBeCloseTo(3.4, 10);
-    expect(first.pts[2].x).toBeCloseTo(104, 10);
-    expect(first.pts[2].y).toBeCloseTo(85, 10);
-    expect(first.z1).toBeCloseTo(15.96, 10);
+  it('turns each bed plan part into a prism with its heights, and a round rug into one 16-point prism in rugs', () => {
+    const bed = seed('seed-bed');
+    const rug: Item = { ...placedItem({ id: 'rug-1', kind: 'rug', w: 60, d: 40, h: 0.5, cx: 40, cy: 120 }),
+      style: { ...defaultStyle('rug'), shape: 'round' } };
+    // The rug is built first: one round part filling its footprint.
+    vi.mocked(buildParts).mockReturnValueOnce([{ ...cylinder('main', 0, 0, 0, 0.5, 60), sy: 40 }]);
+    const { prisms, rugs } = buildPrisms([rug, bed]);
+    const parts = planParts(bed);
+    expect(parts.length).toBeGreaterThan(1);
+    expect(prisms).toHaveLength(parts.length);
+    parts.forEach((part, i) => {
+      const p = at(prisms, i);
+      expect(p.itemId).toBe('seed-bed');
+      expect([p.z0, p.z1]).toEqual([part.z0, part.z1]);
+      expect(p.pts).toEqual(planPartOutline(itemFootprint(bed), part));
+    });
+    expect(rugs).toHaveLength(1);
+    expect(at(rugs, 0).itemId).toBe('rug-1');
+    expect(at(rugs, 0).pts).toHaveLength(16);
+    expect([at(rugs, 0).z0, at(rugs, 0).z1]).toEqual([0, 0.5]);
   });
 
   it('turns the quarter-turned desk parts with its footprint', () => {
     const desk = seed('seed-desk');
     const { prisms } = buildPrisms([desk]);
-    expect(prisms).toHaveLength(PARTS.desk.length);
-    // The quarter-turned part boxes of the 26 × 55 footprint at (118, 104), [minX, maxX, minY, maxY].
-    const expected = [
-      [118, 144, 104, 159],
-      [119.56, 142.44, 105.1, 107.3],
-      [119.56, 142.44, 155.7, 157.9],
-    ] as const;
-    PARTS.desk.forEach((_part, i) => {
+    const parts = planParts(desk);
+    expect(prisms).toHaveLength(parts.length);
+    // At 90° the local x runs down the plan and the local y runs to the left, about (131, 131.5).
+    parts.forEach(({ rect: [u0, u1, v0, v1] }, i) => {
       const b = boundsOf(at(prisms, i).pts);
-      const [minX, maxX, minY, maxY] = at(expected, i);
-      expect(b.minX).toBeCloseTo(minX, 10);
-      expect(b.maxX).toBeCloseTo(maxX, 10);
-      expect(b.minY).toBeCloseTo(minY, 10);
-      expect(b.maxY).toBeCloseTo(maxY, 10);
+      expect(b.minX).toBeCloseTo(131 - (v1 - 0.5) * 26, 9);
+      expect(b.maxX).toBeCloseTo(131 - (v0 - 0.5) * 26, 9);
+      expect(b.minY).toBeCloseTo(131.5 + (u0 - 0.5) * 55, 9);
+      expect(b.maxY).toBeCloseTo(131.5 + (u1 - 0.5) * 55, 9);
     });
-    expect(boundsOf(at(prisms, 1).pts).minX).toBeCloseTo(119.56, 10);
-    expect(boundsOf(at(prisms, 1).pts).maxY).toBeCloseTo(107.3, 10);
   });
 
   it('puts rug parts in rugs and not in prisms', () => {
-    const rug: Item = { ...seed('seed-bed'), id: 'rug-1', kind: 'rug', h: 0.5 };
+    const rug: Item = { ...seed('seed-bed'), id: 'rug-1', kind: 'rug', h: 0.5, style: defaultStyle('rug') };
     const { prisms, rugs } = buildPrisms([rug, seed('seed-desk')]);
-    expect(rugs).toHaveLength(1);
-    expect(at(rugs, 0).itemId).toBe('rug-1');
+    expect(rugs.length).toBeGreaterThanOrEqual(1);
+    expect(rugs.every((r) => r.itemId === 'rug-1')).toBe(true);
     expect(prisms.some(b => b.itemId === 'rug-1')).toBe(false);
-    expect(prisms).toHaveLength(PARTS.desk.length);
+    expect(prisms).toHaveLength(planParts(seed('seed-desk')).length);
   });
 });
 

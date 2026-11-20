@@ -1,6 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { buildParts } from '../domain/furniture/parts';
+import { cylinder } from '../domain/furniture/parts/types';
+import { planParts } from '../domain/furniture/planParts';
+import { defaultStyle } from '../domain/furniture/recipe';
 import { obstacleFootprint, obstaclePolygon } from '../domain/obstacles';
-import { footprintCorners, itemFootprint } from '../domain/shape';
+import { footprintCorners, itemFootprint, planPartOutline } from '../domain/shape';
 import type { Conflicts, Corner, Door, Item, Obstacle, Opening, Point, Units, WindowOpening } from '../domain/types';
 import { placedItem } from '../test/fixtures';
 import { doorDrawing, windowDrawing } from './planFeatures';
@@ -18,6 +22,14 @@ class FakePath2D {
 
 beforeAll(() => { vi.stubGlobal('Path2D', FakePath2D); });
 afterAll(() => { vi.unstubAllGlobals(); });
+
+// The real part builders by default; the round rug test hands its rug the one round part the rug
+// builder gives a round rug, so that it does not depend on that builder's other geometry.
+vi.mock('../domain/furniture/parts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../domain/furniture/parts')>();
+  return { ...actual, buildParts: vi.fn(actual.buildParts) };
+});
+afterEach(() => { vi.mocked(buildParts).mockReset(); });
 
 type Rec =
   | { type: 'call'; name: string; args: unknown[] }
@@ -46,6 +58,8 @@ function recordingContext(): { g: CanvasRenderingContext2D; log: Rec[] } {
 /** One painted path with the context state at the moment it was painted. */
 interface Paint {
   op: 'fill' | 'stroke'; index: number; style: unknown; lineWidth: unknown; lineJoin: unknown;
+  /** The context's globalAlpha when painted; 1 until it is set. */
+  alpha: unknown;
   closed: boolean; coords: [number, number][]; args: unknown[];
 }
 
@@ -79,7 +93,7 @@ function replay(log: readonly Rec[]): { paints: Paint[]; texts: Text[]; rects: R
       case 'rotate': rotate = Number(r.args[0]); break;
       case 'fill': case 'stroke':
         paints.push({ op: r.name, index, style: r.name === 'fill' ? state.fillStyle : state.strokeStyle,
-          lineWidth: state.lineWidth, lineJoin: state.lineJoin, closed, coords: [...coords], args: r.args });
+          lineWidth: state.lineWidth, lineJoin: state.lineJoin, alpha: state.globalAlpha ?? 1, closed, coords: [...coords], args: r.args });
         break;
       case 'fillText':
         texts.push({ index, text: String(r.args[0]), x: Number(r.args[1]), y: Number(r.args[2]),
@@ -160,6 +174,11 @@ function itemPane(item: Item): [number, number][] {
   return pane(footprintCorners(itemFootprint(item)));
 }
 
+/** Each plan part's outline of the item, in pane pixels, lowest top first. */
+function partPanes(item: Item): [number, number][][] {
+  return planParts(item).map((part) => pane(planPartOutline(itemFootprint(item), part)));
+}
+
 /** The paints whose path runs through exactly these points. */
 function paintsAt(paints: readonly Paint[], coords: readonly [number, number][]): Paint[] {
   const key = (c: readonly [number, number][]) => c.map((q) => `${q[0].toFixed(6)},${q[1].toFixed(6)}`).join(' ');
@@ -209,19 +228,61 @@ describe('drawPlanPicture', () => {
     expectPoints(floor.coords, [[160, 160], [1600, 160], [1600, 1840], [160, 1840]]);
   });
 
-  it('3. fills and strokes every turned footprint, rugs first, each group in stored order', () => {
+  it('3. fills and strokes every turned footprint, then strokes its parts, rugs first, each group in stored order', () => {
     const { paints } = draw(input({ items: [SOFA, RUG, DESK] }));
-    const furniture = paints.slice(1, 7);
-    expect(furniture.map((p) => p.op)).toEqual(['fill', 'stroke', 'fill', 'stroke', 'fill', 'stroke']);
-    [RUG, SOFA, DESK].forEach((item, k) => {
-      const [fill, stroke] = [at(furniture, 2 * k), at(furniture, 2 * k + 1)];
+    let k = 1;
+    for (const item of [RUG, SOFA, DESK]) {
+      const [fill, stroke] = [at(paints, k), at(paints, k + 1)];
+      expect([fill.op, stroke.op]).toEqual(['fill', 'stroke']);
       expectPoints(fill.coords, itemPane(item));
       expect(fill.closed).toBe(true);
       expect(fill.style).toBe('#e4e8ee');
       expect(stroke.coords).toEqual(fill.coords);
-      expect(stroke.style).toBe('#3d4a63');
-      expect(stroke.lineWidth).toBe(3);
-    });
+      expect([stroke.style, stroke.lineWidth, stroke.alpha]).toEqual(['#3d4a63', 3, 1]);
+      const parts = partPanes(item);
+      expect(parts.length).toBeGreaterThanOrEqual(1);
+      parts.forEach((coords, j) => {
+        const part = at(paints, k + 2 + j);
+        expect([part.op, part.style, part.lineWidth, part.alpha, part.closed]).toEqual(['stroke', '#3d4a63', 3, 0.4, true]);
+        expectPoints(part.coords, coords);
+      });
+      k += 2 + parts.length;
+    }
+    expect(at(paints, k)).toMatchObject({ op: 'stroke', style: '#1a1c2c', lineWidth: 10, alpha: 1 });
+  });
+
+  it('3. strokes one path per plan part of a sofa at 40% opacity after its footprint, then restores the opacity', () => {
+    const { paints, log } = draw(input({ items: [SOFA] }));
+    const parts = partPanes(SOFA);
+    expect(parts.length).toBeGreaterThan(1);
+    const strokes = paints.slice(3, 3 + parts.length);
+    expect(strokes.map((p) => [p.op, p.alpha])).toEqual(parts.map(() => ['stroke', 0.4]));
+    strokes.forEach((p, j) => expectPoints(p.coords, at(parts, j)));
+    // The footprint is filled and stroked as before, at full opacity.
+    expectPoints(at(paints, 1).coords, itemPane(SOFA));
+    expect([at(paints, 1).op, at(paints, 1).alpha, at(paints, 2).op, at(paints, 2).alpha]).toEqual(['fill', 1, 'stroke', 1]);
+    // globalAlpha is back to 1 before anything else is painted.
+    const lastPart = at(strokes, strokes.length - 1).index;
+    const alphaSets = log.filter((r, i) => i > lastPart && r.type === 'set' && r.name === 'globalAlpha');
+    expect(alphaSets[0]).toEqual({ type: 'set', name: 'globalAlpha', value: 1 });
+    expect(paints.slice(3 + parts.length).every((p) => p.alpha === 1)).toBe(true);
+  });
+
+  it('3. fills and strokes a round rug as its ellipse, not its rectangle', () => {
+    const round: Item = { ...RUG, style: { ...defaultStyle('rug'), shape: 'round' } };
+    // One round part filling the footprint, the shape the rug builder gives a round rug.
+    vi.mocked(buildParts).mockReturnValue([{ ...cylinder('main', 0, 0, 0, 1, 60), sy: 40 }]);
+    const ellipse = pane(planPartOutline(itemFootprint(round), { rect: [0, 1, 0, 1], round: true, z0: 0, z1: 1 }));
+    const { paints } = draw(input({ items: [round] }));
+    const [fill, stroke, part] = [at(paints, 1), at(paints, 2), at(paints, 3)];
+    expect(fill.coords).toHaveLength(16);
+    expectPoints(fill.coords, ellipse);
+    expect([fill.op, fill.style, fill.closed]).toEqual(['fill', '#e4e8ee', true]);
+    expect([stroke.op, stroke.style, stroke.alpha]).toEqual(['stroke', '#3d4a63', 1]);
+    expectPoints(stroke.coords, ellipse);
+    expect([part.op, part.alpha]).toEqual(['stroke', 0.4]);
+    expectPoints(part.coords, ellipse);
+    expect(paintsAt(paints, itemPane(round))).toEqual([]);
   });
 
   it('3. paints a conflicting item in the conflict colours', () => {
@@ -233,11 +294,17 @@ describe('drawPlanPicture', () => {
     const [sofaFill, sofaStroke] = paintsAt(paints, itemPane(SOFA));
     expect(sofaFill?.style).toBe('#e4e8ee');
     expect(sofaStroke?.style).toBe('#3d4a63');
+    // A conflicting item's parts are stroked in its outline's conflict colour, at 40% opacity.
+    for (const coords of partPanes(DESK)) {
+      const strokes = paintsAt(paints, coords).filter((p) => p.alpha === 0.4);
+      expect(strokes.map((p) => [p.op, p.style])).toEqual([['stroke', '#b3261e']]);
+    }
   });
 
   it('4. fills and strokes every obstacle polygon after the furniture', () => {
     const { paints } = draw(input({ items: [SOFA], obstacles: [BOX, COLUMN] }));
-    const obstacles = paints.slice(3, 7);
+    const first = 3 + partPanes(SOFA).length;
+    const obstacles = paints.slice(first, first + 4);
     [BOX, COLUMN].forEach((o, k) => {
       const [fill, stroke] = [at(obstacles, 2 * k), at(obstacles, 2 * k + 1)];
       expectPoints(fill.coords, pane(obstaclePolygon(o)));
@@ -261,8 +328,8 @@ describe('drawPlanPicture', () => {
 
   it('5. strokes the closed outline as walls, width 10 with mitred joins, after the obstacles', () => {
     const { paints } = draw(input({ items: [SOFA], obstacles: [BOX] }));
-    const walls = at(paints, 5);
-    expect(paints).toHaveLength(6);
+    const walls = at(paints, 5 + partPanes(SOFA).length);
+    expect(paints).toHaveLength(6 + partPanes(SOFA).length);
     expect([walls.op, walls.style, walls.lineWidth, walls.lineJoin, walls.closed])
       .toEqual(['stroke', '#1a1c2c', 10, 'miter', true]);
     expectPoints(walls.coords, [[160, 160], [1600, 160], [1600, 1840], [160, 1840]]);

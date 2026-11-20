@@ -7,6 +7,10 @@ import { setRectangleSize } from '../../domain/outline';
 import { boundsOf } from '../../domain/polygon';
 import { itemFootprint, roomBounds, roomOutline } from '../../domain/shape';
 import { BLOCKS_A_DOOR, COVERS_A_WINDOW, findPlanIssues } from '../../domain/conflicts';
+import { buildParts } from '../../domain/furniture/parts';
+import { box, cylinder } from '../../domain/furniture/parts/types';
+import { planParts } from '../../domain/furniture/planParts';
+import { defaultStyle } from '../../domain/furniture/recipe';
 import type { Door, Item, Obstacle, Opening, PlanDocument, Point, WindowOpening } from '../../domain/types';
 import { fmtLen } from '../../domain/units';
 import { usePlanStore } from '../../state/planStore';
@@ -30,6 +34,13 @@ vi.mock('../../domain/shape', async (importOriginal) => {
   };
 });
 
+// The real part builders by default; single tests hand a rug or a box the parts its builder gives
+// it, so that they do not depend on those builders' other geometry.
+vi.mock('../../domain/furniture/parts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../domain/furniture/parts')>();
+  return { ...actual, buildParts: vi.fn(actual.buildParts) };
+});
+
 const MAIN: PaneRect = { left: 0, top: 0, w: 1000, h: 600, z: 1, inset: false, divider: false, safeW: 608 };
 const INSET: PaneRect = { left: 600, top: 300, w: 380, h: 280, z: 8, inset: true, divider: false, safeW: 380 };
 /** Fitted scale for the seeded 144×168 room in MAIN: (600 − 128) / 168. */
@@ -48,6 +59,7 @@ afterEach(() => {
   vi.mocked(roomOutline).mockReset();
   vi.mocked(roomBounds).mockReset();
   vi.mocked(itemFootprint).mockReset();
+  vi.mocked(buildParts).mockReset();
 });
 
 /** The seeded layout in MAIN. */
@@ -117,9 +129,23 @@ function partBoxes(id: string): number[][] {
   );
 }
 
-function expectBoxClose(actual: number[] | undefined, expected: number[]): void {
+function expectBoxClose(actual: number[] | undefined, expected: number[], digits = 6): void {
   expect(actual).toHaveLength(expected.length);
-  expected.forEach((v, i) => expect(actual?.[i]).toBeCloseTo(v, 6));
+  expected.forEach((v, i) => expect(actual?.[i]).toBeCloseTo(v, digits));
+}
+
+/**
+ * The [left, top, width, height] percentages planParts gives the item's parts, lowest top first.
+ * The style serialiser keeps about six significant figures, so they compare to 4 decimal places.
+ */
+function planPartBoxes(it: Item): number[][] {
+  return planParts(it).map(({ rect: [u0, u1, v0, v1] }) => [u0 * 100, v0 * 100, (u1 - u0) * 100, (v1 - v0) * 100]);
+}
+
+/** The plan with `extra` added to the furnished plan's bed and desk. */
+function furnishedWith(...extra: Item[]): PlanDocument {
+  const doc = furnishedDocument();
+  return { ...doc, items: [...doc.items, ...extra] };
 }
 
 function item(id: string): Item | undefined {
@@ -357,25 +383,84 @@ describe('PlanView', () => {
     expect(label).toHaveTextContent('Low platform bed, queen');
   });
 
-  it('draws one hairline per part for multi-part kinds and none for a shelf', () => {
-    const doc = furnishedDocument();
-    const shelf: Item = placedItem({ id: 'shelf-1', kind: 'shelf', name: 'Shelf', price: 100, w: 30, d: 12, h: 70, cx: 15, cy: 156 });
-    usePlanStore.getState().reset({ ...doc, items: [...doc.items, shelf] });
+  it('draws one hairline per plan part of a default sofa, at the part\'s fractions', () => {
+    const sofa = placedItem({ id: 'sofa-1', kind: 'sofa', name: 'Sofa', w: 84, d: 36, h: 33, cx: 60, cy: 120 });
+    usePlanStore.getState().reset(furnishedWith(sofa));
     render(<PlanView pane={MAIN} />);
+    const expected = planPartBoxes(sofa);
+    expect(expected.length).toBeGreaterThan(1);
+    const parts = partBoxes('sofa-1');
+    expect(parts).toHaveLength(expected.length);
+    expected.forEach((box, i) => expectBoxClose(parts[i], box, 4));
+    expect(itemEl('sofa-1')).not.toHaveClass('is-round');
+  });
+
+  it('draws the bed\'s plan parts as hairlines', () => {
+    render(<PlanView pane={MAIN} />);
+    const bed = item('seed-bed');
+    if (!bed) throw new Error('no bed');
+    const expected = planPartBoxes(bed);
     const parts = partBoxes('seed-bed');
-    expect(parts).toHaveLength(4);
-    // Bed part 0 is [0,1,.04,1] unrotated.
-    expectBoxClose(parts[0], [0, 4, 100, 96]);
-    expect(itemEl('shelf-1').querySelectorAll('.plan-part')).toHaveLength(0);
+    expect(parts).toHaveLength(expected.length);
+    expected.forEach((box, i) => expectBoxClose(parts[i], box, 4));
   });
 
   it('draws part hairlines at their unturned fractions inside the turned item', () => {
     render(<PlanView pane={MAIN} />);
-    // Desk part 1 [.02,.06,.06,.94]; the item element itself carries the 90° turn.
+    const desk = item('seed-desk');
+    if (!desk) throw new Error('no desk');
+    // The item element itself carries the 90° turn; the parts keep their unturned fractions.
+    const expected = planPartBoxes(desk);
     const parts = partBoxes('seed-desk');
-    expect(parts).toHaveLength(3);
-    expectBoxClose(parts[1], [2, 6, 4, 88]);
+    expect(parts).toHaveLength(expected.length);
+    expected.forEach((box, i) => expectBoxClose(parts[i], box, 4));
     expect(rotation(itemEl('seed-desk'))).toBe(90);
+  });
+
+  it('marks a round part\'s hairline is-round and leaves the others square', () => {
+    const table: Item = { ...placedItem({ id: 'table-1', kind: 'table', name: 'Table', w: 44, d: 24, h: 16, cx: 40, cy: 120 }),
+      style: { ...defaultStyle('table'), top: 'round' } };
+    usePlanStore.getState().reset(furnishedWith(table));
+    render(<PlanView pane={MAIN} />);
+    const round = planParts(table).map((p) => p.round);
+    expect(round).toContain(true);
+    const hairlines = [...itemEl('table-1').querySelectorAll('.plan-part')];
+    expect(hairlines.map((el) => el.classList.contains('is-round'))).toEqual(round);
+    expect(itemEl('table-1')).not.toHaveClass('is-round');
+  });
+
+  it('draws a round rug as a round box with no hairline', () => {
+    const rug: Item = { ...RUG, style: { ...defaultStyle('rug'), shape: 'round' } };
+    usePlanStore.getState().reset(furnishedWith(rug));
+    // One round part filling the footprint, the shape the rug builder gives a round rug.
+    vi.mocked(buildParts).mockImplementation((kind, size) =>
+      kind === 'rug' ? [{ ...cylinder('main', 0, 0, 0, size.h, size.w), sy: size.d }]
+        : [box('main', -size.w / 2, 0, -size.d / 2, size.d / 2, 0, size.h), box('main', 0, size.w / 2, -size.d / 2, size.d / 2, 0, size.h)]);
+    render(<PlanView pane={MAIN} />);
+    expect(itemEl('rug-1')).toHaveClass('is-round');
+    expect(itemEl('rug-1').querySelectorAll('.plan-part')).toHaveLength(0);
+    expect(itemEl('seed-bed')).not.toHaveClass('is-round');
+  });
+
+  it('draws no hairline for a box whose one part fills its footprint', () => {
+    const plain = placedItem({ id: 'box-1', kind: 'box', name: 'Box', w: 30, d: 12, h: 30, cx: 15, cy: 156 });
+    usePlanStore.getState().reset(furnishedWith(plain));
+    vi.mocked(buildParts).mockImplementation((kind, size) =>
+      kind === 'box' ? [box('main', -size.w / 2, size.w / 2, -size.d / 2, size.d / 2, 0, size.h)]
+        : [box('main', -size.w / 2, 0, -size.d / 2, size.d / 2, 0, size.h), box('main', 0, size.w / 2, -size.d / 2, size.d / 2, 0, size.h)]);
+    render(<PlanView pane={MAIN} />);
+    expect(itemEl('box-1').querySelectorAll('.plan-part')).toHaveLength(0);
+    expect(itemEl('box-1')).not.toHaveClass('is-round');
+    expect(itemEl('seed-bed').querySelectorAll('.plan-part')).toHaveLength(2);
+  });
+
+  it('draws the hairline of a piece whose one part does not fill its footprint', () => {
+    const plain = placedItem({ id: 'box-1', kind: 'box', name: 'Box', w: 30, d: 12, h: 30, cx: 15, cy: 156 });
+    usePlanStore.getState().reset(furnishedWith(plain));
+    vi.mocked(buildParts).mockImplementation((_kind, size) => [box('main', -size.w / 2, 0, -size.d / 2, size.d / 2, 0, size.h)]);
+    render(<PlanView pane={MAIN} />);
+    expect(partBoxes('box-1')).toHaveLength(1);
+    expectBoxClose(partBoxes('box-1')[0], [0, 0, 50, 100]);
   });
 
   it('marks the selected item is-selected with z-index 4', () => {
