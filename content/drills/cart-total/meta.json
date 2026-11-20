@@ -1,0 +1,13 @@
+{
+  "title": "Cart total",
+  "order": 6,
+  "summary": "The total drifts away from what's in the cart.",
+  "skills": ["derived state", "single source of truth"],
+  "difficulty": 2,
+  "minutes": 10,
+  "hints": [
+    "Look at where the item count and the total are kept, and at what each cart button and the 10% off box do to them.",
+    "The count and the total are stored separately from the cart lines, and only the increase button updates them, so decreasing or removing leaves them where they were. Ticking the box shrinks the stored total itself, so anything added while it is on goes in at full price, and unticking scales everything back up, those full-price additions included.",
+    "Keep only the cart lines and whether the discount is on as state. Work out the item count and the total from those every time the component renders, and apply the discount last, to the full total."
+  ]
+}
