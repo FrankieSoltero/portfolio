@@ -22,6 +22,8 @@ export const PLAN_PICTURE_CREDIT = 'Room Planner · frankiesoltero.com/room-plan
 
 /** Space around the plan on every side, in pixels. */
 const MARGIN = 160;
+/** Points in a round part's outline in the picture: 48 keeps an ellipse smooth at 2000 px (the plan and blueprint keep 16). */
+const ROUND_PICTURE_POINTS = 48;
 /** The plan's longer side is drawn this many pixels long. */
 const LONG_SIDE_PX = 2000 - 2 * MARGIN;
 
@@ -105,11 +107,11 @@ function furniture(g: CanvasRenderingContext2D, item: Item, layout: PlanLayout, 
   const parts = planParts(item);
   const roundWhole = (p: PlanPart): boolean => p.round && fillsFootprint(p);
   const ellipse = parts.find(roundWhole);
-  shape(g, ellipse ? planPartOutline(fp, ellipse) : footprintCorners(fp), layout, FURNITURE_FILL, conflict);
+  shape(g, ellipse ? planPartOutline(fp, ellipse, ROUND_PICTURE_POINTS) : footprintCorners(fp), layout, FURNITURE_FILL, conflict);
   g.save();
   g.globalAlpha = PART_ALPHA;
   for (const part of ellipse ? parts.filter((p) => !roundWhole(p)) : parts) {
-    trace(g, planPartOutline(fp, part), layout);
+    trace(g, planPartOutline(fp, part, ROUND_PICTURE_POINTS), layout);
     g.strokeStyle = conflict ? CONFLICT_INK : SHAPE_STROKE;
     g.lineWidth = SHAPE_WIDTH;
     g.stroke();

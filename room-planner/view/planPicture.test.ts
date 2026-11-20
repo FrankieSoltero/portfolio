@@ -172,7 +172,7 @@ function itemPane(item: Item): [number, number][] {
 
 /** Each plan part's outline of the item, in pane pixels, lowest top first. */
 function partPanes(item: Item): [number, number][][] {
-  return planParts(item).map((part) => pane(planPartOutline(itemFootprint(item), part)));
+  return planParts(item).map((part) => pane(planPartOutline(itemFootprint(item), part, 48)));
 }
 
 /** The paints whose path runs through exactly these points. */
@@ -277,16 +277,16 @@ describe('drawPlanPicture', () => {
     if (!outer || !inner) throw new Error('a bordered round rug has two parts');
     expect(rest).toEqual([]);
     const fp = itemFootprint(round);
-    const ellipse = pane(planPartOutline(fp, outer));
+    const ellipse = pane(planPartOutline(fp, outer, 48));
     const { paints } = draw(input({ items: [round] }));
     const [fill, stroke, part, walls] = [at(paints, 1), at(paints, 2), at(paints, 3), at(paints, 4)];
-    expect(fill.coords).toHaveLength(16);
+    expect(fill.coords).toHaveLength(48);
     expectPoints(fill.coords, ellipse);
     expect([fill.op, fill.style, fill.closed]).toEqual(['fill', '#e4e8ee', true]);
     expect([stroke.op, stroke.style, stroke.alpha]).toEqual(['stroke', '#3d4a63', 1]);
     expectPoints(stroke.coords, ellipse);
     expect([part.op, part.alpha]).toEqual(['stroke', 0.4]);
-    expectPoints(part.coords, pane(planPartOutline(fp, inner)));
+    expectPoints(part.coords, pane(planPartOutline(fp, inner, 48)));
     expect([walls.op, walls.lineWidth]).toEqual(['stroke', 10]);
     expect(paintsAt(paints, itemPane(round))).toEqual([]);
   });
@@ -301,12 +301,12 @@ describe('drawPlanPicture', () => {
     const others = parts.filter((p) => p !== top);
     expect(others.length).toBeGreaterThan(1);
     const { paints } = draw(input({ items: [table] }));
-    expectPoints(at(paints, 1).coords, pane(planPartOutline(fp, top)));
+    expectPoints(at(paints, 1).coords, pane(planPartOutline(fp, top, 48)));
     expect(at(paints, 1).op).toBe('fill');
     others.forEach((p, j) => {
       const stroke = at(paints, 3 + j);
       expect([stroke.op, stroke.alpha]).toEqual(['stroke', 0.4]);
-      expectPoints(stroke.coords, pane(planPartOutline(fp, p)));
+      expectPoints(stroke.coords, pane(planPartOutline(fp, p, 48)));
     });
     expect(at(paints, 3 + others.length).lineWidth).toBe(10);
   });

@@ -137,6 +137,26 @@ describe('planPartOutline', () => {
     expectPoints(pts.slice(0, 1), [[first.x, first.y]]);
     expect(signedArea(pts)).toBeGreaterThan(0);
   });
+
+  it('outlines a round part with a given number of segments, all on the ellipse, and keeps 16 by default', () => {
+    const fp: Footprint = { cx: 30, cy: -12, w: 50, d: 30, angle: 30 };
+    const part = rectPart(0.2, 0.6, 0.1, 0.5, true);
+    const pts = planPartOutline(fp, part, 48);
+    expect(pts).toHaveLength(48);
+    const [lcx, lcy, rx, ry] = [-5, -6, 10, 6];
+    const rad = (30 * Math.PI) / 180;
+    for (const p of pts) {
+      const dx = p.x - fp.cx;
+      const dy = p.y - fp.cy;
+      const lx = dx * Math.cos(rad) + dy * Math.sin(rad);
+      const ly = -dx * Math.sin(rad) + dy * Math.cos(rad);
+      expect(Math.abs(((lx - lcx) / rx) ** 2 + ((ly - lcy) / ry) ** 2 - 1)).toBeLessThan(1e-6);
+    }
+    expect(planPartOutline(fp, part)).toHaveLength(16);
+    expect(planPartOutline(fp, rectPart(0, 0.5, 0, 0.2), 48)).toHaveLength(4);
+    expect(() => planPartOutline(fp, part, 7)).toThrow(RangeError);
+    expect(() => planPartOutline(fp, part, 12.5)).toThrow(RangeError);
+  });
 });
 
 describe('normaliseAngle', () => {

@@ -57,19 +57,20 @@ export function footprintCorners(fp: Footprint): [Point, Point, Point, Point] {
 }
 
 /**
- * Corners of a plan part on the plan, turned with the footprint: 4 for a rectangle, 16 for a round part (an ellipse inscribed in its rectangle).
+ * Corners of a plan part on the plan, turned with the footprint: 4 for a rectangle, `segments` (default 16, at least 8) for a round part (an ellipse inscribed in its rectangle).
  * A rectangle runs back-left, back-right, front-right, front-left; an ellipse starts at its right end
  * (local +x) and runs the same way round, so both have positive signed area.
  */
-export function planPartOutline(fp: Footprint, part: PlanPart): Point[] {
+export function planPartOutline(fp: Footprint, part: PlanPart, segments: number = ROUND_PART_POINTS): Point[] {
+  if (!Number.isInteger(segments) || segments < 8) throw new RangeError('segments must be an integer of at least 8');
   const [u0, u1, v0, v1] = part.rect;
   if (!part.round) return rectCorners(fp, u0, u1, v0, v1);
   const cx = ((u0 + u1) / 2 - 0.5) * fp.w;
   const cy = ((v0 + v1) / 2 - 0.5) * fp.d;
   const rx = ((u1 - u0) / 2) * fp.w;
   const ry = ((v1 - v0) / 2) * fp.d;
-  return Array.from({ length: ROUND_PART_POINTS }, (_, i) => {
-    const t = (2 * Math.PI * i) / ROUND_PART_POINTS;
+  return Array.from({ length: segments }, (_, i) => {
+    const t = (2 * Math.PI * i) / segments;
     return toPlan(fp, cx + rx * Math.cos(t), cy + ry * Math.sin(t));
   });
 }
