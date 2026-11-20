@@ -16,17 +16,34 @@ function pick<T extends string>(value: string | undefined, allowed: readonly T[]
 }
 
 /**
+ * The depth of the top at `x` across: the full depth for a rectangle top, or under a round
+ * (elliptic) top its chord there, d·sqrt(1 − (x / (w/2))²), so parts cut to it stay under the top.
+ */
+function depthAt(size: PieceSize, round: boolean, x: number): number {
+  if (!round) return size.d;
+  return size.d * Math.sqrt(Math.max(0, 1 - (x / (size.w / 2)) ** 2));
+}
+
+/** The x of the outer face of each trestle: inset clamp(0.08 w, 1, 6) from the side. */
+function trestleOuterX(w: number): number {
+  return w / 2 - Math.min(clamp(0.08 * w, 1, 6), 0.2 * w);
+}
+
+/**
  * Two trestles, slot accent, inset clamp(0.08 w, 1, 6) from the sides: each a foot bar on the floor
  * (t = clamp(0.03 w, 0.75, 2) across, 80% of the depth long, t high) and a t × t post centred in
- * depth from the foot bar up to `under`, the underside of the top. Feet first, then posts.
+ * depth from the foot bar up to `under`, the underside of the top. Under a round top the depth is
+ * the top's chord at the trestle's outer face (see depthAt), so the feet stay under the ellipse.
+ * Feet first, then posts.
  */
-function trestles(size: PieceSize, under: number): Part[] {
-  const { w, d } = size;
+function trestles(size: PieceSize, under: number, round = false): Part[] {
+  const { w } = size;
   const t = Math.min(clamp(0.03 * w, 0.75, 2), 0.15 * w);
-  const inset = Math.min(clamp(0.08 * w, 1, 6), 0.2 * w);
+  const outer = trestleOuterX(w);
+  const d = depthAt(size, round, outer);
   const footTop = Math.min(t, 0.3 * under);
   const postDepth = Math.min(t, 0.8 * d);
-  const spans = [[-w / 2 + inset, -w / 2 + inset + t], [w / 2 - inset - t, w / 2 - inset]] as const;
+  const spans = [[-outer, -outer + t], [outer - t, outer]] as const;
   return [
     ...spans.map(([x0, x1]) => box('accent', x0, x1, -0.4 * d, 0.4 * d, 0, footTop)),
     ...spans.map(([x0, x1]) => box('accent', x0, x1, -postDepth / 2, postDepth / 2, footTop, under)),
@@ -113,7 +130,7 @@ export const tableParts: PartsBuilder = (size, style: StyleValues) => {
   } else if (base === 'pedestal') {
     supports = pedestal(size, under);
   } else {
-    supports = trestles(size, under);
+    supports = trestles(size, under, round);
   }
 
   const parts: Part[] = [top, ...supports];
@@ -126,9 +143,10 @@ export const tableParts: PartsBuilder = (size, style: StyleValues) => {
       const ly = Math.abs(supports[0].cy);
       parts.push(round ? { ...cylinder('main', 0, 0, z0, z1, 2 * Math.SQRT2 * lx), sy: 2 * Math.SQRT2 * ly } : box('main', -lx, lx, -ly, ly, z0, z1));
     } else {
-      // Between the trestle post centres.
+      // Between the trestle post centres; under a round top 70% of the top's chord at its ends.
       const px = Math.abs(supports[supports.length - 1].cx);
-      parts.push(box('main', -px, px, -0.35 * d, 0.35 * d, z0, z1));
+      const depth = depthAt(size, round, px);
+      parts.push(box('main', -px, px, -0.35 * depth, 0.35 * depth, z0, z1));
     }
   }
   return parts;

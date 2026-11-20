@@ -135,3 +135,106 @@ describe('table', () => {
     }
   });
 });
+
+/** Every number of each part rounded to 1e-9 (and −0 made 0), so float noise does not count as a change. */
+function rounded9(parts: readonly Part[]): Part[] {
+  const r = (n: number) => Math.round(n * 1e9) / 1e9 + 0;
+  return parts.map((p) => {
+    const out: Part = { ...p, cx: r(p.cx), cy: r(p.cy), z0: r(p.z0), sx: r(p.sx), sy: r(p.sy), sz: r(p.sz) };
+    if (p.radius !== undefined) out.radius = r(p.radius);
+    return out;
+  });
+}
+
+const RECT_TOP: Part = { shape: 'rounded', cx: 0, cy: 0, z0: 15.04, sx: 44, sy: 24, sz: 0.96, slot: 'main', radius: 0.48 };
+const RECT_LEGS: Part[] = [-9.96, 9.96].flatMap((cy) =>
+  [-19.96, 19.96].map((cx): Part => ({ shape: 'cylinder', cx, cy, z0: 0, sx: 1.68, sy: 1.68, sz: 15.04, slot: 'accent', taper: 0.55 })),
+);
+const RECT_PEDESTAL: Part[] = [
+  { shape: 'cylinder', cx: 0, cy: 0, z0: 0, sx: 16.8, sy: 16.8, sz: 0.96, slot: 'accent' },
+  { shape: 'cylinder', cx: 0, cy: 0, z0: 0.96, sx: 3.36, sy: 3.36, sz: 14.08, slot: 'accent' },
+];
+const RECT_TRESTLES: Part[] = [
+  { shape: 'box', cx: -17.82, cy: 0, z0: 0, sx: 1.32, sy: 19.2, sz: 1.32, slot: 'accent' },
+  { shape: 'box', cx: 17.82, cy: 0, z0: 0, sx: 1.32, sy: 19.2, sz: 1.32, slot: 'accent' },
+  { shape: 'box', cx: -17.82, cy: 0, z0: 1.32, sx: 1.32, sy: 1.32, sz: 13.72, slot: 'accent' },
+  { shape: 'box', cx: 17.82, cy: 0, z0: 1.32, sx: 1.32, sy: 1.32, sz: 13.72, slot: 'accent' },
+];
+const DESK_TOP: Part = { shape: 'box', cx: 0, cy: 0, z0: 28.5, sx: 55, sy: 26, sz: 1.5, slot: 'main' };
+/** The right drawer box and its handle, centred at `cx`. */
+const deskDrawer = (cx: number): Part[] => [
+  { shape: 'box', cx, cy: 0, z0: 22.5, sx: 16.5, sy: 24, sz: 6, slot: 'main' },
+  { shape: 'box', cx, cy: 12.25, z0: 25.125, sx: 5, sy: 0.5, sz: 0.75, slot: 'accent', detail: true },
+];
+
+describe('rectangle tops are unchanged by the round-top cuts', () => {
+  // The parts as built before the round-top trestle and shelf cuts, at the typical sizes.
+  it.each<[string, () => Part[], Part[]]>([
+    ['desk on legs', () => desk({ supports: 'legs' }), [
+      DESK_TOP,
+      ...[-11.31, 11.31].flatMap((cy) =>
+        [-25.81, 25.81].map((cx): Part => ({ shape: 'cylinder', cx, cy, z0: 0, sx: 0.91, sy: 0.91, sz: 28.5, slot: 'accent' })),
+      ),
+      ...deskDrawer(17.105),
+    ]],
+    ['desk on trestles', () => desk({ supports: 'trestle' }), [
+      DESK_TOP,
+      { shape: 'box', cx: -22.275, cy: 0, z0: 0, sx: 1.65, sy: 20.8, sz: 1.65, slot: 'accent' },
+      { shape: 'box', cx: 22.275, cy: 0, z0: 0, sx: 1.65, sy: 20.8, sz: 1.65, slot: 'accent' },
+      { shape: 'box', cx: -22.275, cy: 0, z0: 1.65, sx: 1.65, sy: 1.65, sz: 26.85, slot: 'accent' },
+      { shape: 'box', cx: 22.275, cy: 0, z0: 1.65, sx: 1.65, sy: 1.65, sz: 26.85, slot: 'accent' },
+      ...deskDrawer(13.2),
+    ]],
+    ['desk on panels', () => desk({ supports: 'panels' }), [
+      DESK_TOP,
+      { shape: 'box', cx: -26.8125, cy: 0, z0: 0, sx: 1.375, sy: 26, sz: 28.5, slot: 'main' },
+      { shape: 'box', cx: 26.8125, cy: 0, z0: 0, sx: 1.375, sy: 26, sz: 28.5, slot: 'main' },
+      ...deskDrawer(17.875),
+    ]],
+    ['table on legs with a shelf', () => table({ top: 'rectangle', base: 'legs', shelf: 'yes' }), [
+      RECT_TOP, ...RECT_LEGS,
+      { shape: 'box', cx: 0, cy: 0, z0: 4.8, sx: 39.92, sy: 19.92, sz: 0.72, slot: 'main' },
+    ]],
+    ['table on legs without a shelf', () => table({ top: 'rectangle', base: 'legs', shelf: 'no' }), [RECT_TOP, ...RECT_LEGS]],
+    ['table on a pedestal with a shelf', () => table({ top: 'rectangle', base: 'pedestal', shelf: 'yes' }), [RECT_TOP, ...RECT_PEDESTAL]],
+    ['table on a pedestal without a shelf', () => table({ top: 'rectangle', base: 'pedestal', shelf: 'no' }), [RECT_TOP, ...RECT_PEDESTAL]],
+    ['table on trestles with a shelf', () => table({ top: 'rectangle', base: 'trestle', shelf: 'yes' }), [
+      RECT_TOP, ...RECT_TRESTLES,
+      { shape: 'box', cx: 0, cy: 0, z0: 4.8, sx: 35.64, sy: 16.8, sz: 0.72, slot: 'main' },
+    ]],
+    ['table on trestles without a shelf', () => table({ top: 'rectangle', base: 'trestle', shelf: 'no' }), [RECT_TOP, ...RECT_TRESTLES]],
+  ])('%s', (_name, build, expected) => {
+    expect(rounded9(build())).toEqual(expected);
+  });
+});
+
+describe('round table top', () => {
+  /** (x, y) measured against the ellipse of `top`: at most 1 inside it. */
+  const inTop = (top: Part, x: number, y: number) => ((x - top.cx) / (top.sx / 2)) ** 2 + ((y - top.cy) / (top.sy / 2)) ** 2;
+
+  /** Points on a part's top-view outline: its rectangle's corners, or for a cylinder points round its ellipse. */
+  function outline(p: Part): [number, number][] {
+    if (p.shape !== 'cylinder') {
+      return [-1, 1].flatMap((sx) => [-1, 1].map((sy): [number, number] => [p.cx + (sx * p.sx) / 2, p.cy + (sy * p.sy) / 2]));
+    }
+    return Array.from({ length: 720 }, (_, i): [number, number] => {
+      const a = (i / 720) * 2 * Math.PI;
+      return [p.cx + (Math.cos(a) * p.sx) / 2, p.cy + (Math.sin(a) * p.sy) / 2];
+    });
+  }
+
+  const SIZES: PieceSize[] = [TABLE, { w: 48, d: 48, h: 30 }, { w: 36, d: 36, h: 17 }, { w: 96, d: 30, h: 30 }];
+  const cases = SIZES.flatMap((size) =>
+    ['legs', 'pedestal', 'trestle'].flatMap((base) => ['yes', 'no'].map((shelf) => ({ size, base, shelf }))),
+  );
+
+  it.each(cases)('keeps every part of a $size.w × $size.d × $size.h table on $base with shelf $shelf under the top', ({ size, base, shelf }) => {
+    const parts = table({ top: 'round', base, shelf }, size);
+    const [tops, rest] = [tableTop(parts, size), parts.filter((p) => !near(top(p), size.h))];
+    expect(tops).toHaveLength(1);
+    expect(rest.length).toBeGreaterThan(0);
+    for (const p of rest) {
+      for (const [x, y] of outline(p)) expect(inTop(tops[0], x, y)).toBeLessThanOrEqual(1 + EPS);
+    }
+  });
+});
