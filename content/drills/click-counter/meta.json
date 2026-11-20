@@ -1,0 +1,13 @@
+{
+  "title": "Click counter",
+  "order": 2,
+  "summary": "A counter that loses clicks.",
+  "skills": ["functional updates", "state in async code"],
+  "difficulty": 1,
+  "minutes": 8,
+  "hints": [
+    "Look at the two handlers that change the count more than once or after a wait: the one behind Add 3 and the one behind Add 1 after saving.",
+    "Both handlers work out the new count from the number they saw when the click happened. Three updates in one click all start from that same old number, and a save that finishes later starts from the number on screen before it began, so clicks made in between are lost.",
+    "When the next count depends on the previous one, give the setter a function that receives the latest count and returns the next one, instead of a value computed from the count your handler captured."
+  ]
+}
