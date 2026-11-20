@@ -889,3 +889,20 @@ owner decides the merge after seeing the record and the screenshots.
 | 7 | Open a version 3 share link made on the live site before this change (bed and desk) | it opens; the bed and desk have their default style and their earlier colours; position and size unchanged |
 | 8 | Load a browser that holds a version 3 saved plan from the live site's build (set through storage on the preview) | the plan loads with default recipes; after one edit the stored plan is version 4 |
 | 9 | Blueprint style on, with one of each type | every piece is drawn; no console error |
+
+## Amendment 1 (2026-11-20, after plan review round 2 passed at 86.4)
+
+Minor review findings folded in before any code was written:
+
+- Task 2, invariants: add the size `{0.25, 0.25, 0.25}` to the size list.
+- Task 2, Behavior: add the row "Clamp keeps the choice | `seats: '5'` on a 40-wide sofa, then
+  the same style object on a 130-wide sofa | the style object is not mutated by `buildParts`; the
+  wide sofa has 5 seat cushions".
+- Task 8, Behavior: "Undo each" also covers redo: option click, undo, redo → the new value is
+  back and the editor shows it; the same for a swatch pick.
+- Task 6, picture: "the existing furniture stroke colour" is the stroke style `drawPlanPicture`
+  already uses for furniture outlines in `view/planPicture.ts`; "40% opacity" is
+  `globalAlpha = 0.4` around the part strokes, restored afterwards; line width is the same as the
+  furniture outline's.
+- Every commit in this plan is made only after `git branch --show-current` prints
+  `furniture-generator` (another session shares this repository through a separate worktree).
