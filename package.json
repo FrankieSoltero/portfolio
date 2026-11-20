@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.drills.json",
-    "lint": "eslint --no-error-on-unmatched-pattern room-planner app/room-planner drills app/drills lib/drills.ts scripts",
+    "lint": "eslint --no-error-on-unmatched-pattern room-planner app/room-planner drills app/drills lib/drills.ts scripts content/drills/*/solution",
     "test": "vitest run --passWithNoTests",
     "test:drills": "node scripts/drills-fairness.mts",
     "test:drills-pages": "node scripts/drills-pages-check.mts",

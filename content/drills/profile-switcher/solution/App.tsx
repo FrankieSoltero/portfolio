@@ -7,26 +7,24 @@ const CHOICES = [
   { id: 3, name: "Linus" },
 ];
 
+/** How the latest request ended, and which user it was for. */
+type Outcome = { forId: number; user: User } | { forId: number; failed: true };
+
 export default function App() {
   const [userId, setUserId] = useState(1);
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const loading = outcome === null || outcome.forId !== userId;
 
   useEffect(() => {
     let ignore = false;
-    setLoading(true);
-    setFailed(false);
     fetchUser(userId).then(
-      (data) => {
+      (user) => {
         if (ignore) return;
-        setUser(data);
-        setLoading(false);
+        setOutcome({ forId: userId, user });
       },
       () => {
         if (ignore) return;
-        setFailed(true);
-        setLoading(false);
+        setOutcome({ forId: userId, failed: true });
       }
     );
     return () => {
@@ -43,14 +41,14 @@ export default function App() {
       ))}
       {loading ? (
         <p>Loading…</p>
-      ) : failed ? (
+      ) : "failed" in outcome ? (
         <p role="alert">Could not load profile</p>
-      ) : user ? (
+      ) : (
         <section>
-          <h2>{user.name}</h2>
-          <p>{`Role: ${user.role}`}</p>
+          <h2>{outcome.user.name}</h2>
+          <p>{`Role: ${outcome.user.role}`}</p>
         </section>
-      ) : null}
+      )}
     </main>
   );
 }

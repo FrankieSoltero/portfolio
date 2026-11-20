@@ -114,6 +114,7 @@ function showComments(postId: number) {
   fetchComments(postId).then(
     (data) => {
       setCommentsByPost((loaded) => ({ ...loaded, [postId]: data }));
+      setFailedPostIds((ids) => ids.filter((id) => id !== postId));
     },
     () => {
       setFailedPostIds((ids) => [...ids, postId]);
@@ -121,7 +122,16 @@ function showComments(postId: number) {
   );
 }
 
-// For the open post: failed → <p role="alert">Could not load comments</p>
+// For the open post: comments → the list, else failed → the alert, else Loading comments…
+{comments ? (
+  <ul>{/* … */}</ul>
+) : failed ? (
+  <p role="alert">Could not load comments</p>
+) : (
+  <p>Loading comments…</p>
+)}
 ```
 
-**Rule to remember.** A request has three outcomes, not two: loading, loaded and failed. Handle the failure, show it where it happened, and let the user try again.
+Mind the order of those checks. Clicking the button twice before the first answer arrives sends two requests for the same post, and one can fail while the other succeeds, in either order. Loaded comments are the better news, so check for them first, and clear the post's failure when an answer succeeds. Otherwise a failure recorded by one request sits on top of the comments the other one loaded, and since the thread is already loaded, clicking again never clears it.
+
+**Rule to remember.** A request has three outcomes, not two: loading, loaded and failed. Handle the failure, show it where it happened, and let the user try again. When requests can overlap, make sure a late failure can't hide data that did arrive.

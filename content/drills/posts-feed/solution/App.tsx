@@ -30,14 +30,14 @@ function PostRow({ post, author, liked, open, comments, failed, onLike, onShowCo
         {`Show comments for ${post.title}`}
       </button>
       {open &&
-        (failed ? (
-          <p role="alert">Could not load comments</p>
-        ) : comments ? (
+        (comments ? (
           <ul>
             {comments.map((comment) => (
               <li key={comment.id}>{comment.body}</li>
             ))}
           </ul>
+        ) : failed ? (
+          <p role="alert">Could not load comments</p>
         ) : (
           <p>Loading comments…</p>
         ))}
@@ -75,6 +75,7 @@ export default function App() {
     fetchComments(postId).then(
       (data) => {
         setCommentsByPost((loaded) => ({ ...loaded, [postId]: data }));
+        setFailedPostIds((ids) => ids.filter((id) => id !== postId));
       },
       () => {
         setFailedPostIds((ids) => [...ids, postId]);
