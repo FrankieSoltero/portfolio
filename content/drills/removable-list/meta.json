@@ -1,0 +1,13 @@
+{
+  "title": "Removable list",
+  "order": 5,
+  "summary": "Remove a guest and someone else's checkbox changes.",
+  "skills": ["list keys", "stable ids"],
+  "difficulty": 2,
+  "minutes": 10,
+  "hints": [
+    "Look at how the list hands each guest row to React, and at the id a new guest gets when it is added.",
+    "React matches each row to the one it rendered last time by its position in the list, so after a removal or an add at the top, every row below moves and picks up the checkbox state of whichever guest used to sit in that spot. New ids come from the length of the list, so after a removal a new guest can get an id someone still has, and removing by that id takes both guests away.",
+    "Identify each row by the guest's own id instead of its position, so its state follows the guest wherever it moves. Hand out ids from a counter that only ever goes up, so no two guests ever share one, even after removals."
+  ]
+}
