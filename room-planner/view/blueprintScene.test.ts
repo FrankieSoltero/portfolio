@@ -48,6 +48,12 @@ const CENTRE_OF_BOX_AT_20_35: Record<QuarterTurn, { cx: number; cy: number }> = 
  * Plan rectangles [minX, maxX, minY, maxY] of each part of that box, per kind and quarter turn, as
  * the slice A quarter-turn part mapping placed them (values copied from that passing comparison).
  */
+const ONE_BOX: readonly (readonly (readonly [number, number, number, number])[])[] = [
+  [[20, 70, 35, 65]],
+  [[20, 50, 35, 85]],
+  [[20, 70, 35, 65]],
+  [[20, 50, 35, 85]],
+];
 const QUARTER_TURN_PART_BOXES: Record<Kind, readonly (readonly (readonly [number, number, number, number])[])[]> = {
   sofa: [
     [[24, 66, 43.4, 65], [20, 70, 35, 43.4], [20, 24, 43.4, 65], [66, 70, 43.4, 65]],
@@ -85,6 +91,10 @@ const QUARTER_TURN_PART_BOXES: Record<Kind, readonly (readonly (readonly [number
     [[20, 70, 35, 65]],
     [[20, 50, 35, 85]],
   ],
+  // Drawn as one box, like the box itself, until the parts kit replaces PARTS.
+  dresser: ONE_BOX,
+  nightstand: ONE_BOX,
+  tvstand: ONE_BOX,
   rug: [
     [[20, 70, 35, 65]],
     [[20, 50, 35, 85]],

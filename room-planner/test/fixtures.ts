@@ -1,3 +1,4 @@
+import { defaultColours, defaultStyle } from '../domain/furniture/recipe';
 import type { Item, Kind, Obstacle, Opening, PlanDocument, Room, Units } from '../domain/types';
 
 /**
@@ -29,12 +30,16 @@ export interface PlacedItemSpec {
   price?: number | null;
 }
 
-/** An item whose footprint is centred at (cx, cy) and turned by `angle` degrees clockwise. */
+/**
+ * An item whose footprint is centred at (cx, cy) and turned by `angle` degrees clockwise, in its
+ * kind's default style and colours.
+ */
 export function placedItem(spec: PlacedItemSpec): Item {
   const id = spec.id ?? 'item';
+  const kind = spec.kind ?? 'box';
   return {
     id,
-    kind: spec.kind ?? 'box',
+    kind,
     name: spec.name ?? `Item ${id}`,
     host: 'shop.example',
     sourceUrl: null,
@@ -46,6 +51,8 @@ export function placedItem(spec: PlacedItemSpec): Item {
     y: spec.cy,
     angle: spec.angle ?? 0,
     model: { tier: 'box', label: 'Box', assetUrl: null },
+    style: defaultStyle(kind),
+    colours: defaultColours(kind),
   };
 }
 
@@ -60,17 +67,18 @@ export function planDoc(
   openings: Opening[] = [],
   obstacles: Obstacle[] = [],
 ): PlanDocument {
-  return { schemaVersion: 3, units, room, items, openings, obstacles };
+  return { schemaVersion: 4, units, room, items, openings, obstacles };
 }
 
 /**
  * The furnished plan the app used to start with: the 144 x 168 in room (8 ft tall, feet) with the
- * queen bed `seed-bed` and the desk `seed-desk`. The app now starts empty; tests that need furniture
+ * queen bed `seed-bed` and the desk `seed-desk`, both in their kind's default style and colours,
+ * at version 4. The app now starts empty; tests that need furniture
  * load this. Returns a fresh object every call.
  */
 export function furnishedDocument(): PlanDocument {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     units: 'ft',
     room: rectRoom(144, 168, 96),
     items: [
@@ -78,11 +86,13 @@ export function furnishedDocument(): PlanDocument {
         id: 'seed-bed', kind: 'bed', name: 'Low platform bed, queen', host: 'shop.example',
         sourceUrl: null, price: 890, w: 64, d: 85, h: 38, x: 72, y: 42.5, angle: 0,
         model: { tier: 'retailer', label: '3D model from retailer', assetUrl: null },
+        style: defaultStyle('bed'), colours: defaultColours('bed'),
       },
       {
         id: 'seed-desk', kind: 'desk', name: 'Tack writing desk', host: 'shop.example',
         sourceUrl: null, price: 420, w: 55, d: 26, h: 30, x: 131, y: 131.5, angle: 90,
         model: { tier: 'retailer', label: '3D model from retailer', assetUrl: null },
+        style: defaultStyle('desk'), colours: defaultColours('desk'),
       },
     ],
     openings: [],

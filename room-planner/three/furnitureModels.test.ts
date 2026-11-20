@@ -14,6 +14,9 @@ const SIZES: Record<Kind, { w: number; d: number; h: number }> = {
   desk: { w: 55, d: 26, h: 30 },
   table: { w: 44, d: 24, h: 16 },
   shelf: { w: 36, d: 13, h: 78 },
+  dresser: { w: 60, d: 18, h: 34 },
+  nightstand: { w: 22, d: 16, h: 24 },
+  tvstand: { w: 60, d: 16, h: 22 },
   rug: { w: 60, d: 96, h: 0.5 },
   box: { w: 36, d: 24, h: 30 },
 };

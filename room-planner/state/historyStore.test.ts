@@ -342,7 +342,7 @@ describe('undo and redo', () => {
     undo();
     expect(height()).toBe(start);
     expect(usePlanStore.getState().units).toBe('m');
-    expect(usePlanStore.getState().schemaVersion).toBe(3);
+    expect(usePlanStore.getState().schemaVersion).toBe(4);
   });
 
   it('References restored: undo puts back the very same items list', () => {

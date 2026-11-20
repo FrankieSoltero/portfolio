@@ -17,7 +17,8 @@ import {
 } from '../state/actions';
 import { ROOM_PROBLEM_TEXT, type RoomProblem, usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
-import { furnishedDocument } from '../test/fixtures';
+import { furnishedDocument, placedItem } from '../test/fixtures';
+import { defaultStyle } from './furniture/recipe';
 import { addObstacle, newObstacle, updateObstacle } from './obstacles';
 import { addOpening, slideOpening, updateOpening } from './openings';
 import { setRectangleSize, setWallLength, wallsOf } from './outline';
@@ -170,6 +171,21 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
     place(looked);
     expectReadable('place a looked-up preview');
     expect(usePlanStore.getState().items).toHaveLength(4);
+  });
+
+  it('a sofa in a non-default style and colours survives a JSON round trip unchanged, through the store too', () => {
+    const sofa = {
+      ...placedItem({ id: 'sofa-1', kind: 'sofa', name: 'Sofa', w: 84, d: 36, h: 33, cx: 72, cy: 120 }),
+      style: { ...defaultStyle('sofa'), seats: '3', arms: 'rounded', chaise: 'left' },
+      colours: { main: '#2f4057', accent: '#b08d57' },
+    };
+    const doc: PlanDocument = { ...furnishedDocument(), items: [...furnishedDocument().items, sofa] };
+    expect(parsePlan(JSON.parse(JSON.stringify(doc)))).toEqual({ ok: true, doc });
+    usePlanStore.getState().reset(doc);
+    usePlanStore.getState().moveItemTo('sofa-1', 30, 100);
+    expectReadable('move the styled sofa');
+    const result = parsePlan(JSON.parse(JSON.stringify(currentDocument())));
+    expect(result.ok && result.doc.items[2]).toMatchObject({ style: sofa.style, colours: sofa.colours });
   });
 
   it('adding items up to and past the cap', () => {

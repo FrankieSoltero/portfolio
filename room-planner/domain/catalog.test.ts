@@ -4,12 +4,12 @@ import { placedItem } from '../test/fixtures';
 import { BOOK_COLOURS, LINEN, LOOKS, PARTS, createInitialDocument } from './catalog';
 import type { Door, Kind, Obstacle, WindowOpening } from './types';
 
-const KINDS: Kind[] = ['sofa', 'chair', 'bed', 'desk', 'table', 'shelf', 'rug', 'box'];
+const KINDS: Kind[] = ['sofa', 'chair', 'bed', 'desk', 'table', 'shelf', 'dresser', 'nightstand', 'tvstand', 'rug', 'box'];
 
 describe('createInitialDocument', () => {
   it('returns the starting plan: the room with no furniture', () => {
     const doc = createInitialDocument();
-    expect(doc.schemaVersion).toBe(3);
+    expect(doc.schemaVersion).toBe(4);
     expect(Object.keys(doc)).toEqual(['schemaVersion', 'units', 'room', 'items', 'openings', 'obstacles']);
     expect(doc.openings).toEqual([]);
     expect(doc.obstacles).toEqual([]);
@@ -43,6 +43,13 @@ describe('catalogue tables', () => {
     for (const k of KINDS) {
       expect(PARTS[k].length).toBeGreaterThanOrEqual(1);
       expect(LOOKS[k]).toBeDefined();
+    }
+  });
+
+  it('draws the dresser, nightstand and TV stand like the box until the parts kit replaces both tables', () => {
+    for (const k of ['dresser', 'nightstand', 'tvstand'] as const) {
+      expect(PARTS[k]).toEqual(PARTS.box);
+      expect(LOOKS[k]).toEqual(LOOKS.box);
     }
   });
 

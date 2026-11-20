@@ -15,7 +15,8 @@ export const SAMPLE_LINKS: { sofa: string; shelf: string; unknown: string } = {
   unknown: 'https://market.example/item/48213',
 };
 
-type CatalogueKind = Exclude<Kind, 'box'>;
+/** The kinds the mock catalogue knows; the box and the kinds added with the furniture recipe have no row. */
+type CatalogueKind = Exclude<Kind, 'box' | 'dresser' | 'nightstand' | 'tvstand'>;
 type ModelTemplate = Omit<ItemModel, 'assetUrl'>;
 
 interface CatalogueRow {

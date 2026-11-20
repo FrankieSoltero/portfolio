@@ -37,9 +37,31 @@ describe('modelKey', () => {
     ['d', (i) => ({ ...i, d: i.d + 1 })],
     ['h', (i) => ({ ...i, h: i.h + 1 })],
     ['model.assetUrl', (i) => ({ ...i, model: { ...i.model, assetUrl: 'https://cdn.example/bed.glb' } })],
+    ['style.headboard', (i) => ({ ...i, style: { ...i.style, headboard: 'tall' } })],
+    ['style.base', (i) => ({ ...i, style: { ...i.style, base: 'storage' } })],
+    ['colours.main', (i) => ({ ...i, colours: { ...i.colours, main: '#2f4057' } })],
+    ['colours.accent', (i) => ({ ...i, colours: { ...i.colours, accent: '#b08d57' } })],
   ])('changes when %s changes', (_field, change) => {
     const bed = seedBed();
     expect(modelKey(change(bed))).not.toBe(modelKey(bed));
+  });
+
+  it('does not depend on the order of the style keys', () => {
+    const bed = seedBed();
+    const reversed = Object.fromEntries(Object.entries(bed.style).reverse());
+    expect(Object.keys(reversed)).not.toEqual(Object.keys(bed.style));
+    expect(modelKey({ ...bed, style: reversed })).toBe(modelKey(bed));
+  });
+
+  it('tells a style value apart from a key: a value cannot pose as the next key', () => {
+    const bed = seedBed();
+    expect(modelKey({ ...bed, style: { a: 'b,c' } })).not.toBe(modelKey({ ...bed, style: { a: 'b', c: '' } }));
+  });
+
+  it('keeps the main and accent colours apart', () => {
+    const bed = seedBed();
+    const swapped = { ...bed, colours: { main: bed.colours.accent, accent: bed.colours.main } };
+    expect(modelKey(swapped)).not.toBe(modelKey(bed));
   });
 });
 

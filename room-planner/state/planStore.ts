@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
+import { defaultColours, defaultStyle } from '../domain/furniture/recipe';
 import { moveItem, placeItem, rotateItemBy, setItemAngle, shiftItem, storedAngle } from '../domain/geometry';
 import {
   moveObstacle,
@@ -85,8 +86,8 @@ export interface PlanState extends PlanDocument {
   /**
    * Appends the preview as a new unrotated item centred near the room's interior point, placed by
    * placeItem (the grid rule of a move, without the stop at the walls), its text capped by
-   * capProductText; returns its new id. When the plan already has CONFIG.maxItems items, changes
-   * nothing and returns null.
+   * capProductText, in its kind's default style and colours; returns its new id. When the plan
+   * already has CONFIG.maxItems items, changes nothing and returns null.
    */
   addItem(preview: ProductPreview): string | null;
   /**
@@ -274,6 +275,8 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
       y: 0,
       angle: 0,
       model: { ...preview.model },
+      style: defaultStyle(preview.kind),
+      colours: defaultColours(preview.kind),
     };
     const item = placeItem(unplaced, centre.x, centre.y, roomBounds(room), CONFIG.furnitureSnap);
     set((s) => ({ items: [...s.items, item] }));

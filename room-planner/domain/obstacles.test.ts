@@ -14,6 +14,7 @@ import {
   validateObstacles,
   type ObstaclesResult,
 } from './obstacles';
+import { defaultColours, defaultStyle } from './furniture/recipe';
 import { moveItem } from './geometry';
 import { signedArea } from './polygon';
 import { footprintCorners } from './shape';
@@ -205,6 +206,7 @@ describe('moveObstacle', () => {
     const item: Item = {
       id: 'i', kind: 'box', name: 'n', host: '', sourceUrl: null, price: null,
       w: 0, d: 0, h: 10, x: 0, y: 0, angle: 0, model: { tier: 'box', label: '', assetUrl: null },
+      style: defaultStyle('box'), colours: defaultColours('box'),
     };
     for (const [w, d, angle] of [[24, 25, 0], [24, 25, 90], [24, 25, 180], [24, 25, 270], [20, 11, 30], [7.5, 13, 135]]) {
       for (const [from, to] of [[[30, 30], [30, 30]], [[72, 84], [40.37, 61.5]], [[10, 160], [-5, 170]]]) {

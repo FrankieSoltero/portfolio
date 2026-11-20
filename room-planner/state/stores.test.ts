@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { createInitialDocument } from '../domain/catalog';
+import { defaultColours, defaultStyle } from '../domain/furniture/recipe';
 import { findConflicts, findPlanIssues } from '../domain/conflicts';
 import { addObstacle, newObstacle, OBSTACLE_PROBLEM_TEXT } from '../domain/obstacles';
 import { addOpening, OPENING_PROBLEM_TEXT } from '../domain/openings';
@@ -128,7 +129,7 @@ describe('planStore', () => {
   });
 
   it('starts with no openings and no obstacles', () => {
-    expect(freshPlan.schemaVersion).toBe(3);
+    expect(freshPlan.schemaVersion).toBe(4);
     expect(freshPlan.openings).toEqual([]);
     expect(freshPlan.obstacles).toEqual([]);
   });
@@ -241,6 +242,15 @@ describe('planStore', () => {
     // Centred on interiorPoint(outline), the seed room's centre; 84 × 36 keeps it on the grid.
     expect(added).toMatchObject({ x: 72, y: 84 });
     expect(added.model).not.toBe(SOFA.model);
+  });
+
+  it('addItem gives the new item its kind’s default style and colours', () => {
+    const id = req(usePlanStore.getState().addItem(SOFA) ?? undefined, 'added id');
+    const added = req(usePlanStore.getState().items.find((i) => i.id === id), 'added item');
+    expect(added.style).toEqual(defaultStyle('sofa'));
+    expect(added.colours).toEqual(defaultColours('sofa'));
+    const desk = req(usePlanStore.getState().addItem({ ...SOFA, kind: 'desk' }) ?? undefined, 'added desk');
+    expect(usePlanStore.getState().items.find((i) => i.id === desk)).toMatchObject({ style: defaultStyle('desk'), colours: defaultColours('desk') });
   });
 
   it('addItem with an odd width and depth puts the footprint min corner on the 1 in grid', () => {
@@ -1933,6 +1943,7 @@ describe('wall slide and length actions', () => {
     const chair: Item = {
       id: 'chair', kind: 'chair', name: 'Chair', host: 'shop.example', sourceUrl: null, price: null,
       w: 20, d: 16, h: 30, x: 72, y: 10, angle: 0, model: { tier: 'box', label: 'Box', assetUrl: null },
+      style: defaultStyle('chair'), colours: defaultColours('chair'),
     };
     withRoom(R, { items: [chair] });
     expect(findConflicts(usePlanStore.getState().items, usePlanStore.getState().room).chair).toBeUndefined();

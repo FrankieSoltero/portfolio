@@ -8,6 +8,10 @@ export const PARTS: Record<Kind, readonly PartRect[]> = {
   desk: [[0,1,0,1,.93,1],[.02,.06,.06,.94,0,.93],[.94,.98,.06,.94,0,.93]],
   table: [[0,1,0,1,.82,1],[.06,.12,.1,.9,0,.82],[.88,.94,.1,.9,0,.82]],
   shelf: [[0,1,0,1,0,1]],
+  // The dresser, nightstand and TV stand are drawn like the box until the parts kit replaces this table.
+  dresser: [[0,1,0,1,0,1]],
+  nightstand: [[0,1,0,1,0,1]],
+  tvstand: [[0,1,0,1,0,1]],
   rug: [[0,1,0,1,0,1]],
   box: [[0,1,0,1,0,1]],
 };
@@ -20,6 +24,9 @@ export const LOOKS: Record<Kind, { main?: string; soft?: string; wood?: string; 
   desk: { wood: '#b98d5e', metal: '#2b2b2d' },
   table: { wood: '#6b4a33' },
   shelf: { wood: '#ddd8ce' },
+  dresser: { main: '#c9ccd1' },
+  nightstand: { main: '#c9ccd1' },
+  tvstand: { main: '#c9ccd1' },
   rug: { main: '#c9b8a3', soft: '#ded2c2' },
   box: { main: '#c9ccd1' },
 };
@@ -30,7 +37,7 @@ export const BOOK_COLOURS = ['#7c8a96', '#b9a48a', '#5f6b5c', '#a2584a', '#d8d2c
 /** The starting plan shown on first load and after Reset: the room with no furniture. Returns a fresh object every call. */
 export function createInitialDocument(): PlanDocument {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     units: 'ft',
     room: {
       outline: [{ id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 }],

@@ -2,6 +2,7 @@
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
+import { defaultColours, defaultStyle } from '../domain/furniture/recipe';
 import { newObstacle } from '../domain/obstacles';
 import { parsePlan } from '../domain/planSchema';
 import type { Item, PlanDocument } from '../domain/types';
@@ -82,6 +83,7 @@ function item(id: string, patch: Partial<Item> = {}): Item {
     id, kind: 'bed', name: 'Low platform bed, queen', host: 'shop.example', sourceUrl: null, price: 890,
     w: 64, d: 85, h: 38, x: 72, y: 42.5, angle: 0,
     model: { tier: 'retailer', label: '3D model from retailer', assetUrl: null },
+    style: defaultStyle('bed'), colours: defaultColours('bed'),
     ...patch,
   };
 }
