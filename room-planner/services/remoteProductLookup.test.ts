@@ -127,6 +127,26 @@ describe('remoteProductLookup: the request', () => {
       expect(fetch.mock.calls[0][1]?.body).toBe(JSON.stringify({ url: 'https://www.ikea.com/us/en/p/x/?a=1' }));
     },
   );
+
+  it.each(['http://www.ikea.com/us/en/p/x/', 'http://www.ikea.com:80/us/en/p/x/', 'HTTP://www.ikea.com/us/en/p/x/'])(
+    'upgrades an http shop link to https, posts it and keeps it as the source link: %s',
+    async (raw) => {
+      const { fetch, lookup } = setUp();
+      const preview = await lookup.lookup(raw);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0][1]?.body).toBe(JSON.stringify({ url: 'https://www.ikea.com/us/en/p/x/' }));
+      expect(preview.sourceUrl).toBe('https://www.ikea.com/us/en/p/x/');
+    },
+  );
+
+  it.each(['http://www.ikea.com:8080/x', 'http://www.ikea.com:443/x'])(
+    'refuses an http shop link with its own port as unsupported, with no request: %s',
+    async (raw) => {
+      const { fetch, lookup } = setUp();
+      await expectLookupError(lookup.lookup(raw), 'unsupported_shop');
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('remoteProductLookup: errors from the route', () => {
@@ -220,6 +240,38 @@ describe('remoteProductLookup: aborting', () => {
     const samplePhoto = vi.fn<RemoteLookupDeps['samplePhoto']>(async () => {
       controller.abort();
       return NO_COLOURS;
+    });
+    const lookup = createRemoteProductLookup({ fetch, samplePhoto });
+    const err = await rejection(lookup.lookup(LINK, { signal: controller.signal }));
+    expect(err).not.toBeInstanceOf(LookupError);
+    expect((err as DOMException).name).toBe('AbortError');
+  });
+
+  it('lets the abort error through when the signal aborts while an error answer is read', async () => {
+    const controller = new AbortController();
+    const signal = controller.signal;
+    // A body that never ends but errors with the signal's reason on an abort, as fetch's body does.
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) {
+        signal.addEventListener('abort', () => stream.error(signal.reason), { once: true });
+      },
+    });
+    const fetch = vi.fn<RemoteLookupDeps['fetch']>(async () => new Response(body, { status: 502 }));
+    const lookup = createRemoteProductLookup({ fetch, samplePhoto: vi.fn() });
+    const pending = rejection(lookup.lookup(LINK, { signal }));
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    controller.abort();
+    const err = await pending;
+    expect(err).not.toBeInstanceOf(LookupError);
+    expect(err).toBe(signal.reason);
+  });
+
+  it('rejects with the abort error when the photo sampler rejects after an abort', async () => {
+    const controller = new AbortController();
+    const fetch = vi.fn<RemoteLookupDeps['fetch']>(async () => jsonResponse(200, fields()));
+    const samplePhoto = vi.fn<RemoteLookupDeps['samplePhoto']>(async () => {
+      controller.abort();
+      throw new Error('photo load failed');
     });
     const lookup = createRemoteProductLookup({ fetch, samplePhoto });
     const err = await rejection(lookup.lookup(LINK, { signal: controller.signal }));
@@ -350,6 +402,14 @@ describe('remoteProductLookup: colours', () => {
     expect(preview.colours).toEqual(defaultColours('sofa'));
   });
 
+  it('treats a photo sampler that rejects as giving no colours', async () => {
+    const { samplePhoto, lookup } = setUp();
+    samplePhoto.mockRejectedValueOnce(new Error('photo load failed'));
+    const preview = await lookup.lookup(LINK);
+    expect(samplePhoto).toHaveBeenCalledTimes(1);
+    expect(preview.colours).toEqual(defaultColours('sofa'));
+  });
+
   it('uses the default colours of the kind when the photo gives none', async () => {
     const { lookup } = setUp();
     const preview = await lookup.lookup(LINK);
@@ -359,6 +419,7 @@ describe('remoteProductLookup: colours', () => {
 
 describe('remoteProductLookup: text caps', () => {
   it('passes the name, host and link through capProductText', async () => {
+    vi.mocked(capProductText).mockClear();
     const { lookup } = setUp();
     await lookup.lookup(LINK);
     expect(capProductText).toHaveBeenCalledWith({ name: SOFA_NAME, host: 'ikea.com', sourceUrl: LINK });
@@ -370,10 +431,11 @@ describe('remoteProductLookup: text caps', () => {
     expect((await lookup.lookup(LINK)).name).toBe(name);
   });
 
-  it('refuses a link too long to store as invalid_url', async () => {
+  it('refuses a link too long to store as invalid_url, with no request', async () => {
     const long = `https://www.ikea.com/us/en/p/${'a'.repeat(3000)}`;
-    const { lookup } = setUp();
+    const { fetch, lookup } = setUp();
     await expectLookupError(lookup.lookup(long), 'invalid_url');
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

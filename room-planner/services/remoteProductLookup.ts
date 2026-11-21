@@ -6,6 +6,7 @@ import {
   recipeColours,
   styleFromText,
 } from '../domain/furniture/fromProduct';
+import type { PhotoColours } from '../domain/furniture/photoColours';
 import { TYPICAL_SIZE } from '../domain/furniture/recipe';
 import type { ProductPreview } from '../domain/types';
 import { isLookupErrorCode, LOOKUP_PATH, parseProductFields, type ProductFields } from '../lookup/contract';
@@ -44,8 +45,8 @@ async function readJson(response: Response, signal: AbortSignal | undefined): Pr
   }
 }
 
-/** The error code an error answer names, or `unavailable` when it names no known one. */
-function errorCodeOf(body: unknown): LookupError {
+/** The error an error answer names, or `unavailable` when it names no known code. */
+function errorFromBody(body: unknown): LookupError {
   const code = typeof body === 'object' && body !== null ? (body as { error?: unknown }).error : undefined;
   return new LookupError(isLookupErrorCode(code) ? code : 'unavailable');
 }
@@ -74,7 +75,7 @@ async function requestFields(
     throw new LookupError('unavailable');
   }
   const body = await readJson(response, signal);
-  if (!response.ok) throw errorCodeOf(body);
+  if (!response.ok) throw errorFromBody(body);
   const fields = parseProductFields(body);
   if (fields === null) throw new LookupError('unavailable');
   return fields;
@@ -94,13 +95,32 @@ async function pieceColours(
   let main = mainColourFromName(fields.name);
   let accent = accentColourFromText(`${fields.name} ${fields.description}`, main);
   if (fields.imageUrl !== null && (main === null || accent === null)) {
-    const photo = await samplePhoto(fields.imageUrl, { signal });
+    let photo: PhotoColours;
+    try {
+      photo = await samplePhoto(fields.imageUrl, { signal });
+    } catch {
+      // The sampler promises never to reject; if it does anyway, the photo simply gives no colours.
+      photo = { main: null, accent: null };
+    }
     // The sampler gives no colours rather than rejecting on an abort, so the abort is raised here.
     signal?.throwIfAborted();
     if (main === null) main = photo.main;
     if (accent === null && photo.accent !== null && photo.accent !== main) accent = photo.accent;
   }
   return recipeColours(kind, main, accent);
+}
+
+/**
+ * A normalised shop link in the `https` form the lookup route accepts. An `http` link is upgraded
+ * to `https`; one with its own port is refused as `unsupported_shop`, because the route refuses
+ * ports. (`new URL` drops a default port such as `:80`, so only a non-default one counts.)
+ */
+function httpsLink(normalised: string): string {
+  const parsed = new URL(normalised);
+  if (parsed.protocol !== 'http:') return normalised;
+  if (parsed.port !== '') throw new LookupError('unsupported_shop');
+  parsed.protocol = 'https:';
+  return parsed.href;
 }
 
 /**
@@ -116,11 +136,16 @@ export function createRemoteProductLookup(deps?: Partial<RemoteLookupDeps>): Pro
       const signal = opts?.signal;
       const parsed = parseProductUrl(url);
       if (shopForHost(parsed.host) === null) throw new LookupError('unsupported_shop');
+      const link = httpsLink(parsed.url);
+      // A link too long for a plan to store is refused before any request is made.
+      if (capProductText({ name: '', host: parsed.host, sourceUrl: link }).sourceUrl === null) {
+        throw new LookupError('invalid_url');
+      }
 
-      const fields = await requestFields(fetchFn, parsed.url, signal);
+      const fields = await requestFields(fetchFn, link, signal);
 
-      const text = capProductText({ name: fields.name, host: parsed.host, sourceUrl: parsed.url });
-      // The route refuses a link longer than a plan stores, so this only guards against a bad answer.
+      const text = capProductText({ name: fields.name, host: parsed.host, sourceUrl: link });
+      // Already checked above; this narrows the type and guards against a change to the caps.
       if (text.sourceUrl === null) throw new LookupError('invalid_url');
 
       const foundKind = kindFromName(fields.name);
