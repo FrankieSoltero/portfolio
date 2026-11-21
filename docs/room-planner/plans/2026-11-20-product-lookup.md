@@ -60,6 +60,34 @@ run two builds at once, they share `.next`).
 - Rollback: the change is additive and the plan format does not move, so reverting the merge
   commit restores the previous site with no effect on saved plans or share links.
 
+## Amendments
+
+**Amendment 1 (2026-11-20, after the Task 8 review).** The word lists in Task 8 were read
+literally, so common shop spellings matched nothing (`3-Seater Sofa`, `5 Tier Bookshelf`,
+`Bar Stools`, `Area Rugs`, `TV-Stand`). The spec gives the lists as examples, so Task 8 is
+widened as follows; everything else in Task 8 stands.
+
+1. In every phrase of two or more words, in every table of Task 8 (kind, style, main colour,
+   accent), the words may be joined by a space or a hyphen (`tv-stand`, `night-stand`,
+   `light-gray`, `mid century`).
+2. Every kind word that is a singular noun also matches its regular plural: `s` added
+   (`rugs`, `sofas`, `nightstands`, `tv stands`, `dressers`, `desks`, `bookcases`, `stools`,
+   `recliners`, `armchairs`, `loveseats`, `sectionals`, `futons`, `settees`, `carpets`,
+   `daybeds`, `bed frames`, and the `… table`/`… chair` phrases) and `couches`,
+   `bookshelves`. Two words are added to kind row 12: `barstool` and `bar stool`.
+3. Sofa seats: `N seat`, `N-seat`, `N seater`, `N-seater`, with an optional final `s`, where N
+   is `2`–`5` or `two`–`five`; `loveseat` still means 2.
+4. Shelf count: `N shelf`, `N-shelf`, `N shelves`, `N-shelves`, `N tier`, `N-tier`, `N tiers`,
+   `N-tiers` (N one digit, clamped to 2..8).
+5. Table lower shelf: also `shelves`, and `N tier`/`N-tier`/`N tiers` for any digit N.
+6. Desk: `no drawer`, `without drawer` (singular) also set drawers none. Nightstand:
+   `no drawer`, `no drawers`, `without drawer(s)` set drawers 0 and override the plain
+   `drawer` row.
+7. Known limits, not fixed here and listed in the docs task: broad words in the description
+   can set a style the product does not have (`office`, `round`, `open`); accessories named
+   after furniture (`bed sheet set`, `bedside lamp`) are read as that furniture. The preview
+   card lets the visitor change type and every option.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
