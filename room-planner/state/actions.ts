@@ -1,4 +1,5 @@
 import { CONFIG } from '../config';
+import { defaultStyle, KIND_ORDER } from '../domain/furniture/recipe';
 import { addObstacle, newObstacle, updateObstacle } from '../domain/obstacles';
 import { addOpening, openingSpan, slideOpening, updateOpening } from '../domain/openings';
 import {
@@ -16,7 +17,9 @@ import {
   wallsOf,
 } from '../domain/outline';
 import { interiorPoint } from '../domain/polygon';
-import type { Corner, Kind, Obstacle, Point } from '../domain/types';
+import type { Corner, Kind, Obstacle, Point, ProductPreview } from '../domain/types';
+import { LookupError, parseProductUrl, type ParsedProductUrl, type ProductLookup } from '../services/productLookup';
+import { remoteProductLookup } from '../services/remoteProductLookup';
 import { ROOM_PROBLEM_TEXT, type RoomProblem, usePlanStore } from './planStore';
 import { useUiStore } from './uiStore';
 
@@ -42,16 +45,143 @@ const PLAN_FULL_NOTICE = 'This plan is full. Remove a piece to add another.';
 
 /**
  * Adds a piece of `kind`, selects it and returns its id; null when the plan is full, in which case
- * the notice 'This plan is full. Remove a piece to add another.' is shown.
+ * the notice 'This plan is full. Remove a piece to add another.' is shown. When a failed lookup left
+ * a pending link, the piece gets that link and host, the pending link is cleared and the lookup is
+ * set idle; a full plan keeps the pending link for the next try.
  */
 export function addFurnitureOfKind(kind: Kind): string | null {
-  const id = usePlanStore.getState().addFurniture(kind);
+  const { pendingLink } = useUiStore.getState();
+  const plan = usePlanStore.getState();
+  const id =
+    pendingLink === null
+      ? plan.addFurniture(kind)
+      : plan.addFurnitureFrom({ kind, sourceUrl: pendingLink.url, host: pendingLink.host });
   if (id === null) {
     useUiStore.getState().setNotice(PLAN_FULL_NOTICE);
     return null;
   }
+  if (pendingLink !== null) {
+    useUiStore.getState().setPendingLink(null);
+    useUiStore.getState().setLookup({ status: 'idle' });
+  }
   useUiStore.getState().select(id);
   return id;
+}
+
+/**
+ * The controller of the lookup now running, or null when none is. Starting a lookup or dismissing
+ * it aborts this one; a call whose controller is no longer this one writes nothing.
+ */
+let activeLookup: AbortController | null = null;
+
+/**
+ * True when `err` is the error a fetch or signal raises on an abort. Checked by name, because a
+ * DOMException is not an Error everywhere (it is not under jsdom).
+ */
+function isAbortError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError';
+}
+
+/**
+ * Looks up the product behind the pasted link `raw` with `lookup` (the site's lookup route by
+ * default), aborting any lookup still running. The lookup goes loading, then preview (clearing the
+ * pending link) or error. A link that does not parse is `invalid_url` and makes no request; any other
+ * failure keeps the parsed link as the pending link, so the next piece added by type carries it. An
+ * error that is not a LookupError counts as `unavailable`. A superseded or dismissed call changes
+ * nothing, an abort is swallowed, and the returned promise never rejects. The link is never logged.
+ */
+export async function lookupProduct(raw: string, lookup: ProductLookup = remoteProductLookup): Promise<void> {
+  activeLookup?.abort();
+  activeLookup = null;
+  const ui = useUiStore.getState();
+  let link: ParsedProductUrl;
+  try {
+    link = parseProductUrl(raw);
+  } catch {
+    ui.setPendingLink(null);
+    ui.setLookup({ status: 'error', code: 'invalid_url' });
+    return;
+  }
+
+  const controller = new AbortController();
+  activeLookup = controller;
+  ui.setPendingLink(null);
+  ui.setLookup({ status: 'loading' });
+  try {
+    const preview = await lookup.lookup(link.url, { signal: controller.signal });
+    if (activeLookup !== controller) return;
+    activeLookup = null;
+    useUiStore.getState().setPendingLink(null);
+    useUiStore.getState().setLookup({ status: 'preview', preview });
+  } catch (err) {
+    if (activeLookup !== controller) return;
+    activeLookup = null;
+    if (isAbortError(err)) return;
+    const code = err instanceof LookupError ? err.code : 'unavailable';
+    useUiStore.getState().setPendingLink(code === 'invalid_url' ? null : { url: link.url, host: link.host });
+    useUiStore.getState().setLookup({ status: 'error', code });
+  }
+}
+
+/** True when `value` is a size a piece may have: finite and within [CONFIG.itemDimMin, CONFIG.itemDimMax]. */
+function isPieceSize(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value) && value >= CONFIG.itemDimMin && value <= CONFIG.itemDimMax;
+}
+
+/**
+ * Changes the shown preview before it is placed. Each size is used only when finite and within
+ * [CONFIG.itemDimMin, CONFIG.itemDimMax] (`sizesFound` is left as it was); a kind other than the
+ * preview's takes that kind's default style, keeps the colours, name and sizes, and marks the kind as
+ * found. Invalid fields are ignored one by one. No-op when no preview is shown.
+ */
+export function updatePreview(patch: { kind?: Kind; w?: number; d?: number; h?: number }): void {
+  const current = useUiStore.getState().lookup;
+  if (current.status !== 'preview') return;
+  const next: ProductPreview = { ...current.preview };
+  for (const key of ['w', 'd', 'h'] as const) {
+    const value = patch[key];
+    if (isPieceSize(value)) next[key] = value;
+  }
+  const { kind } = patch;
+  if (kind !== undefined && kind !== next.kind && KIND_ORDER.includes(kind)) {
+    next.kind = kind;
+    next.style = defaultStyle(kind);
+    next.kindFound = true;
+  }
+  useUiStore.getState().setLookup({ status: 'preview', preview: next });
+}
+
+/**
+ * Adds the shown preview to the room as a piece with its kind, name, host, link, price, sizes, style
+ * and colours (never its photo address), selects it, sets the lookup idle and returns its id. When
+ * the plan is full it shows the plan-full notice, keeps the preview and returns null; with no preview
+ * shown it returns null and changes nothing.
+ */
+export function addPreviewToRoom(): string | null {
+  const current = useUiStore.getState().lookup;
+  if (current.status !== 'preview') return null;
+  const { kind, name, host, sourceUrl, price, w, d, h, style, colours } = current.preview;
+  const id = usePlanStore.getState().addFurnitureFrom({ kind, name, host, sourceUrl, price, w, d, h, style, colours });
+  if (id === null) {
+    useUiStore.getState().setNotice(PLAN_FULL_NOTICE);
+    return null;
+  }
+  useUiStore.getState().setLookup({ status: 'idle' });
+  useUiStore.getState().select(id);
+  return id;
+}
+
+/** Aborts any running lookup, sets the lookup idle and clears the pending link. */
+export function dismissLookup(): void {
+  activeLookup?.abort();
+  activeLookup = null;
+  useUiStore.getState().setPendingLink(null);
+  useUiStore.getState().setLookup({ status: 'idle' });
+}
+
+/** Clears the pending link, leaving the lookup as it is. */
+export function clearPendingLink(): void {
+  useUiStore.getState().setPendingLink(null);
 }
 
 /**
@@ -361,3 +491,4 @@ export function removeSelectedRoomThing(): void {
   recordRoomOutcome(null);
   useUiStore.getState().selectObstacle(null);
 }
+
