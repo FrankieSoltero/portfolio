@@ -52,11 +52,13 @@ function usePieceSnapshot({ kind, w, d, h, style, colours }: ProductPreview): st
  * photo, the name, shop host and price, a picture of the piece as the planner will draw it, and its
  * type and sizes, which can be corrected first. All product text is shown as plain text; the only
  * address used is the photo's, which the lookup has limited to the shops' photo hosts. A photo that
- * fails to load is left out. In room-edit mode Add to room is disabled, like the type buttons.
+ * fails to load is left out. Add to room is the main action (primary button); in room-edit mode it
+ * is disabled, like the type buttons.
  */
 export function ProductPreviewCard({ preview }: { preview: ProductPreview }): JSX.Element {
   const typeId = useId();
   const typeNoteId = useId();
+  const sizesNoteId = useId();
   const roomMode = useUiStore((s) => s.mode === 'room');
   const snapshot = usePieceSnapshot(preview);
   const [photoFailed, setPhotoFailed] = useState(false);
@@ -112,15 +114,24 @@ export function ProductPreviewCard({ preview }: { preview: ProductPreview }): JS
           </p>
         )}
       </div>
-      <div className="field-grid-3 product-card-dims">
+      <div
+        className="field-grid-3 product-card-dims"
+        role="group"
+        aria-label="Size"
+        aria-describedby={preview.sizesFound ? undefined : sizesNoteId}
+      >
         <DimInput label="Width" stored={preview.w} {...range} onValue={(w) => updatePreview({ w })} />
         <DimInput label="Depth" stored={preview.d} {...range} onValue={(d) => updatePreview({ d })} />
         <DimInput label="Height" stored={preview.h} {...range} onValue={(h) => updatePreview({ h })} />
       </div>
-      {!preview.sizesFound && <p className="note">Sizes not found: check these.</p>}
+      {!preview.sizesFound && (
+        <p id={sizesNoteId} className="note">
+          Sizes not found: check these.
+        </p>
+      )}
       {preview.sizeNote !== null && <p className="note">{preview.sizeNote}</p>}
       <div className="product-card-actions">
-        <button type="button" className="btn" disabled={roomMode} onClick={() => addPreviewToRoom()}>
+        <button type="button" className="btn btn-primary" disabled={roomMode} onClick={() => addPreviewToRoom()}>
           Add to room
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => dismissLookup()}>

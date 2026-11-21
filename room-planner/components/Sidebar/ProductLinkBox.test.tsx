@@ -6,8 +6,8 @@ import type { ProductPreview } from '../../domain/types';
 import { isTextField } from '../../hooks/textField';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { LOOKUP_MESSAGES, type LookupErrorCode } from '../../services/productLookup';
-import { addPreviewToRoom, clearPendingLink, dismissLookup, lookupProduct } from '../../state/actions';
-import { clearHistory } from '../../state/historyStore';
+import { addFurnitureOfKind, addPreviewToRoom, clearPendingLink, dismissLookup, lookupProduct } from '../../state/actions';
+import { clearHistory, redo, undo } from '../../state/historyStore';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { furnishedDocument } from '../../test/fixtures';
@@ -188,6 +188,92 @@ describe('ProductLinkBox', () => {
     });
     expect(linkInput().value).toBe(LINK);
     act(() => dismissLookup());
+    expect(linkInput().value).toBe(LINK);
+  });
+
+  it('Enter in the input while a lookup is loading starts a new lookup with the current text; the button stays disabled', async () => {
+    const user = userEvent.setup();
+    render(<ProductLinkBox />);
+    await user.type(linkInput(), LINK);
+    act(() => useUiStore.getState().setLookup({ status: 'loading' }));
+    await user.type(linkInput(), 'x{Enter}');
+    expect(lookupProduct).toHaveBeenCalledTimes(1);
+    expect(lookupProduct).toHaveBeenCalledWith(LINK + 'x');
+    expect(lookUpButton()).toBeDisabled();
+    expect(lookUpButton()).toHaveTextContent(/^Reading the page…$/);
+  });
+
+  it('Enter while loading with a blank input does nothing', async () => {
+    const user = userEvent.setup();
+    render(<ProductLinkBox />);
+    act(() => useUiStore.getState().setLookup({ status: 'loading' }));
+    await user.type(linkInput(), '  {Enter}');
+    expect(lookupProduct).not.toHaveBeenCalled();
+  });
+
+  it('while an error is shown, the input is marked invalid and described by the error', async () => {
+    const user = userEvent.setup();
+    render(<ProductLinkBox />);
+    await user.type(linkInput(), LINK);
+    expect(linkInput()).not.toHaveAttribute('aria-invalid');
+    act(() => useUiStore.getState().setLookup({ status: 'error', code: 'blocked' }));
+    const alert = screen.getByRole('alert');
+    expect(alert.id).not.toBe('');
+    expect(linkInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(linkInput().getAttribute('aria-describedby')?.split(' ')).toContain(alert.id);
+    expect(linkInput()).toHaveAccessibleDescription(expect.stringContaining(LOOKUP_MESSAGES.blocked));
+    act(() => useUiStore.getState().setLookup({ status: 'idle' }));
+    expect(linkInput()).not.toHaveAttribute('aria-invalid');
+    expect(linkInput()).toHaveAccessibleDescription('Works with IKEA, Amazon and Wayfair.');
+  });
+
+  it('clears the input when adding a piece by type uses up the pending link', async () => {
+    const user = userEvent.setup();
+    render(<ProductLinkBox />);
+    await user.type(linkInput(), LINK);
+    act(() => {
+      useUiStore.getState().setPendingLink({ url: LINK, host: 'ikea.com' });
+      useUiStore.getState().setLookup({ status: 'error', code: 'blocked' });
+    });
+    act(() => {
+      addFurnitureOfKind('desk');
+    });
+    expect(usePlanStore.getState().items[0]?.sourceUrl).toBe(LINK);
+    expect(linkInput().value).toBe('');
+  });
+
+  it('keeps text typed after the pending link was set when adding by type uses up the link', async () => {
+    const user = userEvent.setup();
+    render(<ProductLinkBox />);
+    await user.type(linkInput(), LINK);
+    act(() => {
+      useUiStore.getState().setPendingLink({ url: LINK, host: 'ikea.com' });
+      useUiStore.getState().setLookup({ status: 'error', code: 'blocked' });
+    });
+    await user.type(linkInput(), 'x');
+    act(() => {
+      addFurnitureOfKind('desk');
+    });
+    expect(linkInput().value).toBe(LINK + 'x');
+  });
+
+  it('keeps the input when another piece with the same link appears, or undo and redo run, while the preview is open', async () => {
+    const user = userEvent.setup();
+    render(<ProductLinkBox />);
+    await user.type(linkInput(), LINK);
+    act(() => useUiStore.getState().setLookup({ status: 'preview', preview: preview() }));
+    act(() => {
+      usePlanStore.getState().addFurnitureFrom({ kind: 'sofa', sourceUrl: LINK, host: 'ikea.com' });
+    });
+    expect(usePlanStore.getState().items).toHaveLength(1);
+    expect(linkInput().value).toBe(LINK);
+    act(() => {
+      undo();
+    });
+    act(() => {
+      redo();
+    });
+    expect(usePlanStore.getState().items).toHaveLength(1);
     expect(linkInput().value).toBe(LINK);
   });
 

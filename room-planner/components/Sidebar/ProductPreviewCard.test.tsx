@@ -203,6 +203,24 @@ describe('ProductPreviewCard', () => {
     expect(screen.queryByText('Sizes not found: check these.')).toBeNull();
   });
 
+  it('describes the Size group of the three inputs with the not-found line only when the sizes were not found', () => {
+    const view = renderCard(preview({ sizesFound: false }));
+    const group = screen.getByRole('group', { name: 'Size' });
+    expect(within(group).getAllByRole('spinbutton')).toHaveLength(3);
+    const line = screen.getByText('Sizes not found: check these.');
+    expect(line.id).not.toBe('');
+    expect(group).toHaveAttribute('aria-describedby', line.id);
+    expect(group).toHaveAccessibleDescription('Sizes not found: check these.');
+    view.rerender(<ProductPreviewCard preview={preview({ sizesFound: true })} />);
+    expect(screen.getByRole('group', { name: 'Size' })).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('marks Add to room as the main action with the primary button style', () => {
+    renderCard(preview());
+    expect(screen.getByRole('button', { name: 'Add to room' })).toHaveClass('btn', 'btn-primary');
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('btn', 'btn-secondary');
+  });
+
   it('shows the size note as text when there is one', () => {
     renderCard(preview({ sizeNote: 'Sizes are for the 3-seat model.' }));
     expect(screen.getByText('Sizes are for the 3-seat model.')).toBeInTheDocument();

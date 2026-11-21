@@ -35,7 +35,9 @@
 .product-card-dims { min-width: 0; }
 .product-card-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
-/* The Type picker when the shop page did not say what the piece is. */
-.product-card .is-attention {
+/* The Type picker when the shop page did not say what the piece is. The selector outranks
+   industry.css's .input:hover and .input:focus-visible (0,2,0), so the highlight stays while the
+   picker is hovered or focused. */
+.product-card select.input.is-attention {
   border-color: var(--color-warning); background: var(--color-warning-100);
 }

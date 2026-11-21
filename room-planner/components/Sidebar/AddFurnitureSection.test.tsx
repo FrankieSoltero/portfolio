@@ -5,6 +5,7 @@ import { defaultColours, defaultStyle, KIND_LABELS, KIND_ORDER, TYPICAL_SIZE } f
 import type { ProductPreview } from '../../domain/types';
 import { LOOKUP_MESSAGES } from '../../services/productLookup';
 import { usePlanStore } from '../../state/planStore';
+import { addPreviewToRoom } from '../../state/actions';
 import { useUiStore } from '../../state/uiStore';
 import { AddFurnitureSection } from './AddFurnitureSection';
 
@@ -138,5 +139,57 @@ describe('AddFurnitureSection', () => {
     expect(screen.getByLabelText('Paste a product link')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Look up' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Add to room' })).toBeDisabled();
+  });
+
+  describe('focus', () => {
+    function linkInput(): HTMLElement {
+      return screen.getByLabelText('Paste a product link');
+    }
+
+    it('moves focus to the link input after Add to room closes the card', async () => {
+      useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+      render(<AddFurnitureSection />);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Add to room' }));
+      expect(document.querySelector('.product-card')).toBeNull();
+      expect(document.activeElement).toBe(linkInput());
+    });
+
+    it('moves focus to the link input after Cancel closes the card', async () => {
+      useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+      render(<AddFurnitureSection />);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(document.querySelector('.product-card')).toBeNull();
+      expect(document.activeElement).toBe(linkInput());
+    });
+
+    it('moves focus to the link input when clicking Look up puts the box into loading', async () => {
+      const user = userEvent.setup();
+      render(<AddFurnitureSection />);
+      await user.type(linkInput(), 'https://www.ikea.com/us/en/p/alder-sofa-12345678/');
+      await user.click(screen.getByRole('button', { name: 'Look up' }));
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Look up' }));
+      act(() => useUiStore.getState().setLookup({ status: 'loading' }));
+      expect(screen.getByRole('button', { name: 'Reading the page…' })).toBeDisabled();
+      expect(document.activeElement).toBe(linkInput());
+    });
+
+    it('leaves focus alone when it is on an unrelated element', () => {
+      useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+      render(
+        <>
+          <input aria-label="Elsewhere" />
+          <AddFurnitureSection />
+        </>,
+      );
+      const elsewhere = screen.getByLabelText('Elsewhere');
+      elsewhere.focus();
+      act(() => {
+        addPreviewToRoom();
+      });
+      expect(document.querySelector('.product-card')).toBeNull();
+      expect(document.activeElement).toBe(elsewhere);
+      act(() => useUiStore.getState().setLookup({ status: 'loading' }));
+      expect(document.activeElement).toBe(elsewhere);
+    });
   });
 });
