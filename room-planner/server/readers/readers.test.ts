@@ -29,6 +29,8 @@ function detailsRow(label: string, value: string): string {
 
 const WAYFAIR_PHOTO = 'https://assets.wfcdn.com/avif/im/04015086/compr-r85/3434/343463261/Jadier+66%22+Upholstered+Loveseat+Square+Sofa.jpg';
 const HOSTILE = '&lt;img src=x onerror=alert(1)&gt;';
+/** An apostrophe written as a JSON `\u` escape (backslash, `u`, `0027`), built at run time so it stays escaped in the page text. */
+const ESCAPED_APOSTROPHE = ['\\', 'u', '0027'].join('');
 
 describe('readWayfair on saved pages', () => {
   it('reads the Wayfair product page', () => {
@@ -42,6 +44,9 @@ describe('readWayfair on saved pages', () => {
       imageUrl: WAYFAIR_PHOTO,
       sizeNote: null,
     });
+    expect(fields?.description.startsWith('This loveseat creates an inviting spot to relax')).toBe(true);
+    expect(fields?.description).toContain('tufting');
+    expect(fields?.description.length).toBeLessThanOrEqual(600);
     expect(parseProductFields(fields)).toEqual(fields);
   });
 
@@ -87,10 +92,36 @@ describe('readWayfair fields', () => {
 
   it.each([
     ['escaped quotes', String.raw`Overall Dimensions\",\"value\":\"30\\\" H X 80\\\" W X 35\\\" D\",\"__typename\"`],
-    ['escaped apostrophes', String.raw`Overall Dimensions\",\"value\":\"30'' H X 80'' W X 35'' D\",\"__typename\"`],
+    ['escaped apostrophes', String.raw`Overall Dimensions\",\"value\":\"30${ESCAPED_APOSTROPHE}${ESCAPED_APOSTROPHE} H X 80${ESCAPED_APOSTROPHE}${ESCAPED_APOSTROPHE} W X 35${ESCAPED_APOSTROPHE}${ESCAPED_APOSTROPHE} D\",\"__typename\"`],
   ])('unescapes %s in the embedded data', (_case, data) => {
     const html = wayfairPage(`<h1 data-rtl-id="listingHeaderNameHeading">Sofa</h1><script>self.__next_f.push([1,"{\\"key\\":\\"${data}}"])</script>`);
     expect(readWayfair(html)).toMatchObject({ h: 30, w: 80, d: 35 });
+  });
+
+  it('reads \\u escapes in the embedded sizes', () => {
+    const inch = `${ESCAPED_APOSTROPHE}${ESCAPED_APOSTROPHE}`;
+    const data = String.raw`Overall Dimensions\",\"value\":\"32.3${inch} H X 65.8${inch} W X 32.3${inch} D\",\"__typename\"`;
+    expect(data).not.toContain("'");
+    const html = wayfairPage(`<h1 data-rtl-id="listingHeaderNameHeading">Sofa</h1><script>self.__next_f.push([1,"${data}"])</script>`);
+    expect(readWayfair(html)).toMatchObject({ h: 32.3, w: 65.8, d: 32.3, sizeNote: null });
+  });
+
+  it('reads the description from the embedded marketing copy, undoing its escapes', () => {
+    const data = String.raw`\"data\":{\"marketingCopy\":\"It${ESCAPED_APOSTROPHE}s a \\\"cloud\\\" sofa\\nwith tufting.\",\"listing\":{}}`;
+    expect(data).not.toContain("'");
+    const html = wayfairPage(`<h1 data-rtl-id="listingHeaderNameHeading">Sofa</h1><script>self.__next_f.push([1,"{${data}}"])</script>`);
+    expect(readWayfair(html)?.description).toBe('It\'s a "cloud" sofa with tufting.');
+  });
+
+  it('keeps marketing copy that has no closing quote within the read limit', () => {
+    const html = wayfairPage(`<h1 data-rtl-id="listingHeaderNameHeading">Sofa</h1>${String.raw`\"marketingCopy\":\"`}${'word '.repeat(1000)}`);
+    const description = readWayfair(html)?.description ?? '';
+    expect(description.startsWith('word word')).toBe(true);
+    expect(description.length).toBeLessThanOrEqual(600);
+  });
+
+  it('leaves the description empty when there is no marketing copy', () => {
+    expect(readWayfair(wayfairPage('<h1 data-rtl-id="listingHeaderNameHeading">Sofa</h1>'))?.description).toBe('');
   });
 
   it('leaves the sizes null when the embedded value never ends', () => {
@@ -148,6 +179,19 @@ describe('readAmazon fields', () => {
     expect(readAmazon(html)?.imageUrl).toBe('https://m.media-amazon.com/images/I/big.jpg');
   });
 
+  it('picks the largest data-a-dynamic-image entry among Amazon photo addresses only', () => {
+    const images = '{"__proto__":[9999,9999],"https://evil.example/huge.jpg":[5000,5000],"https://m.media-amazon.com/images/I/ok.jpg":[100,100]}'.replace(/"/g, '&quot;');
+    const html = amazonPage('Sofa', `<img id="landingImage" data-a-dynamic-image="${images}">`);
+    expect(readAmazon(html)?.imageUrl).toBe('https://m.media-amazon.com/images/I/ok.jpg');
+  });
+
+  it('cuts a title over 200 characters to 200', () => {
+    const title = `Sofa ${'x'.repeat(300)}`;
+    const name = readAmazon(amazonPage(title))?.name;
+    expect(name).toHaveLength(200);
+    expect(name).toBe(title.slice(0, 200));
+  });
+
   it('leaves the photo null when data-a-dynamic-image is not JSON', () => {
     expect(readAmazon(amazonPage('Sofa', '<img id="landingImage" data-a-dynamic-image="{not json">'))).toMatchObject({ name: 'Sofa', imageUrl: null });
   });
@@ -155,6 +199,35 @@ describe('readAmazon fields', () => {
   it('reads the price from corePriceDisplay_desktop_feature_div, skipping text not in US dollars', () => {
     const block = '<div id="corePriceDisplay_desktop_feature_div"><span class="a-price"><span class="a-offscreen">€9.00</span></span><span class="a-price"><span class="a-offscreen">$49.99</span></span></div>';
     expect(readAmazon(amazonPage('Sofa', block))?.price).toBe(49.99);
+  });
+
+  it('skips the struck-through List Price row and reads the price to pay', () => {
+    const block =
+      '<div id="corePrice_desktop"><table>' +
+      '<tr><td>List Price:</td><td><span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">$1,499.00</span><span aria-hidden="true">$1,499.00</span></span></td></tr>' +
+      '<tr><td>Price:</td><td><span class="a-price a-text-price a-size-medium apexPriceToPay"><span class="a-offscreen">$1,299.00</span></span></td></tr>' +
+      '</table></div>';
+    expect(readAmazon(amazonPage('Sofa', block))?.price).toBe(1299);
+  });
+
+  it.each([
+    ['data-a-strike="true"', '<span class="a-price" data-a-strike="true">'],
+    ['class a-text-price', '<span class="a-price a-text-price">'],
+  ])('skips a price struck through by %s and reads the next one', (_case, opener) => {
+    const block = `<div id="corePrice_desktop">${opener}<span class="a-offscreen">$1,499.00</span></span><span class="a-price"><span class="a-offscreen">$1,299.00</span></span></div>`;
+    expect(readAmazon(amazonPage('Sofa', block))?.price).toBe(1299);
+  });
+
+  it('returns no price when the only price is struck through', () => {
+    const block = '<div id="corePrice_desktop"><span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">$1,499.00</span></span></div>';
+    expect(readAmazon(amazonPage('Sofa', block))).toMatchObject({ name: 'Sofa', price: null });
+  });
+
+  it('prefers priceToPay over prices before it', () => {
+    const block =
+      '<div id="corePriceDisplay_desktop_feature_div"><span class="a-price"><span class="a-offscreen">$5.00</span></span>' +
+      '<span class="a-price priceToPay"><span class="a-offscreen">$1,299.00</span></span></div>';
+    expect(readAmazon(amazonPage('Sofa', block))?.price).toBe(1299);
   });
 
   it('ignores a price outside the price blocks', () => {

@@ -17,6 +17,9 @@ const AMAZON_PHOTO_HOST = 'm.media-amazon.com';
 /** The price blocks searched for the price, in order. */
 const PRICE_BLOCKS = ['#corePrice_desktop', '#corePriceDisplay_desktop_feature_div'];
 
+/** The prices Amazon marks as the one to pay; searched before any other price. */
+const PRICE_TO_PAY = '.priceToPay .a-offscreen, .apexPriceToPay .a-offscreen';
+
 /** The details table row labels that hold the sizes. */
 const SIZE_LABELS = ['Product Dimensions', 'Item Dimensions'];
 
@@ -54,8 +57,9 @@ function amazonPhoto(value: string): string | null {
 
 /**
  * The largest photo in `#landingImage`'s `data-a-dynamic-image`, a JSON object mapping each
- * address to its `[width, height]`. The entry with the largest width × height wins; null when the
- * attribute is missing, is not JSON, or has no usable entry.
+ * address to its `[width, height]`. Only entries whose address is an Amazon photo count, so a
+ * larger foreign or junk key cannot hide a valid one; of those, the largest width × height wins.
+ * Null when the attribute is missing, is not JSON, or has no usable entry.
  */
 function largestDynamicImage(root: HTMLElement): string | null {
   const attribute = root.querySelector('#landingImage')?.getAttribute('data-a-dynamic-image');
@@ -71,11 +75,13 @@ function largestDynamicImage(root: HTMLElement): string | null {
   let best: string | null = null;
   let bestArea = 0;
   for (const address of Object.keys(entries)) {
+    const photo = amazonPhoto(address);
+    if (!photo) continue;
     const size = entries[address];
     if (!Array.isArray(size) || typeof size[0] !== 'number' || typeof size[1] !== 'number') continue;
     const area = size[0] * size[1];
     if (Number.isFinite(area) && area > bestArea) {
-      best = address;
+      best = photo;
       bestArea = area;
     }
   }
@@ -91,17 +97,44 @@ function readPhoto(root: HTMLElement): string | null {
   return largestDynamicImage(root);
 }
 
-/** The first `.a-price .a-offscreen` in a core price block whose text starts with `$`, read as dollars. */
-function readPrice(root: HTMLElement): number | null {
+/**
+ * True when `element` sits inside a struck-through `.a-price` (the old "List Price"): one with
+ * `data-a-strike="true"` or class `a-text-price`, between `element` and `container`.
+ */
+function isStruckThrough(element: HTMLElement, container: HTMLElement): boolean {
+  for (let node = element.parentNode; node && node !== container; node = node.parentNode) {
+    if (!node.classList.contains('a-price')) continue;
+    if (node.getAttribute('data-a-strike') === 'true' || node.classList.contains('a-text-price')) return true;
+  }
+  return false;
+}
+
+/**
+ * The first element matching `selector` in the core price blocks whose text starts with `$` and
+ * that `keep` accepts, read as dollars; null when there is none.
+ */
+function firstDollars(root: HTMLElement, selector: string, keep: (element: HTMLElement, container: HTMLElement) => boolean): number | null {
   for (const block of PRICE_BLOCKS) {
     const container = root.querySelector(block);
     if (!container) continue;
-    for (const element of container.querySelectorAll('.a-price .a-offscreen')) {
+    for (const element of container.querySelectorAll(selector)) {
       const text = element.text.trim();
-      if (text.startsWith('$')) return dollars(text);
+      if (text.startsWith('$') && keep(element, container)) return dollars(text);
     }
   }
   return null;
+}
+
+/**
+ * The price in the core price blocks: the price Amazon marks as the one to pay (`.priceToPay` or
+ * `.apexPriceToPay`), else the first `.a-price .a-offscreen` that is not struck through. Only
+ * text that starts with `$` counts.
+ */
+function readPrice(root: HTMLElement): number | null {
+  return (
+    firstDollars(root, PRICE_TO_PAY, () => true) ??
+    firstDollars(root, '.a-price .a-offscreen', (element, container) => !isStruckThrough(element, container))
+  );
 }
 
 /** The `#feature-bullets` list item texts joined by a space. */

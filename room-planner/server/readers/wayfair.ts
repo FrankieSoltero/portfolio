@@ -7,7 +7,8 @@ import { canonicalUrl, finishFields, metaContent, parsePage } from './shared';
  * Reads a Wayfair product page. Wayfair publishes no JSON-LD Product, so the name, photo, price
  * and sizes come from the page markup: the listing heading (or `og:title`), `og:image`, the lead
  * price, and the "Overall Dimensions" line of the dimensions list, or of the page's embedded data
- * when the list is missing. A page whose canonical address has no `/pdp/` is not a product.
+ * when the list is missing. The description is the embedded marketing copy. A page whose
+ * canonical address has no `/pdp/` is not a product.
  */
 
 /** The shop name Wayfair adds to the end of `og:title`, longest form first. */
@@ -20,10 +21,16 @@ const OVERALL_LABELS = new Set(['Overall Dimensions', 'Overall']);
  * Where the overall sizes start in the page's embedded data. The data is JSON written inside a
  * JavaScript string, so its quotes appear escaped as `\"`.
  */
-const EMBEDDED_MARKER = String.raw`Overall Dimensions\",\"value\":\"`;
+const SIZES_MARKER = String.raw`Overall Dimensions\",\"value\":\"`;
 
-/** The most characters of embedded data read after the marker; a sizes line is far shorter. */
-const EMBEDDED_MAX = 300;
+/** The most raw characters of embedded data read for the sizes; a sizes line is far shorter. */
+const SIZES_MAX = 300;
+
+/** Where the marketing copy starts in the page's embedded data, escaped the same way. */
+const COPY_MARKER = String.raw`\"marketingCopy\":\"`;
+
+/** The most raw characters of embedded data read for the marketing copy. */
+const COPY_MAX = 1500;
 
 /** Text with each run of whitespace made one space and the ends trimmed. */
 function plain(text: string): string {
@@ -82,16 +89,16 @@ function readEscape(text: string, index: number): { char: string; length: number
 }
 
 /**
- * Reads `text` undoing one level of backslash escapes (`\"` to `"`, `\\` to `\`, `'` to
- * `'`). With `stopAtQuote`, reading ends at the first unescaped `"`, which closes a JSON string,
- * and null is returned when there is none; otherwise the whole text is read.
+ * Reads `text` undoing one level of backslash escapes: `\"` to `"`, `\\` to `\`, and `\u`
+ * with four hex digits to its character. With `stopAtQuote`, reading ends at the first unescaped
+ * `"`, which closes a JSON string. `closed` says whether that quote was found.
  */
-function unescapeText(text: string, stopAtQuote: boolean): string | null {
+function unescapeText(text: string, stopAtQuote: boolean): { text: string; closed: boolean } {
   let result = '';
   let i = 0;
   while (i < text.length) {
     const char = text[i];
-    if (stopAtQuote && char === '"') return result;
+    if (stopAtQuote && char === '"') return { text: result, closed: true };
     if (char === '\\') {
       const escape = readEscape(text, i);
       result += escape.char;
@@ -101,26 +108,28 @@ function unescapeText(text: string, stopAtQuote: boolean): string | null {
       i += 1;
     }
   }
-  return stopAtQuote ? null : result;
+  return { text: result, closed: false };
 }
 
 /**
- * The overall sizes line in the page's embedded data: the first value after
- * `Overall Dimensions\",\"value\":\"`. Only a bounded slice after the marker is read, so this
- * stays linear in the page size. The value is JSON inside a JavaScript string, so the string's
- * escapes are undone first and the JSON string is then read up to its closing quote.
+ * The first JSON string value after `marker` in the page's embedded data. Only `max` raw
+ * characters after the marker are read, so this stays linear in the page size. The value is JSON
+ * inside a JavaScript string, so the string's escapes are undone first and the JSON string is
+ * then read up to its closing quote. Null when the marker is missing, or when the value does not
+ * close within the slice and `acceptUnclosed` is false.
  */
-function embeddedSizes(html: string): string | null {
-  const start = html.indexOf(EMBEDDED_MARKER);
+function embeddedString(html: string, marker: string, max: number, acceptUnclosed: boolean): string | null {
+  const start = html.indexOf(marker);
   if (start === -1) return null;
-  const from = start + EMBEDDED_MARKER.length;
-  const json = unescapeText(html.slice(from, from + EMBEDDED_MAX), false) ?? '';
-  return unescapeText(json, true);
+  const from = start + marker.length;
+  const json = unescapeText(html.slice(from, from + max), false).text;
+  const value = unescapeText(json, true);
+  return value.closed || acceptUnclosed ? value.text : null;
 }
 
 /** Width, depth, height and size note from the dimensions list, else from the embedded data. */
 function readSizes(root: HTMLElement, html: string): Partial<ProductFields> {
-  const line = listedSizes(root) ?? embeddedSizes(html);
+  const line = listedSizes(root) ?? embeddedString(html, SIZES_MARKER, SIZES_MAX, false);
   const sizes = line === null ? null : parseDimensionLine(line);
   if (!sizes) return {};
   return { w: sizes.w, d: sizes.d, h: sizes.h, sizeNote: sizes.labelled ? null : SIZE_NOTE_UNLABELLED };
@@ -140,6 +149,7 @@ export function readWayfair(html: string): ProductFields | null {
     if (name === null) return null;
     return finishFields({
       name,
+      description: embeddedString(html, COPY_MARKER, COPY_MAX, true) ?? '',
       price: readPrice(root),
       imageUrl: metaContent(root, 'og:image'),
       ...readSizes(root, html),
