@@ -344,6 +344,142 @@ The live check is in
 The mistakes found while building it are in `mistakes-and-fixes.md` under
 "2026-11-20 — Furniture generator".
 
+## Product lookup (slice H)
+
+A visitor can paste a link to an IKEA, Amazon or Wayfair product. The site reads the page and fills
+in a furniture recipe, and the generator draws the piece. This is the site's first server route.
+The spec is [`specs/2026-11-18-product-lookup-design.md`](specs/2026-11-18-product-lookup-design.md)
+and the plan is [`plans/2026-11-20-product-lookup.md`](plans/2026-11-20-product-lookup.md)
+(Amendments 1 and 2). The plan stays at `schemaVersion` 4 and `Item` has no new field. The photo
+address is never saved, so a share link never makes a viewer's browser contact a shop.
+
+### The request path
+
+1. The visitor pastes a link into the link box (`room-planner/components/Sidebar/ProductLinkBox.tsx`)
+   and presses Look up.
+2. `room-planner/services/remoteProductLookup.ts` checks the link, upgrades an `http` shop link to
+   `https`, and sends `POST /api/room-planner/lookup` with the body `{ "url": "..." }`.
+3. The route (`app/api/room-planner/lookup/route.ts`) hands the request to `handleLookup` in
+   `room-planner/server/lookupHandler.ts`. It checks, in this order: the `Origin` header, the
+   content type and body size, the link, the shop list, the rate limit. Only then does it fetch.
+4. `fetchShopPage` (`room-planner/server/safeFetch.ts`) downloads the page under the rules below.
+5. The reader for that shop (`room-planner/server/readers/`, chosen by `readers/index.ts`) pulls out
+   the product fields. The handler checks them against the contract again and answers with the
+   fields only, never the page. A failure is answered `{ error }` with one of `invalid_url`,
+   `unsupported_shop`, `blocked`, `not_a_product`, `unavailable` or `rate_limited`.
+6. In the browser, `room-planner/domain/furniture/fromProduct.ts` turns the name and description
+   into a recipe by word rules. The main colour is a colour word in the name, or else the photo.
+   `room-planner/services/photoSampler.ts` draws the photo small on a hidden canvas and
+   `room-planner/domain/furniture/photoColours.ts` picks the colours from its pixels. If the photo
+   cannot be read, the type's default colours are used.
+7. `ProductPreviewCard.tsx` shows the photo, name, price and the piece, with Type and the three
+   sizes editable. Add to room places it like any other piece, selected, with its link and price.
+   After that it is an ordinary piece and one undo removes it.
+
+### File map
+
+- `room-planner/lookup/` — code shared by the browser and the server: `shops.ts` (the shop list and
+  `shopForHost`) and `contract.ts` (the answer's shape, the limits and the error codes).
+- `room-planner/server/` — server-only code, imported only by the route and by server tests:
+  `lookupHandler.ts`, `safeFetch.ts`, `rateLimit.ts`, `sizes.ts` and `readers/` (one reader per
+  shop, `shared.ts`, and saved real pages in `readers/fixtures/`).
+- `app/api/room-planner/lookup/route.ts` — binds the handler to `POST`. Node runtime, never cached.
+- `room-planner/domain/furniture/fromProduct.ts` and `photoColours.ts` — name to recipe, photo to
+  colours.
+- `room-planner/services/remoteProductLookup.ts` and `photoSampler.ts` — the browser's call to the
+  route and its reading of the photo's pixels.
+- `room-planner/components/Sidebar/ProductLinkBox.tsx` and `ProductPreviewCard.tsx` — the link box
+  and the preview.
+
+Nothing under `components`, `state`, `services`, `domain`, `hooks`, `three` or `view` may import
+from `room-planner/server/` or from `node:` modules.
+
+### Security rules of the route
+
+The danger is server-side request forgery: tricking a server into making requests to machines it
+should not reach. The route fetches a link a stranger typed, so every rule below limits where that
+fetch can go.
+
+- **Shop list.** Only IKEA (`ikea.com`), Amazon (`amazon.com`, `a.co`) and Wayfair (`wayfair.com`)
+  hosts, and their subdomains. The whole string must be a plain host name of at most 253
+  characters, so look-alikes such as `ikea.com.evil.example` and `evil.example#.ikea.com` fail.
+  Anything else is `unsupported_shop` with no outgoing request.
+- **Address check.** The host name is resolved first. If any address is private, loopback,
+  link-local or otherwise not public, the fetch is refused (`blocked`).
+- **Pinned address.** The connection is made to the address that was checked, so the name cannot
+  change its answer between the check and the connection.
+- **Redirects.** Followed by hand, at most 3. Each hop is checked again against the shop list and
+  the address rules.
+- **Limits.** `https` only, port 443 only. Request body 4096 bytes. Link 2048 characters. Page 4 MiB,
+  counted both before and after decompression. 8000 ms for the whole lookup. Only `text/html`
+  is parsed. Name 200 characters and description 600. A size is kept only when finite, above 0 and
+  at most 10000 in. A price is kept only in US dollars, above 0 and at most 10,000,000. A photo
+  address is returned only when it is `https` on `ikea.com`, `m.media-amazon.com` or
+  `assets.wfcdn.com` (or their subdomains).
+- **Origin check.** The `Origin` header must be present and its host must equal the request's
+  `Host` header. A missing or foreign `Origin` is answered 403.
+- **Rate limit.** 20 lookups per 600,000 ms (10 minutes) per address, kept in memory. Over the limit
+  is 429 with `Retry-After`. Only a request that reaches the fetch is counted.
+- **Reader name.** The request says `RoomPlannerLinkPreview/1.0`, sends no cookie and no referer,
+  does not retry, does not rotate addresses and does not solve challenges. A refusal is `blocked`.
+- **Logging.** One line per request: `{ "event": "room_planner_lookup", "shop": ..., "outcome": ... }`,
+  where `shop` is `ikea`, `amazon`, `wayfair` or `null` and `outcome` is `ok` or an error code.
+  Never the link, the address, headers or page content.
+- **Page text is untrusted.** It is cut to the limits above and shown as React text only.
+- No secrets or environment variables are used.
+
+### Vercel firewall rule (for the owner)
+
+The in-app rate limit is per server instance, so it slows abuse but does not stop a determined
+caller. This rule is the hard limit. The owner adds it in the Vercel dashboard after the merge;
+nothing in the code adds it.
+
+- Path equals `/api/room-planner/lookup`
+- Rate limit: 20 requests per 10 minutes per IP
+- Action: deny, with status 429
+
+### How to add a shop
+
+1. Add the shop and its host names to `room-planner/lookup/shops.ts` (subdomains match too) and
+   extend `shops.test.ts`, including look-alike hosts. Add the shop's name to the `Shop` type and to
+   the reader table (step 4).
+2. Add the shop's photo host to `PHOTO_DOMAINS` in the same file (`https` only), with a test that
+   a foreign photo host is dropped.
+3. Write a reader in `room-planner/server/readers/` (for example `newshop.ts`) that returns
+   `ProductFields` or `null`. Use `readers/shared.ts` for the product data block where the shop
+   has one. Write down where each field comes from for that shop.
+4. Add the reader to the table in `room-planner/server/readers/index.ts`.
+5. Save a trimmed real product page and a category page in `readers/fixtures/`, and add tests in
+   `readers/readers.test.ts`: a product page, a category page, missing fields, hostile text. If
+   the fixture lacks an element a rule reads, build a realistic one first.
+6. Update the shop list in the note under the link box (`ProductLinkBox.tsx` and its test).
+7. Measure the shop from the deployed route. If it refuses the server, record it as hand entry
+   only and correct the note.
+
+Known limits of the lookup:
+
+- Only IKEA, Amazon and Wayfair links are looked up; other shops are added by type.
+- Whether Amazon and Wayfair answer the live server is measured after merge. A shop that refuses
+  becomes hand entry only.
+- The rate limit is in memory, per server instance. It slows abuse and does not stop a determined
+  caller. The hard limit is the Vercel firewall rule the owner adds.
+- A hostile page can still cost up to about 1.4 s of server time in the parser.
+- `dns.lookup` cannot be cancelled, and Node adds `Connection: close` to the outgoing request.
+- The Origin check compares hosts, not schemes, and does not stop non-browser callers. They are
+  bounded by the rate limit and can only make the server read a shop page.
+- Word rules read English names and descriptions only. Broad words in a description can set a style
+  the product does not have (`office`, `round`, `open`). `no drawer pulls` reads as no drawers.
+  Accessories named after furniture (`bed sheet set`, `bedside lamp`) are read as that furniture.
+  The preview lets the visitor change type and sizes, and the editor every option.
+- Colour from the photo is a guess: styled room photos, shadows and transparent backgrounds can
+  throw it off. A colour word in the name wins.
+- Amazon sizes without labels are filled in as depth, width, height, with a note to check them.
+- The product photo is shown only in the preview and is never saved.
+- Plain colours only, as in the generator.
+
+The mistakes found while building it are in `mistakes-and-fixes.md` under
+"2026-11-20 — Product lookup".
+
 ## Folders and files
 
 - `specs/` — design specs for the planner and for its move into the portfolio. The wall editing

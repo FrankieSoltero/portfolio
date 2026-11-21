@@ -102,7 +102,7 @@ describe('PlanSection', () => {
     expect(heading.querySelector('.sidebar-heading-num')).toHaveTextContent('04');
     expect(heading).toHaveTextContent(/^04Plan$/);
     expect(
-      screen.getByText('Saved in this browser only. Nothing is sent anywhere. A share link contains the whole plan.'),
+      screen.getByText('Saved in this browser only. A share link contains the whole plan. A pasted product link is sent to this site to read the page, and the product photo loads from the shop.'),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Reset plan']);
   });

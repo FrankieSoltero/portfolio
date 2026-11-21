@@ -61,7 +61,8 @@ export function PlanSection({ planStore }: { planStore: PlanStore }): JSX.Elemen
         <span>Plan</span>
       </h6>
       <p className="note plan-section-note">
-        Saved in this browser only. Nothing is sent anywhere. A share link contains the whole plan.
+        Saved in this browser only. A share link contains the whole plan. A pasted product link is sent to this site to
+        read the page, and the product photo loads from the shop.
       </p>
       <ConfirmButton
         className="plan-section-reset"

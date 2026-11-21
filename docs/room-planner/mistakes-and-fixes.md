@@ -945,3 +945,84 @@ Eight entries. Entry 1 was found by the Task 6 implementer, entries 2, 3, 4, 6 a
 - **Root cause:** Two sessions used one working tree.
 - **Fix:** Afterwards every commit in this plan checked `git branch --show-current` first (plan Amendment 1).
 - **How to avoid:** One working tree per session. Check the branch before each commit.
+
+## 2026-11-20 — Product lookup
+
+Eleven entries, taken from the build ledger and the review reports. Entry 6 was found by a reviewer and entry 7 came from the fix for it. Items left as they are are listed under "Known limits of the lookup" in `docs/room-planner/README.md`.
+
+### The plan was too coarse and the review had no pass condition (plan review round 1)
+- **Date:** 2026-11-20
+- **What happened:** Plan review round 1 blocked the plan. One task bundled the store, the service and the actions (11 files), and the whole-branch review had no objective pass condition.
+- **Root cause:** The plan was written too coarsely.
+- **Fix:** The plan was split into 15 tasks and the pass condition was stated (plan commit `cfbfa51`).
+- **How to avoid:** Keep tasks to one layer each. Give every review step a pass condition.
+
+### `shopForHost` accepted malformed strings that end in a shop domain
+- **Date:** 2026-11-20
+- **What happened:** `shopForHost` returned a shop for strings such as `evil.example#.ikea.com` and `a b.ikea.com`, which are not host names but end in a shop domain.
+- **Root cause:** It only lower-cased the input and matched the end of it, and relied on callers passing an already parsed host name.
+- **Fix:** Commit `85ec4e9`: the whole string must be a plain host name of at most 253 characters.
+- **How to avoid:** A security gate validates its own input. It does not rely on how callers happen to call it.
+
+### The word rules matched only the exact spellings in the plan (plan Amendment 1)
+- **Date:** 2026-11-20
+- **What happened:** `3-Seater Sofa`, `5 Tier Bookshelf`, `Bar Stools`, `Area Rugs` and `TV-Stand` matched nothing.
+- **Root cause:** The plan listed sample spellings, and the implementer rightly read them literally.
+- **Fix:** Plan Amendment 1 and commit `f9c738a`: hyphen and space joins, plurals and number forms are accepted.
+- **How to avoid:** When a plan lists words, say whether the list is exact or only examples, and test against real product names.
+
+### The 4 MiB page cap counted only decompressed bytes
+- **Date:** 2026-11-20
+- **What happened:** A gzip body made of empty stored blocks was read without limit until the 8 s deadline. The reviewer measured over 12,000 MB.
+- **Root cause:** The cap sat after the decompression. The implementer wrongly assumed decoded bytes are never fewer than compressed bytes.
+- **Fix:** Commit `df28447`: raw bytes are counted before decompression too, and each redirect hop is released before the next.
+- **How to avoid:** Cap both sides of any decompression. Test with a body that inflates to nothing.
+
+### A pasted `http://` shop link always failed
+- **Date:** 2026-11-20
+- **What happened:** A link such as `http://www.ikea.com/...` was answered "That doesn't look like a link".
+- **Root cause:** The link checker accepts `http`, the route accepts only `https`, and nothing in between upgraded it.
+- **Fix:** Commit `135c804`: the service upgrades an `http` shop link to `https`.
+- **How to avoid:** When two layers validate the same value, check that their rules agree, and test each accepted form from end to end.
+
+### The HTML parser's time grew with the square of the input
+- **Date:** 2026-11-20
+- **What happened:** `node-html-parser` took minutes on unclosed or deeply nested tags and on unterminated comments, blocking the server on a page under 4 MiB.
+- **Root cause:** The size cap limited bytes, not time. The first hostile-input test used input that the length check refused before it reached the parser.
+- **Fix:** Commit `16e4688`: `parseNoneClosedTags: true` plus a pre-pass for unterminated comments and CDATA. Eight hostile shapes are timed in tests; the worst takes about 0.6 to 1.4 s. The remaining cost is listed under "Known limits of the lookup" in `docs/room-planner/README.md`.
+- **How to avoid:** A size cap is not a time cap. Time the parser on hostile input that passes the size check.
+
+### The first version of that pre-pass cut real product pages
+- **Date:** 2026-11-20
+- **What happened:** The pre-pass cut the page at any unterminated `<!--`. A normal page with one stray opener inside a script string, an attribute or a JSON-LD string lost its product.
+- **Root cause:** The controller specified the fix without checking where such openers legitimately occur.
+- **Fix:** Commit `643b0c8`: the page is cut only when it has more than 16 unterminated openers.
+- **How to avoid:** A hardening step needs a test that normal input still works, written before the fix.
+
+### The Amazon reader returned the struck-through list price
+- **Date:** 2026-11-20
+- **What happened:** When the "List Price" row came first, the reader returned 1499 instead of 1299.
+- **Root cause:** The plan's selector was "the first price in the block", and the saved sample page had no price block to check it against.
+- **Fix:** Commit `a146145`: the reader prefers the price-to-pay element and skips struck-through prices.
+- **How to avoid:** When a fixture lacks the element a rule reads, build a realistic one before trusting the rule.
+
+### Wayfair gave an empty description
+- **Date:** 2026-11-20
+- **What happened:** Style words such as "tufting" were lost because the Wayfair description was empty.
+- **Root cause:** The plan named no source for the field.
+- **Fix:** Commit `a146145`: the reader takes the description from the page's embedded marketing copy.
+- **How to avoid:** List the source of every field for every shop in the plan.
+
+### Keyboard focus fell to the page body (Task 14)
+- **Date:** 2026-11-20
+- **What happened:** Focus fell to the page body when the preview card closed, or when Look up disabled its own focused button.
+- **Root cause:** The focused element was removed or disabled with nothing to receive the focus.
+- **Fix:** Fix in progress at the time of writing (commit `fix(room-planner): keep focus in the link box`): focus returns to the link input.
+- **How to avoid:** Whenever a control removes or disables itself, decide where the focus goes.
+
+### Commits carry different model names in their trailers
+- **Date:** 2026-11-20
+- **What happened:** Several commits carry a `Co-Authored-By: Claude Opus 5.5` trailer and others `Claude Fable 5.2`.
+- **Root cause:** Each implementer followed its own session's attribution rule over the constraints file.
+- **Fix:** Left as written, since each trailer names the model that wrote that commit.
+- **How to avoid:** Do not put a fixed model name in shared constraints. Let each session attribute itself.
