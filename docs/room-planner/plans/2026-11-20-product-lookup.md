@@ -88,6 +88,23 @@ widened as follows; everything else in Task 8 stands.
    after furniture (`bed sheet set`, `bedside lamp`) are read as that furniture. The preview
    card lets the visitor change type and every option.
 
+**Amendment 2 (2026-11-20, after the Task 3 and Task 4 reviews).**
+
+1. Task 3, `parsePage`: the parser's time grew with the square of the input on unclosed or
+   deeply nested tags and on unterminated comments, enough to block the server for minutes on a
+   page under 4 MiB. `parsePage` now parses with `parseNoneClosedTags: true`, cuts an
+   unterminated comment or CDATA section before parsing, and (if still needed) refuses a page
+   with more tag openers than a measured limit. Timing tests cover eight hostile shapes.
+2. Task 4, Amazon price: a struck-through list price (`data-a-strike="true"`, class
+   `a-text-price`) is never the price. The reader prefers `.priceToPay .a-offscreen` or
+   `.apexPriceToPay .a-offscreen`, then the first `.a-price .a-offscreen` not inside a
+   struck-through `.a-price`.
+3. Task 4, Wayfair description: taken from the page's embedded `\"marketingCopy\":\"…\"`
+   text (found with the same bounded search and unescape as the size fallback, at most 1500
+   raw characters, cut to 600 by `finishFields`); `''` when absent. The fixture gains that
+   fragment.
+4. Task 4: the unlabelled-size note applies to Wayfair as well as Amazon.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
