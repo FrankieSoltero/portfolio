@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseProductFields } from '../../lookup/contract';
+import { LOOKUP_LIMITS, parseProductFields } from '../../lookup/contract';
 import { readIkea } from './ikea';
 import { canonicalUrl, finishFields, metaContent, parsePage } from './shared';
 
@@ -212,5 +212,89 @@ describe('metaContent and canonicalUrl', () => {
   it('reads the canonical link', () => {
     expect(canonicalUrl(root)).toBe('https://www.ikea.com/us/en/p/billy-bookcase-black-oak-effect-00477337/');
     expect(canonicalUrl(parsePage('<link rel="canonical" href="javascript:alert(1)">')!)).toBeNull();
+  });
+});
+
+describe('parsePage on hostile pages just under the size limit', () => {
+  /** The time a hostile page may take, with headroom for a loaded machine. */
+  const BOUND_MS = 2000;
+  const head = page(product());
+
+  /** Room left for the hostile part of a page just under `LOOKUP_LIMITS.pageMax`. */
+  const room = LOOKUP_LIMITS.pageMax - head.length - 16;
+
+  /** A Product page followed by `unit` repeated up to just under the size limit. */
+  function repeated(unit: string): string {
+    return head + unit.repeat(Math.floor(room / unit.length));
+  }
+
+  /** A Product page followed by `<div>` nested as deep as fits, every one of them closed. */
+  function closedNesting(): string {
+    const depth = Math.floor(room / '<div></div>'.length);
+    return head + '<div>'.repeat(depth) + '</div>'.repeat(depth);
+  }
+
+  const shapes: [string, () => string][] = [
+    ['unclosed <div>', () => repeated('<div>')],
+    ['<div></span> pairs', () => repeated('<div></span>')],
+    ['<!-- openers', () => repeated('<!--')],
+    ['<![CDATA[ openers', () => repeated('<![CDATA[')],
+    ['<dl><dt>x', () => repeated('<dl><dt>x')],
+    ['<table><tr><th>a<td>b', () => repeated('<table><tr><th>a<td>b')],
+    ['<ul><li>x', () => repeated('<ul><li>x')],
+    ['closed nested <div>', closedNesting],
+  ];
+
+  it.each(shapes)('parses a page of %s quickly', (_case, build) => {
+    const html = build();
+    expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
+    expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 64);
+    const started = Date.now();
+    expect(parsePage(html)).not.toBeNull();
+    const elapsed = Date.now() - started;
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
+  });
+
+  it.each(shapes)('reads the Product before a page of %s quickly', (_case, build) => {
+    const html = build();
+    const started = Date.now();
+    expect(readIkea(html)?.name).toBe('KIVIK Sofa');
+    const elapsed = Date.now() - started;
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
+  });
+
+  it('treats an unterminated comment as running to the end of the page', () => {
+    expect(readIkea(`<html><head><!-- a note --><!-- never closed ${page(product())}`)).toBeNull();
+    expect(readIkea(`<html><head><!-- a note --> ${page(product())} <!-- never closed`)?.name).toBe('KIVIK Sofa');
+  });
+
+  it('treats an unterminated CDATA section as running to the end of the page', () => {
+    expect(readIkea(`<html><head><![CDATA[ never closed ${page(product())}`)).toBeNull();
+    expect(readIkea(`<html><head><![CDATA[ x ]]> ${page(product())} <![CDATA[ never closed`)?.name).toBe('KIVIK Sofa');
+  });
+});
+
+describe('review fixes', () => {
+  it('cuts an over-long size note to 200 characters instead of dropping the product', () => {
+    const fields = finishFields({ name: 'Sofa', sizeNote: 'n'.repeat(500) });
+    expect(fields?.name).toBe('Sofa');
+    expect(fields?.sizeNote).toHaveLength(200);
+  });
+
+  it('reads an AggregateOffer price when it has no lowPrice', () => {
+    const offers = { '@type': 'AggregateOffer', price: '59.00', priceCurrency: 'USD' };
+    expect(readIkea(page(product({ offers })))?.price).toBe(59);
+  });
+
+  it.each([
+    ['a string array', ['https://evil.example/sofa.jpg', 'not a url', PHOTO]],
+    ['an ImageObject array', [{ '@type': 'ImageObject', contentUrl: 'https://evil.example/sofa.jpg' }, { '@type': 'ImageObject', contentUrl: PHOTO }]],
+  ])('takes the first shop photo in %s', (_case, image) => {
+    expect(readIkea(page(product({ image })))?.imageUrl).toBe(PHOTO);
+  });
+
+  it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])('refuses the unit code %j', (unitCode) => {
+    const size = { '@type': 'QuantitativeValue', value: 80, unitCode };
+    expect(readIkea(page(product({ width: size })))?.w).toBeNull();
   });
 });

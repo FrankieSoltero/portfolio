@@ -14,13 +14,22 @@ import { parseLength } from '../sizes';
 /** A JSON object, as opposed to an array, a string or null. */
 type JsonObject = Record<string, unknown>;
 
-/** UN/CEFACT unit codes a JSON-LD size may carry, as the unit words `parseLength` reads. */
-const UNIT_CODES: Record<string, string> = {
-  INH: 'in',
-  CMT: 'cm',
-  MMT: 'mm',
-  FOT: 'ft',
-};
+/**
+ * UN/CEFACT unit codes a JSON-LD size may carry, as the unit words `parseLength` reads. A Map, so a
+ * page's code can never reach an inherited property such as `constructor`.
+ */
+const UNIT_CODES: ReadonlyMap<string, string> = new Map([
+  ['INH', 'in'],
+  ['CMT', 'cm'],
+  ['MMT', 'mm'],
+  ['FOT', 'ft'],
+]);
+
+/**
+ * The longest size note kept, in characters. It matches `SIZE_NOTE_MAX` in `lookup/contract.ts`,
+ * which is not exported; a longer note is cut rather than failing the whole product there.
+ */
+const SIZE_NOTE_MAX = 200;
 
 /** True when `value` is a plain JSON object. */
 function isObject(value: unknown): value is JsonObject {
@@ -60,14 +69,31 @@ function inRange(value: unknown, max: number): number | null {
 }
 
 /**
+ * The page cut at its first `opener` that has no `closer` after it, as a browser treats an
+ * unterminated comment as running to the end of the page. The parser searches for the closer
+ * from every opener, so a page of unterminated openers would take time growing with the square of
+ * its length; after this cut every opener it sees has a closer. Two linear searches, no pattern.
+ */
+function cutUnterminated(html: string, opener: string, closer: string): string {
+  const lastCloser = html.lastIndexOf(closer);
+  const open = html.indexOf(opener, lastCloser === -1 ? 0 : lastCloser + closer.length);
+  return open === -1 ? html : html.slice(0, open);
+}
+
+/**
  * Parses a page into a node-html-parser root. Null for input that is not a string, is empty, or is
  * over `LOOKUP_LIMITS.pageMax` characters; the size check comes first so a huge page is never
- * parsed. Never throws.
+ * parsed. An unterminated `<!--` or `<![CDATA[` and everything after it is dropped first, and
+ * unclosed tags are left where they are (`parseNoneClosedTags`) rather than moved up the tree,
+ * which the parser otherwise does in time growing with the square of the nesting depth. With both,
+ * near-4 MiB hostile pages (unclosed or closed deep nesting, `<dl><dt>`, `<ul><li>`, `<table>`
+ * rows, `<div></span>`, comment and CDATA openers) parse in under 0.6 s here. Never throws.
  */
 export function parsePage(html: string): HTMLElement | null {
   if (typeof html !== 'string' || html.length === 0 || html.length > LOOKUP_LIMITS.pageMax) return null;
   try {
-    return parse(html);
+    const page = cutUnterminated(cutUnterminated(html, '<!--', '-->'), '<![CDATA[', ']]>');
+    return parse(page, { parseNoneClosedTags: true });
   } catch {
     return null;
   }
@@ -155,12 +181,16 @@ function readPrice(value: unknown): number | null {
   return /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : null;
 }
 
-/** The price of one offer when it is in US dollars: `lowPrice` for an `AggregateOffer`, else `price`. */
+/**
+ * The price of one offer when it is in US dollars: for an `AggregateOffer` its `lowPrice`, or its
+ * `price` when it has no readable `lowPrice`; for any other offer its `price`.
+ */
 function offerPrice(offer: unknown): number | null {
   if (!isObject(offer)) return null;
   const currency = offer.priceCurrency;
   if (typeof currency !== 'string' || currency.trim().toUpperCase() !== 'USD') return null;
-  return readPrice(hasType(offer, 'AggregateOffer') ? offer.lowPrice : offer.price);
+  if (hasType(offer, 'AggregateOffer')) return readPrice(offer.lowPrice) ?? readPrice(offer.price);
+  return readPrice(offer.price);
 }
 
 /** The price from a Product's `offers`: a single offer, or the first US dollar one in an array. */
@@ -173,11 +203,23 @@ function priceFromOffers(offers: unknown): number | null {
   return null;
 }
 
-/** The first image address: `image` as a string, an `ImageObject`, or an array of either. */
+/** The address one image entry gives: a string, or an `ImageObject`'s `contentUrl`, else its `url`. */
+function imageAddress(entry: unknown): string | null {
+  if (isObject(entry)) return decodedText(entry.contentUrl) ?? decodedText(entry.url);
+  return decodedText(entry);
+}
+
+/**
+ * The first image that is a shop photo, normalised: `image` as a string, an `ImageObject`, or an
+ * array of either, where an entry on a foreign host or not an address is skipped. Null when none is.
+ */
 function firstImage(image: unknown): string | null {
-  const first: unknown = Array.isArray(image) ? image[0] : image;
-  if (isObject(first)) return decodedText(first.contentUrl) ?? decodedText(first.url);
-  return decodedText(first);
+  const entries: unknown[] = Array.isArray(image) ? image : [image];
+  for (const entry of entries) {
+    const photo = photoUrl(imageAddress(entry));
+    if (photo !== null) return photo;
+  }
+  return null;
 }
 
 /**
@@ -193,7 +235,7 @@ function sizeFrom(value: unknown): number | null {
   if (!(typeof amount === 'string' || (typeof amount === 'number' && Number.isFinite(amount)))) return null;
   let unit = '';
   if (typeof value.unitCode === 'string') {
-    unit = UNIT_CODES[value.unitCode.trim().toUpperCase()] ?? '';
+    unit = UNIT_CODES.get(value.unitCode.trim().toUpperCase()) ?? '';
     if (unit === '') return null;
   } else if (typeof value.unitText === 'string') {
     unit = value.unitText;
@@ -203,7 +245,7 @@ function sizeFrom(value: unknown): number | null {
 
 /**
  * The fields a JSON-LD Product gives: name and description (entity-decoded), the price from its
- * offers, the first image address as written, and width, depth and height in inches. A field the
+ * offers, the first image that is a shop photo, and width, depth and height in inches. A field the
  * Product does not give is left out or null; nothing here is cut to the limits yet (see `finishFields`).
  */
 export function productFromJsonLd(product: Record<string, unknown>): Partial<ProductFields> {
@@ -234,14 +276,15 @@ function photoUrl(value: unknown): string | null {
 
 /**
  * Applies every lookup limit to fields read from a page: whitespace collapsed, the name cut to 200
- * and the description to 600 characters, a price or size outside its range dropped, and a photo
- * kept only on a shop photo host. Null when there is no name. The result passes `parseProductFields`.
+ * and the description to 600 characters, the size note to 200, a price or size outside its range
+ * dropped, and a photo kept only on a shop photo host. Null when there is no name. The result
+ * passes `parseProductFields`.
  */
 export function finishFields(partial: Partial<ProductFields>): ProductFields | null {
   try {
     const name = cut(collapseSpace(partial.name), LOOKUP_LIMITS.nameMax);
     if (name === '') return null;
-    const sizeNote = collapseSpace(partial.sizeNote);
+    const sizeNote = cut(collapseSpace(partial.sizeNote), SIZE_NOTE_MAX);
     return parseProductFields({
       name,
       description: cut(collapseSpace(partial.description), LOOKUP_LIMITS.descriptionMax),
