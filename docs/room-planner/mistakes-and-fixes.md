@@ -948,7 +948,7 @@ Eight entries. Entry 1 was found by the Task 6 implementer, entries 2, 3, 4, 6 a
 
 ## 2026-11-20 — Product lookup
 
-Eleven entries, taken from the build ledger and the review reports. Entry 6 was found by a reviewer and entry 7 came from the fix for it. Items left as they are are listed under "Known limits of the lookup" in `docs/room-planner/README.md`.
+Eleven entries, taken from the build ledger and the review reports. Entry 1 was found by the plan review, entries 2 to 10 by the per-task reviews, and entry 11 was noticed by the controller. Items left as they are are listed under "Known limits of the lookup" in `docs/room-planner/README.md`.
 
 ### The plan was too coarse and the review had no pass condition (plan review round 1)
 - **Date:** 2026-11-20
@@ -1017,7 +1017,7 @@ Eleven entries, taken from the build ledger and the review reports. Entry 6 was 
 - **Date:** 2026-11-20
 - **What happened:** Focus fell to the page body when the preview card closed, or when Look up disabled its own focused button.
 - **Root cause:** The focused element was removed or disabled with nothing to receive the focus.
-- **Fix:** Fix in progress at the time of writing (commit `fix(room-planner): keep focus in the link box`): focus returns to the link input.
+- **Fix:** Commit `48e2bad` (`fix(room-planner): keep focus in the link box and tighten the preview card`): focus returns to the link input.
 - **How to avoid:** Whenever a control removes or disables itself, decide where the focus goes.
 
 ### Commits carry different model names in their trailers

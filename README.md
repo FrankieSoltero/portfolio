@@ -16,7 +16,7 @@ Three sections, three deliberately different design languages:
   saved in the plan except the units choice. The plan is saved in the browser
   under `room-planner:plan:v1`, validated on load and never sent to a server. A pasted IKEA, Amazon
   or Wayfair link is looked up through `POST /api/room-planner/lookup`, which sends only that link to
-  the site's server.
+  the site's server. The product photo loads from the shop while the preview is open and is never saved.
 
 ## Run locally
 

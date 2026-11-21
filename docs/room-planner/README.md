@@ -456,7 +456,7 @@ nothing in the code adds it.
 7. Measure the shop from the deployed route. If it refuses the server, record it as hand entry
    only and correct the note.
 
-Known limits of the lookup:
+### Known limits of the lookup
 
 - Only IKEA, Amazon and Wayfair links are looked up; other shops are added by type.
 - Whether Amazon and Wayfair answer the live server is measured after merge. A shop that refuses
@@ -464,6 +464,7 @@ Known limits of the lookup:
 - The rate limit is in memory, per server instance. It slows abuse and does not stop a determined
   caller. The hard limit is the Vercel firewall rule the owner adds.
 - A hostile page can still cost up to about 1.4 s of server time in the parser.
+- The parser timing tests use a wall-clock bound and can fail on a heavily loaded machine. Re-run them alone before treating a failure as real.
 - `dns.lookup` cannot be cancelled, and Node adds `Connection: close` to the outgoing request.
 - The Origin check compares hosts, not schemes, and does not stop non-browser callers. They are
   bounded by the rate limit and can only make the server read a shop page.
