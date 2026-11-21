@@ -391,6 +391,42 @@ describe('fetchShopPage', () => {
     expect(await fetchShopPage('https://www.ikea.com/x', deps)).toEqual({ ok: false, reason: 'unavailable' });
   });
 
+  it('never throws, even when reading the deps throws', async () => {
+    const deps = {
+      get resolve(): FetchDeps['resolve'] {
+        throw new Error('getter broke');
+      },
+    } as Partial<FetchDeps>;
+    expect(await fetchShopPage('https://www.ikea.com/x', deps)).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it('destroys a redirect body that is a stream before following the redirect', async () => {
+    const moved = Readable.from([Buffer.from('Moved')]);
+    const deps = fakeDeps([{ status: 301, headers: { location: '/y' }, body: moved }, page(HTML)]);
+    const destroyedWhenNextResolved: boolean[] = [];
+    deps.resolve.mockImplementation(async () => {
+      destroyedWhenNextResolved.push(moved.destroyed);
+      return [PUBLIC];
+    });
+    expect(await fetchShopPage('https://www.ikea.com/x', deps)).toEqual({ ok: true, html: HTML });
+    expect(destroyedWhenNextResolved).toEqual([false, true]);
+  });
+
+  it('returns the iterator of any other redirect body before following the redirect', async () => {
+    const returned = vi.fn(async () => ({ done: true as const, value: undefined }));
+    const body: AsyncIterable<Uint8Array> = {
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true as const, value: undefined }), return: returned }),
+    };
+    const deps = fakeDeps([{ status: 302, headers: { location: '/y' }, body }, page(HTML)]);
+    const returnedWhenNextResolved: number[] = [];
+    deps.resolve.mockImplementation(async () => {
+      returnedWhenNextResolved.push(returned.mock.calls.length);
+      return [PUBLIC];
+    });
+    expect(await fetchShopPage('https://www.ikea.com/x', deps)).toEqual({ ok: true, html: HTML });
+    expect(returnedWhenNextResolved).toEqual([0, 1]);
+  });
+
   it('sends exactly the four reader headers on every request, with no cookie or referer', async () => {
     const deps = fakeDeps([
       { status: 302, headers: { location: '/y', 'set-cookie': 'session=1' }, body: chunks() },
@@ -446,6 +482,31 @@ describe('decodeBody', () => {
     expect(await fetchShopPage('https://www.ikea.com/x', deps)).toEqual({ ok: false, reason: 'unavailable' });
     await new Promise((done) => setImmediate(done));
     expect((body as Readable).destroyed).toBe(true);
+    expect(raw.destroyed).toBe(true);
+  });
+
+  it('cuts off a gzip body that inflates to nothing once 4 MiB of raw input are read', async () => {
+    // A valid gzip header, then empty stored deflate blocks (`00 00 00 ff ff`), which inflate to
+    // zero bytes. Made lazily in 16 KiB chunks, 16 MiB at most, so no large buffer is allocated.
+    const header = Buffer.from([0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0, 0x03]);
+    const emptyBlocks = Buffer.alloc(3277 * 5);
+    for (let i = 0; i < emptyBlocks.length; i += 5) emptyBlocks.writeUInt16BE(0xffff, i + 3);
+    let produced = 0;
+    async function* endless(): AsyncIterable<Buffer> {
+      produced += header.length;
+      yield header;
+      for (let i = 0; i < 1024; i += 1) {
+        produced += emptyBlocks.length;
+        yield emptyBlocks;
+      }
+    }
+    const raw = Readable.from(endless());
+    const body = decodeBody(raw, 'gzip')!;
+    const deps = fakeDeps([{ status: 200, headers: HTML_TYPE, body }]);
+    expect(await fetchShopPage('https://www.ikea.com/x', deps)).toEqual({ ok: false, reason: 'unavailable' });
+    await new Promise((done) => setImmediate(done));
+    expect(produced).toBeGreaterThan(LOOKUP_LIMITS.pageMax);
+    expect(produced).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax + 512 * 1024);
     expect(raw.destroyed).toBe(true);
   });
 });

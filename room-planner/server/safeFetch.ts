@@ -1,7 +1,7 @@
 import { promises as dns } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
-import { pipeline, type Readable } from 'node:stream';
+import { pipeline, Transform, type Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
 import { LOOKUP_LIMITS } from '../lookup/contract';
 import { shopForHost } from '../lookup/shops';
@@ -12,6 +12,12 @@ import { shopForHost } from '../lookup/shops';
  * `shopForHost` decides), over `https` on port 443, at an address this module has itself checked
  * to be public; the connection is pinned to that checked address, and every redirect is checked
  * again from the start. One deadline covers the whole call. Nothing here throws or logs.
+ *
+ * Known behaviour of the default `resolve` and `request`:
+ * - `dns.promises.lookup` cannot be cancelled. At the deadline the fetch gives up waiting and
+ *   answers, but the system lookup itself finishes in the background.
+ * - Because no agent is shared (`agent: false`), Node adds a `Connection: close` header to each
+ *   request on top of the four reader headers.
  */
 
 /** What a fetch gives: the page as text, or why there is none. */
@@ -118,18 +124,51 @@ export function pinnedLookup(address: string, family: 4 | 6): LookupFunction {
   };
 }
 
+/** A pass-through stream that fails once more than `limit` bytes have gone through it. */
+function byteCap(limit: number): Transform {
+  let total = 0;
+  return new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      total += chunk.length;
+      if (total > limit) callback(new Error('body over the page cap'));
+      else callback(null, chunk);
+    },
+  });
+}
+
 /**
  * The response body as a stream of decoded bytes: as it is for no encoding or `identity`,
  * gunzipped as it streams for `gzip`, and null for any other encoding (which was not asked
- * for). Decoding is lazy, so the page cap applied by the reader limits how much a small gzip
- * bomb can expand. Exported for tests.
+ * for). The reader caps the decoded bytes; for `gzip` the raw bytes are capped here too, at the
+ * same 4 MiB, because gzip can also inflate to nothing (empty stored blocks) and would otherwise
+ * be read without end. Decoding is lazy, so the reader's cap also limits how far a small gzip
+ * bomb expands. Exported for tests.
  */
 export function decodeBody(raw: Readable, encoding: string | undefined): Readable | null {
   const coding = (encoding ?? '').trim().toLowerCase();
   if (coding === '' || coding === 'identity') return raw;
   if (coding !== 'gzip') return null;
-  // `pipeline` destroys both streams when either fails or the reader stops early.
-  return pipeline(raw, createGunzip(), () => {});
+  // `pipeline` destroys every stream, the raw response included, when one fails or the reader
+  // stops early.
+  return pipeline(raw, byteCap(LOOKUP_LIMITS.pageMax), createGunzip(), () => {});
+}
+
+/**
+ * Lets go of a body that will not be read, so its connection closes now rather than at the end
+ * of the call. A stream (the default `request`'s body, which is the response or is piped from
+ * it) is destroyed; any other body has its iterator returned. Never throws.
+ */
+function release(body: AsyncIterable<Uint8Array>): void {
+  try {
+    const stream = body as Partial<Readable>;
+    if (typeof stream.destroy === 'function') {
+      stream.destroy();
+      return;
+    }
+    Promise.resolve(body[Symbol.asyncIterator]().return?.()).catch(() => {});
+  } catch {
+    // A body that cannot be released is left to the final abort.
+  }
 }
 
 /** The address without one trailing dot, as TLS server names and Host headers want it. */
@@ -221,11 +260,11 @@ class Expired extends Error {}
  * `unavailable`. Never throws.
  */
 export async function fetchShopPage(url: string, deps?: Partial<FetchDeps>): Promise<FetchResult> {
-  const { resolve, request, now } = { ...DEFAULT_DEPS, ...definedOnly(deps) };
   const unavailable: FetchResult = { ok: false, reason: 'unavailable' };
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
+    const { resolve, request, now } = { ...DEFAULT_DEPS, ...definedOnly(deps) };
     let current = typeof url === 'string' ? shopUrl(url) : null;
     if (current === null) return { ok: false, reason: 'unsupported_shop' };
 
@@ -255,6 +294,8 @@ export async function fetchShopPage(url: string, deps?: Partial<FetchDeps>): Pro
       checkTime();
 
       if (REDIRECT_STATUSES.has(response.status)) {
+        // At most one connection is open at a time: this hop's body is never read.
+        release(response.body);
         if (redirects >= LOOKUP_LIMITS.redirectsMax) return unavailable;
         const location = header(response.headers, 'location');
         if (location === undefined || location === '') return unavailable;
@@ -283,7 +324,8 @@ export async function fetchShopPage(url: string, deps?: Partial<FetchDeps>): Pro
 
 /**
  * Reads the body as UTF-8, or gives null once it passes the page cap. Stops pulling as soon as
- * the cap or the deadline is passed and tells the body to stop.
+ * the cap or the deadline is passed. A read still in flight is stopped by the abort signal that
+ * `fetchShopPage` fires when it finishes, not by anything here.
  */
 async function readPage(
   body: AsyncIterable<Uint8Array>,
