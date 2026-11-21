@@ -25,7 +25,9 @@ export interface PlanDocument {
 }
 export interface ProductPreview {
   kind: Kind; name: string; host: string; sourceUrl: string; price: number | null;
-  w: number; d: number; h: number; known: boolean; model: ItemModel;
+  w: number; d: number; h: number;
+  kindFound: boolean; sizesFound: boolean; sizeNote: string | null;
+  imageUrl: string | null; style: StyleValues; colours: ItemColours;
 }
 export type LayoutMode = 'inset' | 'split' | 'tabs';
 export type StageTab = '2d' | '3d';
