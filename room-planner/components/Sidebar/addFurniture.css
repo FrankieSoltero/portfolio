@@ -1,4 +1,5 @@
-/* Sidebar section 02, add furniture by type: a line of help over one button per kind. */
+/* Sidebar section 02, add furniture: the product link box, the looked-up product's preview card,
+   then add by type: a line of help over one button per kind. */
 
 /* The help line is a <p>, so drop its margin. */
 .add-furniture-note { margin: 0; }
@@ -8,3 +9,33 @@
   display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: var(--space-2);
 }
 .add-furniture-kinds > .btn { font-size: 13px; }
+
+/* The product link box: the labelled input with its Look up button, then its note, error and
+   link-kept lines (all <p>, so their margins are dropped). */
+.product-link { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.product-link p { margin: 0; }
+/* The input takes the free width and may shrink; a long button label wraps the button underneath. */
+.product-link-row { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.product-link-row > .input { flex: 1 1 140px; min-width: 0; }
+.product-link-row > .btn { flex: none; max-width: 100%; }
+.product-link-kept { color: var(--color-accent-900); }
+
+/* The preview card. Every child may shrink and long product text wraps anywhere, so nothing
+   scrolls sideways in the sidebar. */
+.product-card {
+  display: flex; flex-direction: column; gap: var(--space-2); min-width: 0;
+  padding: var(--space-3); border: 1px solid var(--color-divider);
+}
+.product-card > * { min-width: 0; max-width: 100%; }
+.product-card p { margin: 0; overflow-wrap: anywhere; }
+.product-card strong { font-family: var(--font-heading); font-weight: 600; font-size: 15px; }
+.product-card-photo, .product-card-snapshot { display: block; max-width: 100%; height: auto; }
+.product-card-photo { max-height: 160px; object-fit: contain; align-self: center; }
+.product-card-snapshot { width: 120px; align-self: center; }
+.product-card-dims { min-width: 0; }
+.product-card-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* The Type picker when the shop page did not say what the piece is. */
+.product-card .is-attention {
+  border-color: var(--color-warning); background: var(--color-warning-100);
+}

@@ -1,10 +1,24 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { KIND_LABELS, KIND_ORDER, TYPICAL_SIZE } from '../../domain/furniture/recipe';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { defaultColours, defaultStyle, KIND_LABELS, KIND_ORDER, TYPICAL_SIZE } from '../../domain/furniture/recipe';
+import type { ProductPreview } from '../../domain/types';
+import { LOOKUP_MESSAGES } from '../../services/productLookup';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
 import { AddFurnitureSection } from './AddFurnitureSection';
+
+// jsdom has no WebGL: the preview card's snapshot module is replaced so the tests stay quiet.
+vi.mock('../../three/previewSnapshot', () => ({
+  renderPieceSnapshot: vi.fn(() => null),
+  disposePreviewRenderer: vi.fn(),
+}));
+
+// No test here reaches the network.
+vi.mock('../../state/actions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../state/actions')>();
+  return { ...actual, lookupProduct: vi.fn(async () => {}) };
+});
 
 // Vitest globals are off, so Testing Library cannot register its own cleanup.
 afterEach(cleanup);
@@ -13,6 +27,23 @@ beforeEach(() => {
   usePlanStore.getState().reset();
   useUiStore.getState().reset();
 });
+
+const PREVIEW: ProductPreview = {
+  kind: 'sofa',
+  name: 'Alder 3-seat sofa',
+  host: 'ikea.com',
+  sourceUrl: 'https://www.ikea.com/us/en/p/alder-sofa-12345678/',
+  price: 499,
+  w: 80,
+  d: 35,
+  h: 30,
+  kindFound: true,
+  sizesFound: true,
+  sizeNote: null,
+  imageUrl: null,
+  style: defaultStyle('sofa'),
+  colours: defaultColours('sofa'),
+};
 
 function typeButtons(container: HTMLElement): HTMLButtonElement[] {
   return Array.from(container.querySelectorAll<HTMLButtonElement>('.add-furniture-kinds > button'));
@@ -38,7 +69,8 @@ describe('AddFurnitureSection', () => {
       expect(b).toHaveClass('btn', 'btn-secondary');
       expect(b).toBeEnabled();
     }
-    expect(screen.queryByRole('textbox')).toBeNull();
+    // The only text field is the product link input.
+    expect(screen.getAllByRole('textbox')).toEqual([screen.getByLabelText('Paste a product link')]);
   });
 
   it('clicking Dresser adds a dresser at its typical size and selects it', async () => {
@@ -58,5 +90,53 @@ describe('AddFurnitureSection', () => {
     for (const b of buttons) expect(b).toBeDisabled();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Sofa' }));
     expect(usePlanStore.getState().items).toEqual([]);
+  });
+
+  it('lays out the heading, the link box, the preview card, then the note and the type grid', () => {
+    useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+    const { container } = render(<AddFurnitureSection />);
+    const order = [
+      screen.getByRole('heading', { level: 6 }),
+      container.querySelector('.product-link'),
+      container.querySelector('.product-card'),
+      screen.getByText('Pick a type. You can change its size, style and colours after it is placed.'),
+      container.querySelector('.add-furniture-kinds'),
+    ];
+    for (const el of order) expect(el).not.toBeNull();
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]?.compareDocumentPosition(order[i] as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+  });
+
+  it('shows the preview card only while a preview is shown, and closes it after Add to room', async () => {
+    const { container } = render(<AddFurnitureSection />);
+    expect(container.querySelector('.product-card')).toBeNull();
+    act(() => useUiStore.getState().setLookup({ status: 'loading' }));
+    expect(container.querySelector('.product-card')).toBeNull();
+    act(() => useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW }));
+    expect(screen.getByText('Alder 3-seat sofa')).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Add to room' }));
+    expect(container.querySelector('.product-card')).toBeNull();
+    expect(usePlanStore.getState().items).toHaveLength(1);
+  });
+
+  it('puts the error line between the link box input and the note, and keeps the type grid enabled', () => {
+    useUiStore.getState().setLookup({ status: 'error', code: 'blocked' });
+    const { container } = render(<AddFurnitureSection />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(LOOKUP_MESSAGES.blocked);
+    expect(container.querySelector('.product-link')).toContainElement(alert);
+    const note = screen.getByText('Pick a type. You can change its size, style and colours after it is placed.');
+    expect(alert.compareDocumentPosition(note)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    for (const b of typeButtons(container)) expect(b).toBeEnabled();
+  });
+
+  it('in room-edit mode disables the link input, Look up and Add to room like the type grid', () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+    render(<AddFurnitureSection />);
+    expect(screen.getByLabelText('Paste a product link')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Look up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to room' })).toBeDisabled();
   });
 });
