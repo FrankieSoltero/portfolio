@@ -36,13 +36,25 @@ function normaliseHost(hostname: string): string {
   return lower.endsWith('.') ? lower.slice(0, -1) : lower;
 }
 
+/** The longest hostname, in characters, without its trailing dot. */
+const HOST_MAX = 253;
+
+/**
+ * A plain lower-case hostname: labels of `a-z`, `0-9` and `-` joined by single dots, none empty.
+ * It refuses anything that is not a hostname but could end in a shop domain, such as a string
+ * holding `:`, `@`, `/`, `\`, `#`, `?`, `%`, whitespace or brackets. Punycode labels fit.
+ */
+const PLAIN_HOST = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/;
+
 /**
  * The shop a hostname belongs to (`ikea.com`, `amazon.com`, `a.co`, `wayfair.com` or a subdomain
- * of one, in any case, with or without a trailing dot), or null for any other host. Never throws.
+ * of one, in any case, with or without a trailing dot), or null for any other host and for any
+ * string that is not a plain hostname of at most 253 characters. Never throws.
  */
 export function shopForHost(hostname: string): Shop | null {
   if (typeof hostname !== 'string') return null;
   const host = normaliseHost(hostname);
+  if (host.length > HOST_MAX || !PLAIN_HOST.test(host)) return null;
   for (const [domain, shop] of SHOP_DOMAINS) {
     if (isOnDomain(host, domain)) return shop;
   }

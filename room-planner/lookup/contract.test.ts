@@ -62,6 +62,12 @@ describe('parseProductFields', () => {
     expect(parseProductFields(missing)).toBeNull();
   });
 
+  it('refuses a missing nullable key rather than reading it as null', () => {
+    const missing: Partial<ProductFields> = valid();
+    delete missing.imageUrl;
+    expect(parseProductFields(missing)).toBeNull();
+  });
+
   it.each([[null], [undefined], ['fields'], [42], [[]], [[valid()]]])('refuses the non-object %j', (value) => {
     expect(parseProductFields(value)).toBeNull();
   });

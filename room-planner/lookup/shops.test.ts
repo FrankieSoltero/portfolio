@@ -20,6 +20,43 @@ describe('shopForHost', () => {
   ])('refuses the look-alike or non-shop host %j', (host) => {
     expect(shopForHost(host)).toBeNull();
   });
+
+  it.each([
+    'evil.example#.ikea.com',
+    'x@evil.com?.amazon.com',
+    'a b.ikea.com',
+    'evil.example/.wayfair.com',
+    'evil.example\\.ikea.com',
+    '.ikea.com',
+    'a..ikea.com',
+    'evil.example\t.ikea.com',
+    'evil.example\r\n.amazon.com',
+    'evil.example\n.ikea.com',
+    'evil.example:443.ikea.com',
+    'evil%2eexample.ikea.com',
+  ])('refuses the malformed host string %j even though it ends in a shop domain', (host) => {
+    expect(shopForHost(host)).toBeNull();
+  });
+
+  it('refuses a host longer than 253 characters that ends in a shop domain', () => {
+    const labels = `${Array.from({ length: 50 }, () => 'abcde').join('.')}.ikea.com`;
+    const tooLong = labels.slice(-300);
+    expect(tooLong).toHaveLength(300);
+    expect(shopForHost(tooLong)).toBeNull();
+    // The same shape at exactly 253 characters is a plain hostname and is accepted.
+    const atLimit = labels.slice(-253);
+    expect(atLimit).toMatch(/^[a-z]/);
+    expect(atLimit).toHaveLength(253);
+    expect(shopForHost(atLimit)).toBe('ikea');
+  });
+
+  it('accepts a punycode subdomain of a shop domain', () => {
+    expect(shopForHost('xn--bcher-kva.ikea.com')).toBe('ikea');
+  });
+
+  it.each([[42], [null], [undefined], [{}], [['ikea.com']]])('returns null, without throwing, for the non-string %j', (value) => {
+    expect(shopForHost(value as unknown as string)).toBeNull();
+  });
 });
 
 describe('isShopPhotoUrl', () => {
@@ -49,6 +86,26 @@ describe('isShopPhotoUrl', () => {
     'not a url',
     '',
   ])('refuses %s', (url) => {
+    expect(isShopPhotoUrl(url)).toBe(false);
+  });
+
+  // The URL parser keeps a trailing dot, lower-cases the scheme and host, and silently removes
+  // tabs and newlines; each of these still names a shop photo host, so accepting it is safe.
+  it.each([
+    'https://www.ikea.com./us/en/images/products/x.jpg',
+    'HTTPS://WWW.IKEA.COM/us/en/images/products/x.jpg',
+    'https://www.ikea.com/us/en/images/products/x\t.jpg',
+    'https://m.media-amazon\n.com/images/I/a.jpg',
+  ])('accepts %j, which still names a photo host', (url) => {
+    expect(isShopPhotoUrl(url)).toBe(true);
+  });
+
+  it.each([
+    'https:\\\\www.ikea.com\\x.jpg',
+    'https://evil.example\t:443/.ikea.com/x.jpg',
+    'https://evil.example\n/x.jpg#.ikea.com',
+    'ht\ttps://evil.example/x.jpg',
+  ])('refuses %j', (url) => {
     expect(isShopPhotoUrl(url)).toBe(false);
   });
 
