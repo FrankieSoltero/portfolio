@@ -15,6 +15,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['room-planner/test/setup.ts'],
     css: false,
-    include: ['room-planner/**/*.test.{ts,tsx}', 'app/room-planner/**/*.test.{ts,tsx}'],
+    include: ['room-planner/**/*.test.{ts,tsx}', 'app/room-planner/**/*.test.{ts,tsx}', 'app/api/room-planner/**/*.test.ts'],
   },
 })

@@ -19,4 +19,5 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  { files: ['room-planner/server/**/*.ts', 'app/api/**/*.ts'], languageOptions: { globals: globals.node } },
 ])
