@@ -21,9 +21,17 @@ function escapeWord(word: string): string {
   return word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** A pattern matching any of `words` as a whole word or phrase. */
-function wordsPattern(words: readonly string[]): RegExp {
-  return new RegExp(`\\b(?:${words.map(escapeWord).join('|')})\\b`);
+/** A rule word as a pattern source: the words of a phrase may be joined by a space or a hyphen. */
+function phraseSource(word: string): string {
+  return word.split(/[ -]/).map(escapeWord).join('[ -]');
+}
+
+/**
+ * A pattern matching any of `words` as a whole word or phrase, followed by `suffix` (a pattern
+ * source such as `s?` for an optional plural).
+ */
+function wordsPattern(words: readonly string[], suffix = ''): RegExp {
+  return new RegExp(`\\b(?:${words.map(phraseSource).join('|')})${suffix}\\b`);
 }
 
 // ---------------------------------------------------------------- kind
@@ -42,16 +50,17 @@ const KIND_RULES: readonly { words: readonly string[]; kind: Kind }[] = [
     kind: 'table',
   },
   { words: ['rug', 'carpet'], kind: 'rug' },
-  { words: ['sofa', 'couch', 'loveseat', 'sectional', 'settee', 'futon'], kind: 'sofa' },
+  { words: ['sofa', 'couch', 'couches', 'loveseat', 'sectional', 'settee', 'futon'], kind: 'sofa' },
   { words: ['desk'], kind: 'desk' },
-  { words: ['bookcase', 'bookshelf', 'shelving unit', 'shelf unit'], kind: 'shelf' },
+  { words: ['bookcase', 'bookshelf', 'bookshelves', 'shelving unit', 'shelf unit'], kind: 'shelf' },
   { words: ['bed', 'beds', 'bed frame', 'daybed'], kind: 'bed' },
   { words: ['table', 'tables'], kind: 'table' },
-  { words: ['chair', 'chairs', 'armchair', 'stool', 'recliner'], kind: 'chair' },
+  { words: ['chair', 'chairs', 'armchair', 'stool', 'recliner', 'barstool', 'bar stool'], kind: 'chair' },
   { words: ['shelf', 'shelves'], kind: 'shelf' },
 ];
 
-const KIND_PATTERNS = KIND_RULES.map((r) => ({ pattern: wordsPattern(r.words), kind: r.kind }));
+/** Each kind row compiled once; every kind word also matches its plural with `s` added. */
+const KIND_PATTERNS = KIND_RULES.map((r) => ({ pattern: wordsPattern(r.words, 's?'), kind: r.kind }));
 
 /** The kind a product name names, by the first matching rule; null when no rule matches. */
 export function kindFromName(name: string): Kind | null {
@@ -72,8 +81,17 @@ type StyleRule =
 /** "N-drawer", "N drawer", "N-drawers" or "N drawers", N in digits (captured). */
 const DRAWER_COUNT = /\b(\d+)[- ]drawers?\b/;
 
-/** "N-shelf", "N shelves" or "N-tier", N a single digit (captured). */
-const SHELF_COUNT = /\b(\d)(?:-shelf|-tier| shelves)\b/;
+/** "N shelf", "N-shelves", "N tier", "N-tiers" and the like, N a single digit (captured). */
+const SHELF_COUNT = /\b(\d)[ -](?:shelf|shelves|tiers?)\b/;
+
+/** "N tier", "N-tier", "N tiers" or "N-tiers", N a single digit (captured). */
+const TIER_COUNT = /\b(\d)[ -]tiers?\b/;
+
+/** "N seat", "N-seater", "N seats", "N-seaters" and the like, N `2`–`5` or `two`–`five` (captured). */
+const SEAT_COUNT = /\b([2-5]|two|three|four|five)[ -]seat(?:er)?s?\b/;
+
+/** The number words a count may be written as. A Map, so text such as `__proto__` is just missing. */
+const NUMBER_WORDS: ReadonlyMap<string, number> = new Map([['two', 2], ['three', 3], ['four', 4], ['five', 5]]);
 
 /** `value` limited to [low, high]. */
 function clamp(value: number, low: number, high: number): number {
@@ -97,9 +115,8 @@ const STARTING_POINTS: readonly { kind: Kind; sets: readonly Setting[] }[] = [
 
 /** Style rules, applied top to bottom; a later matching rule overrides an earlier one. */
 const STYLE_RULES: readonly StyleRule[] = [
-  { kinds: ['sofa'], words: ['loveseat', '2-seat', '2 seater', 'two-seat'], sets: [['seats', '2']] },
-  { kinds: ['sofa'], words: ['3-seat', '3 seater', 'three-seat'], sets: [['seats', '3']] },
-  { kinds: ['sofa'], words: ['4-seat', '4 seater'], sets: [['seats', '4']] },
+  { kinds: ['sofa'], words: ['loveseat'], sets: [['seats', '2']] },
+  { kinds: ['sofa'], count: SEAT_COUNT, sets: (n) => [['seats', String(n)]] },
   { kinds: ['sofa'], words: ['sectional', 'chaise'], sets: [['chaise', 'right']] },
   {
     kinds: ['sofa'],
@@ -128,10 +145,11 @@ const STYLE_RULES: readonly StyleRule[] = [
   { kinds: ['bed'], words: ['no footboard', 'without footboard'], sets: [['footboard', 'no']] },
   { kinds: ['desk'], words: ['drawer', 'drawers', '1-drawer', '2-drawer'], sets: [['drawers', 'right']] },
   { kinds: ['desk'], count: DRAWER_COUNT, sets: (n) => (n >= 3 ? [['drawers', 'both']] : null) },
-  { kinds: ['desk'], words: ['no drawers', 'without drawers'], sets: [['drawers', 'none']] },
+  { kinds: ['desk'], words: ['no drawer', 'no drawers', 'without drawer', 'without drawers'], sets: [['drawers', 'none']] },
   { kinds: ['desk'], words: ['trestle', 'sawhorse'], sets: [['supports', 'trestle']] },
   { kinds: ['desk'], words: ['panel sides', 'panel legs', 'slab legs'], sets: [['supports', 'panels']] },
-  { kinds: ['table'], words: ['shelf', '2-tier', 'two-tier', 'tiered'], sets: [['shelf', 'yes']] },
+  { kinds: ['table'], words: ['shelf', 'shelves', '2-tier', 'two-tier', 'tiered'], sets: [['shelf', 'yes']] },
+  { kinds: ['table'], count: TIER_COUNT, sets: () => [['shelf', 'yes']] },
   { kinds: ['table'], words: ['round', 'circular'], sets: [['top', 'round']] },
   { kinds: ['table'], words: ['pedestal', 'tulip'], sets: [['base', 'pedestal']] },
   { kinds: ['table'], words: ['trestle'], sets: [['base', 'trestle']] },
@@ -144,6 +162,7 @@ const STYLE_RULES: readonly StyleRule[] = [
   { kinds: ['dresser', 'nightstand', 'tvstand'], words: ['plinth', 'no legs'], sets: [['base', 'plinth']] },
   { kinds: ['nightstand'], words: ['open'], sets: [['drawers', '0']] },
   { kinds: ['nightstand'], words: ['drawer', 'drawers'], sets: [['drawers', '1']] },
+  { kinds: ['nightstand'], words: ['no drawer', 'no drawers', 'without drawer', 'without drawers'], sets: [['drawers', '0']] },
   { kinds: ['nightstand'], count: DRAWER_COUNT, sets: (n) => [['drawers', String(clamp(n, 0, 2))]] },
   { kinds: ['tvstand'], words: ['open'], sets: [['fronts', 'open']] },
   { kinds: ['tvstand'], words: ['drawer', 'drawers'], sets: [['fronts', 'drawers']] },
@@ -165,7 +184,7 @@ function settingsOf(
 ): readonly Setting[] | null {
   if ('fixed' in rule) return rule.pattern.test(text) ? rule.fixed : null;
   const found = rule.count.exec(text);
-  return found === null ? null : rule.sets(Number(found[1]), size);
+  return found === null ? null : rule.sets(NUMBER_WORDS.get(found[1]) ?? Number(found[1]), size);
 }
 
 /**

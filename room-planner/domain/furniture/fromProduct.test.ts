@@ -186,6 +186,17 @@ describe('styleFromText', () => {
     const text = `${'9'.repeat(50_000)} ${'a '.repeat(50_000)}drawer`;
     expect(styleFromText('desk', text)).toEqual({ ...plain('desk'), drawers: 'right' });
   });
+
+  it('handles long hostile runs of digits, hyphens and half-words in every function', () => {
+    const text = [
+      '9'.repeat(20_000), '3-'.repeat(20_000), '3 '.repeat(20_000), 'off-'.repeat(10_000),
+      'light-'.repeat(10_000), 'tv-'.repeat(10_000), 'seat'.repeat(10_000), 'no-'.repeat(10_000),
+    ].join(' ');
+    for (const kind of ALL_KINDS) expect(completeStyle(kind, styleFromText(kind, text))).not.toBeNull();
+    expect(kindFromName(text)).toBeNull();
+    expect(mainColourFromName(text)).toBeNull();
+    expect(accentColourFromText(text, null)).toBeNull();
+  });
 });
 
 const MAIN_COLOURS: [words: string[], colour: string][] = [
@@ -297,5 +308,176 @@ describe('recipeColours', () => {
   it.each(OTHERS)('accent null, %s → default accent', (kind) => {
     expect(recipeColours(kind, '#123456', null)).toEqual({ main: '#123456', accent: defaultColours(kind).accent });
     expect(recipeColours(kind, null, null)).toEqual(defaultColours(kind));
+  });
+});
+
+describe('Amendment 1: common spellings, plurals and hyphen forms', () => {
+  describe('real product names from the review', () => {
+    it.each<[string, Kind]>([
+      ['3-Seater Sofa', 'sofa'], ['3 Seat Sofa', 'sofa'], ['Three Seater Sofa', 'sofa'],
+      ['5 Shelf Bookcase', 'shelf'], ['5 Tier Bookshelf', 'shelf'], ['4 Tier Ladder Shelf', 'shelf'],
+      ['2 Tier Coffee Table', 'table'], ['Area Rugs 8x10', 'rug'], ['Set of 2 Bar Stools', 'chair'],
+      ['Nightstands Set of 2', 'nightstand'], ['TV Stands for Living Room', 'tvstand'], ['Sofas', 'sofa'],
+      ['Couches for Living Room', 'sofa'], ['Recliners', 'chair'], ['Dressers for Bedroom', 'dresser'],
+      ['Bookcases', 'shelf'], ['Office Desks', 'desk'], ['Barstool', 'chair'], ['TV-Stand', 'tvstand'],
+      ['Night-stand', 'nightstand'], ['Light-Gray Sofa', 'sofa'], ['Desk with no drawer', 'desk'],
+    ])('kind: "%s" → %s', (name, kind) => {
+      expect(kindFromName(name)).toBe(kind);
+    });
+
+    it.each<[string, Kind, Record<string, string>]>([
+      ['3-Seater Sofa', 'sofa', { seats: '3' }],
+      ['3 Seat Sofa', 'sofa', { seats: '3' }],
+      ['Three Seater Sofa', 'sofa', { seats: '3' }],
+      ['5 Shelf Bookcase', 'shelf', { shelves: '5' }],
+      ['5 Tier Bookshelf', 'shelf', { shelves: '5' }],
+      ['4 Tier Ladder Shelf', 'shelf', { shelves: '4', back: 'no' }],
+      ['2 Tier Coffee Table', 'table', { shelf: 'yes' }],
+      ['Desk with no drawer', 'desk', { drawers: 'none' }],
+    ])('style: "%s" (%s)', (name, kind, sets) => {
+      expect(styleFromText(kind, name)).toEqual({ ...plain(kind), ...sets });
+    });
+
+    it('colour: "Light-Gray Sofa" → light grey', () => {
+      expect(mainColourFromName('Light-Gray Sofa')).toBe('#b9bcc0');
+    });
+  });
+
+  describe('item 1: a phrase joins its words with a space or a hyphen, in every table', () => {
+    /** `text` with every space made a hyphen, and every hyphen made a space. */
+    const swapJoins = (text: string) => text.replace(/[ -]/g, (c) => (c === ' ' ? '-' : ' '));
+
+    it('hyphen form: "Light-Gray", "Entertainment-Center", "rolled-arm", "black-metal"', () => {
+      expect(mainColourFromName('Light-Gray Sofa')).toBe('#b9bcc0');
+      expect(kindFromName('Entertainment-Center')).toBe('tvstand');
+      expect(styleFromText('sofa', 'Rolled-arm sofa')).toEqual({ ...defaultStyle('sofa'), arms: 'rounded' });
+      expect(accentColourFromText('with black-metal legs', null)).toBe('#2b2b2d');
+    });
+
+    it('plural form: "Entertainment-Centers" → tvstand', () => {
+      expect(kindFromName('Entertainment-Centers')).toBe('tvstand');
+    });
+
+    it.each(
+      STYLE_ROWS.flatMap(([label, kind, texts, sets, size]) =>
+        texts.filter((t) => /[ -]/.test(t)).map((t) => [label, swapJoins(t), kind, sets, size] as const),
+      ),
+    )('style %s: "%s"', (_label, text, kind, sets, size) => {
+      expect(styleFromText(kind, text, size)).toEqual({ ...plain(kind), ...sets });
+    });
+
+    it.each(
+      [...MAIN_COLOURS.map(([w, c]) => ['main', w, c] as const), ...ACCENT_COLOURS.map(([w, c]) => ['accent', w, c] as const)]
+        .flatMap(([table, words, colour]) => words.filter((w) => w.includes(' ')).map((w) => [table, w.replace(/ /g, '-'), colour] as const)),
+    )('%s colour "%s" → %s', (table, word, colour) => {
+      const found = table === 'main' ? mainColourFromName(word) : accentColourFromText(word, null);
+      expect(found).toBe(colour);
+    });
+  });
+
+  describe('item 2: kind words match their plural', () => {
+    const PLURALS: [string, Kind][] = [
+      ['desk chairs', 'chair'], ['office chairs', 'chair'], ['task chairs', 'chair'], ['gaming chairs', 'chair'],
+      ['nightstands', 'nightstand'], ['night stands', 'nightstand'], ['bedside tables', 'nightstand'],
+      ['tv stands', 'tvstand'], ['tv units', 'tvstand'], ['tv consoles', 'tvstand'], ['media consoles', 'tvstand'],
+      ['media stands', 'tvstand'], ['entertainment centers', 'tvstand'], ['dressers', 'dresser'], ['drawer chests', 'dresser'],
+      ['sofa tables', 'table'], ['console tables', 'table'], ['coffee tables', 'table'], ['side tables', 'table'],
+      ['end tables', 'table'], ['dining tables', 'table'], ['accent tables', 'table'], ['kitchen tables', 'table'],
+      ['rugs', 'rug'], ['carpets', 'rug'], ['sofas', 'sofa'], ['couches', 'sofa'], ['loveseats', 'sofa'],
+      ['sectionals', 'sofa'], ['settees', 'sofa'], ['futons', 'sofa'], ['desks', 'desk'], ['bookcases', 'shelf'],
+      ['bookshelves', 'shelf'], ['shelving units', 'shelf'], ['shelf units', 'shelf'], ['bed frames', 'bed'],
+      ['daybeds', 'bed'], ['armchairs', 'chair'], ['stools', 'chair'], ['recliners', 'chair'],
+      ['barstools', 'chair'], ['bar stools', 'chair'],
+    ];
+
+    it.each(PLURALS)('plural form: "%s" → %s', (word, kind) => {
+      expect(kindFromName(word)).toBe(kind);
+    });
+
+    it.each<[string, Kind]>([['bed-frames', 'bed'], ['bar-stools', 'chair'], ['bar-stool', 'chair'], ['barstool', 'chair'], ['bar stool', 'chair']])(
+      'hyphen form and the added row-12 words: "%s" → %s',
+      (word, kind) => {
+        expect(kindFromName(word)).toBe(kind);
+      },
+    );
+
+    it('still needs a whole word', () => {
+      expect(kindFromName('Bedding set')).toBeNull();
+      expect(kindFromName('Tablet stand')).toBeNull();
+      expect(kindFromName('Sofa bed')).toBe('sofa');
+      expect(kindFromName('Coffee table with shelf')).toBe('table');
+    });
+  });
+
+  describe('item 3: sofa seats', () => {
+    const NUMBERS: [string, string][] = [['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['two', '2'], ['three', '3'], ['four', '4'], ['five', '5']];
+    const FORMS = ['N seat', 'N-seat', 'N seater', 'N-seater', 'N seats', 'N-seats', 'N seaters', 'N-seaters'];
+
+    it.each(NUMBERS.flatMap(([n, seats]) => FORMS.map((f) => [f.replace('N', n), seats] as const)))('"%s" → seats %s', (text, seats) => {
+      expect(styleFromText('sofa', `Modern ${text.toUpperCase()} sofa`)).toEqual({ ...defaultStyle('sofa'), seats });
+    });
+
+    it('hyphen form "4-seaters" and plural form "3 seats"', () => {
+      expect(styleFromText('sofa', '4-seaters')).toEqual({ ...defaultStyle('sofa'), seats: '4' });
+      expect(styleFromText('sofa', '3 seats')).toEqual({ ...defaultStyle('sofa'), seats: '3' });
+    });
+
+    it('"loveseat" still means 2; numbers outside 2–5 change nothing', () => {
+      expect(styleFromText('sofa', 'Loveseat')).toEqual({ ...defaultStyle('sofa'), seats: '2' });
+      for (const text of ['1 seat', '6-seater', 'six seater', '12 seats', '3 seatbelt']) {
+        expect(styleFromText('sofa', text)).toEqual(defaultStyle('sofa'));
+      }
+    });
+  });
+
+  describe('item 4: shelf count', () => {
+    const FORMS = ['N shelf', 'N-shelf', 'N shelves', 'N-shelves', 'N tier', 'N-tier', 'N tiers', 'N-tiers'];
+
+    it.each(FORMS.map((f) => f.replace('N', '6')))('"%s" → shelves 6', (text) => {
+      expect(styleFromText('shelf', `Tall ${text.toUpperCase()} bookcase`)).toEqual({ ...defaultStyle('shelf'), shelves: '6' });
+    });
+
+    it('hyphen form "9-shelves" (clamped to 8) and plural form "1 tiers" (clamped to 2)', () => {
+      expect(styleFromText('shelf', '9-shelves')).toEqual({ ...defaultStyle('shelf'), shelves: '8' });
+      expect(styleFromText('shelf', '1 tiers')).toEqual({ ...defaultStyle('shelf'), shelves: '2' });
+    });
+
+    it('N is one digit', () => {
+      expect(styleFromText('shelf', '12 shelves')).toEqual(defaultStyle('shelf'));
+    });
+  });
+
+  describe('item 5: table lower shelf', () => {
+    it.each(['shelves', '3 tier', '3-tier', '3 tiers', '3-tiers', '7 tier'])('"%s" → shelf yes', (text) => {
+      expect(styleFromText('table', `Coffee table, ${text.toUpperCase()}`)).toEqual({ ...plain('table'), shelf: 'yes' });
+    });
+
+    it('hyphen form "two tier" and plural form "4-tiers"', () => {
+      expect(styleFromText('table', 'two tier')).toEqual({ ...plain('table'), shelf: 'yes' });
+      expect(styleFromText('table', '4-tiers')).toEqual({ ...plain('table'), shelf: 'yes' });
+    });
+
+    it('a tier count needs a whole word', () => {
+      expect(styleFromText('table', '3 tierce 12 tier')).toEqual(plain('table'));
+    });
+  });
+
+  describe('item 6: no drawer', () => {
+    it.each(['no drawer', 'without drawer', 'no drawers', 'without drawers'])('desk "%s" → drawers none', (text) => {
+      expect(styleFromText('desk', `Desk with ${text.toUpperCase()}`)).toEqual({ ...plain('desk'), drawers: 'none' });
+    });
+
+    it.each(['no drawer', 'no drawers', 'without drawer', 'without drawers'])('nightstand "%s" → drawers 0', (text) => {
+      expect(styleFromText('nightstand', `Nightstand with ${text.toUpperCase()}`)).toEqual({ ...plain('nightstand'), drawers: '0' });
+    });
+
+    it('hyphen form "no-drawer" and plural form "without-drawers"', () => {
+      expect(styleFromText('desk', 'no-drawer desk')).toEqual({ ...plain('desk'), drawers: 'none' });
+      expect(styleFromText('nightstand', 'nightstand, without-drawers')).toEqual({ ...plain('nightstand'), drawers: '0' });
+    });
+
+    it('nightstand "no drawers" overrides the plain drawer row', () => {
+      expect(styleFromText('nightstand', 'Drawer-style front, no drawers')).toEqual({ ...plain('nightstand'), drawers: '0' });
+    });
   });
 });
