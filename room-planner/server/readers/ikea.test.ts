@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { LOOKUP_LIMITS, parseProductFields } from '../../lookup/contract';
 import { readIkea } from './ikea';
 import { canonicalUrl, finishFields, metaContent, parsePage } from './shared';
@@ -263,14 +263,73 @@ describe('parsePage on hostile pages just under the size limit', () => {
     expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
   });
 
-  it('treats an unterminated comment as running to the end of the page', () => {
-    expect(readIkea(`<html><head><!-- a note --><!-- never closed ${page(product())}`)).toBeNull();
-    expect(readIkea(`<html><head><!-- a note --> ${page(product())} <!-- never closed`)?.name).toBe('KIVIK Sofa');
+  /** A Product page with `before` placed at the start of its head, and no `-->` or `]]>` anywhere. */
+  function withBefore(before: string): string {
+    return page(product()).replace('<head>', `<head>${before}`);
+  }
+
+  it.each([
+    ['a script string', '<script>var s="<!--";</script>'],
+    ['a meta attribute value', '<meta name="note" content="<!--">'],
+    ['a script string, CDATA', '<script>var s="<![CDATA[";</script>'],
+    ['body text', '<span>see <!-- here</span>'],
+  ])('keeps the page when one unterminated opener sits in %s', (_case, before) => {
+    expect(readIkea(withBefore(before))?.name).toBe('KIVIK Sofa');
   });
 
-  it('treats an unterminated CDATA section as running to the end of the page', () => {
-    expect(readIkea(`<html><head><![CDATA[ never closed ${page(product())}`)).toBeNull();
-    expect(readIkea(`<html><head><![CDATA[ x ]]> ${page(product())} <![CDATA[ never closed`)?.name).toBe('KIVIK Sofa');
+  it('keeps a JSON-LD description that contains an unterminated <!--', () => {
+    const fields = readIkea(page(product({ description: 'Arms <!-- and legs' })));
+    expect(fields).toMatchObject({ name: 'KIVIK Sofa', description: 'Arms <!-- and legs' });
+  });
+
+  it('keeps the page with 16 unterminated openers of each kind before the Product', () => {
+    expect(readIkea(withBefore('<span><!--</span>'.repeat(16)))?.name).toBe('KIVIK Sofa');
+    expect(readIkea(withBefore('<span><![CDATA[</span>'.repeat(16)))?.name).toBe('KIVIK Sofa');
+  });
+
+  it('cuts the page at the first of 17 unterminated openers, so a Product after them is lost', () => {
+    expect(readIkea(withBefore('<span><!--</span>'.repeat(17)))).toBeNull();
+    expect(readIkea(withBefore('<span><![CDATA[</span>'.repeat(17)))).toBeNull();
+    // A Product before the flood is kept.
+    expect(readIkea(`${page(product())}${'<!--'.repeat(17)}`)?.name).toBe('KIVIK Sofa');
+  });
+
+  it('parses a near-4 MiB page with exactly 16 unterminated <!-- spread through it quickly', () => {
+    const gap = 'a'.repeat(Math.floor((room - 16 * 4) / 16));
+    const html = head + `${gap}<!--`.repeat(16);
+    expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 64);
+    expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
+    const started = Date.now();
+    expect(parsePage(html)).not.toBeNull();
+    expect(readIkea(html)?.name).toBe('KIVIK Sofa');
+    const elapsed = Date.now() - started;
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
+  });
+});
+
+describe('readIkea on a very deep tree', () => {
+  /** 200k unclosed `<div>`, then a Product block nested at the bottom of them. */
+  const deep = `<html><head><title>Shop</title></head><body>${'<div>'.repeat(200_000)}${page(product({ name: 'Sofa &amp; Co' }))}`;
+
+  it('reads a Product nested 200k levels deep without overflowing the stack', () => {
+    expect(readIkea(deep)?.name).toBe('Sofa & Co');
+  });
+
+  it('returns null when a reader step overflows the stack', async () => {
+    vi.resetModules();
+    vi.doMock('./shared', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('./shared')>()),
+      findJsonLdProduct: () => {
+        throw new RangeError('Maximum call stack size exceeded');
+      },
+    }));
+    try {
+      const { readIkea: readWithOverflow } = await import('./ikea');
+      expect(readWithOverflow(deep)).toBeNull();
+    } finally {
+      vi.doUnmock('./shared');
+      vi.resetModules();
+    }
   });
 });
 

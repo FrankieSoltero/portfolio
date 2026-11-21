@@ -69,25 +69,42 @@ function inRange(value: unknown, max: number): number | null {
 }
 
 /**
- * The page cut at its first `opener` that has no `closer` after it, as a browser treats an
- * unterminated comment as running to the end of the page. The parser searches for the closer
- * from every opener, so a page of unterminated openers would take time growing with the square of
- * its length; after this cut every opener it sees has a closer. Two linear searches, no pattern.
+ * The most unterminated `<!--` (or `<![CDATA[`) openers a page keeps as it is. The parser searches
+ * from each unterminated opener to the end of the page for a closer it never finds, so each one
+ * costs one extra scan of the page: 16 cost at most 16 scans. One stray opener in a script, an
+ * attribute or a JSON-LD string is normal and must not lose the page; thousands are an attack
+ * that would take time growing with the square of the page's length.
+ */
+const MAX_UNTERMINATED_OPENERS = 16;
+
+/**
+ * The page as it is when at most `MAX_UNTERMINATED_OPENERS` of its `opener`s have no `closer`
+ * after them; with more, the page cut at the first of those, as a browser treats an unterminated
+ * comment as running to the end of the page. Linear: one `lastIndexOf`, then `indexOf` in a loop
+ * that stops counting once past the limit. No pattern.
  */
 function cutUnterminated(html: string, opener: string, closer: string): string {
   const lastCloser = html.lastIndexOf(closer);
-  const open = html.indexOf(opener, lastCloser === -1 ? 0 : lastCloser + closer.length);
-  return open === -1 ? html : html.slice(0, open);
+  const first = html.indexOf(opener, lastCloser === -1 ? 0 : lastCloser + closer.length);
+  if (first === -1) return html;
+  let count = 1;
+  for (let at = html.indexOf(opener, first + opener.length); at !== -1; at = html.indexOf(opener, at + opener.length)) {
+    count += 1;
+    if (count > MAX_UNTERMINATED_OPENERS) return html.slice(0, first);
+  }
+  return html;
 }
 
 /**
  * Parses a page into a node-html-parser root. Null for input that is not a string, is empty, or is
  * over `LOOKUP_LIMITS.pageMax` characters; the size check comes first so a huge page is never
- * parsed. An unterminated `<!--` or `<![CDATA[` and everything after it is dropped first, and
- * unclosed tags are left where they are (`parseNoneClosedTags`) rather than moved up the tree,
- * which the parser otherwise does in time growing with the square of the nesting depth. With both,
- * near-4 MiB hostile pages (unclosed or closed deep nesting, `<dl><dt>`, `<ul><li>`, `<table>`
- * rows, `<div></span>`, comment and CDATA openers) parse in under 0.6 s here. Never throws.
+ * parsed. A flood of unterminated `<!--` or `<![CDATA[` openers is cut off first (see
+ * `cutUnterminated`), and unclosed tags are left where they are (`parseNoneClosedTags`) rather
+ * than moved up the tree, which the parser otherwise does in time growing with the square of the
+ * nesting depth. Measured on near-4 MiB hostile pages (deep unclosed or closed nesting, `<dl><dt>`,
+ * `<ul><li>`, `<table>` rows, `<p>`, `<br/>`, `<div></span>`, comment and CDATA floods), parsing
+ * takes up to about 0.8 s on the development machine; the slowest seen is a flood of `<a>`, about
+ * 0.8 s there and 1.2 s (1.4 s with the reader's queries) on a reviewer's run. Never throws.
  */
 export function parsePage(html: string): HTMLElement | null {
   if (typeof html !== 'string' || html.length === 0 || html.length > LOOKUP_LIMITS.pageMax) return null;
