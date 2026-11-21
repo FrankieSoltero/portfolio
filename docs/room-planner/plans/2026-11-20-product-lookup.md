@@ -68,7 +68,7 @@ run two builds at once, they share `.next`).
 | 2. Size parsing | `room-planner/server/sizes.ts`, `room-planner/server/sizes.test.ts` | — | standard |
 | 3. Page readers | `room-planner/server/readers/shared.ts`, `room-planner/server/readers/ikea.ts`, `room-planner/server/readers/wayfair.ts`, `room-planner/server/readers/amazon.ts`, `room-planner/server/readers/index.ts`, `room-planner/server/readers/readers.test.ts`, `room-planner/server/readers/fixtures/ikea-product.html`, `room-planner/server/readers/fixtures/ikea-category.html`, `room-planner/server/readers/fixtures/wayfair-product.html`, `room-planner/server/readers/fixtures/wayfair-category.html`, `room-planner/server/readers/fixtures/amazon-product.html`, `room-planner/server/readers/fixtures/amazon-labelled.html`, `room-planner/server/readers/fixtures/amazon-challenge.html`, `package.json`, `package-lock.json` | 1, 2 | judgment |
 | 4. Safe page fetch | `room-planner/server/safeFetch.ts`, `room-planner/server/safeFetch.test.ts` | 1 | judgment |
-| 5. Rate limit, handler and route | `room-planner/server/rateLimit.ts`, `room-planner/server/rateLimit.test.ts`, `room-planner/server/lookupHandler.ts`, `room-planner/server/lookupHandler.test.ts`, `app/api/room-planner/lookup/route.ts`, `package.json`, `vitest.config.ts`, `eslint.config.mjs` | 1, 3, 4 | judgment |
+| 5. Rate limit, handler and route | `room-planner/server/rateLimit.ts`, `room-planner/server/rateLimit.test.ts`, `room-planner/server/lookupHandler.ts`, `room-planner/server/lookupHandler.test.ts`, `app/api/room-planner/lookup/route.ts`, `package.json`, `vitest.config.mts`, `eslint.config.mjs` | 1, 3, 4 | judgment |
 | 6. Recipe from product text | `room-planner/domain/furniture/fromProduct.ts`, `room-planner/domain/furniture/fromProduct.test.ts` | — | judgment |
 | 7. Photo colours | `room-planner/domain/furniture/photoColours.ts`, `room-planner/domain/furniture/photoColours.test.ts`, `room-planner/services/photoSampler.ts`, `room-planner/services/photoSampler.test.ts` | 1 | standard |
 | 8. Store, lookup service and actions | `room-planner/domain/types.ts`, `room-planner/state/planStore.ts`, `room-planner/state/uiStore.ts`, `room-planner/state/actions.ts`, `room-planner/state/stores.test.ts`, `room-planner/state/lookup.test.ts`, `room-planner/services/productLookup.ts`, `room-planner/services/productLookup.test.ts`, `room-planner/services/remoteProductLookup.ts`, `room-planner/services/remoteProductLookup.test.ts`, `room-planner/test/fakePlanStore.ts` | 1, 6, 7 | judgment |
@@ -319,7 +319,7 @@ output reported; `du -k room-planner/server/readers/fixtures/*` shows no file ab
 - Test: `room-planner/server/lookupHandler.test.ts`
 - Create: `app/api/room-planner/lookup/route.ts`
 - Modify: `package.json`
-- Create: `vitest.config.ts`
+- Modify: `vitest.config.mts`
 - Modify: `eslint.config.mjs`
 
 **Interfaces:**
@@ -363,6 +363,8 @@ output reported; `du -k room-planner/server/readers/fixtures/*` shows no file ab
 | Handler throws inside | `fetchPage` rejects, or the reader throws | 502 `unavailable`; nothing about the error in the body |
 | Response headers | every response | `Content-Type: application/json; charset=utf-8`, `Cache-Control: no-store`; no `Access-Control-*` header |
 | Log line | every request | one `log` call with the exact JSON shape from Global Constraints; never contains the link or the address |
+
+Config edits: `package.json` `lint` script gains the path `app/api/room-planner`; `vitest.config.mts` `include` gains `app/api/room-planner/**/*.test.ts`; `eslint.config.mjs` gains a block giving `room-planner/server/**` and `app/api/**` Node globals. Task 3's `package.json` edit adds `node-html-parser` to `dependencies`.
 
 The default limiter is one module-level `createRateLimiter({ limit: 20, windowMs: 600_000, maxKeys: 5000 })`.
 
