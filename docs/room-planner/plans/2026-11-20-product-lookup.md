@@ -49,14 +49,14 @@ run two builds at once, they share `.next`).
   cut to the limits above. No secrets or environment variables are needed; none may be added.
 - Logging on the server: exactly one line per request,
   `console.info(JSON.stringify({ event: 'room_planner_lookup', shop, outcome }))`, where `shop`
-  is the shop name or `null` and `outcome` is `ok` or an error code. Never the link, the
+  is the shop name (`ikea`, `amazon`, `wayfair`; it stands for the shop host the spec names) or
+  `null`, and `outcome` is `ok` or an error code. Never the link, the
   address, headers or page content.
 - The saved-plan format stays version 4. `Item` gains no field. The photo address is never
   written to the plan, to storage or to a share link.
 - The reader identifies itself as `RoomPlannerLinkPreview/1.0`. No retries, no address
   rotation, no challenge solving.
-- Desktop only. No new dependency except `node-html-parser` (Task 3); run `npm audit` after
-  adding it and report any finding.
+- Desktop only. No new dependency except `node-html-parser` (Task 3, with its audit gate).
 - Rollback: the change is additive and the plan format does not move, so reverting the merge
   commit restores the previous site with no effect on saved plans or share links.
 
@@ -66,22 +66,30 @@ run two builds at once, they share `.next`).
 |------|---------------|------------|-----------|
 | 1. Contract and shop list | `room-planner/lookup/contract.ts`, `room-planner/lookup/contract.test.ts`, `room-planner/lookup/shops.ts`, `room-planner/lookup/shops.test.ts` | — | standard |
 | 2. Size parsing | `room-planner/server/sizes.ts`, `room-planner/server/sizes.test.ts` | — | standard |
-| 3. Page readers | `room-planner/server/readers/shared.ts`, `room-planner/server/readers/ikea.ts`, `room-planner/server/readers/wayfair.ts`, `room-planner/server/readers/amazon.ts`, `room-planner/server/readers/index.ts`, `room-planner/server/readers/readers.test.ts`, `room-planner/server/readers/fixtures/ikea-product.html`, `room-planner/server/readers/fixtures/ikea-category.html`, `room-planner/server/readers/fixtures/wayfair-product.html`, `room-planner/server/readers/fixtures/wayfair-category.html`, `room-planner/server/readers/fixtures/amazon-product.html`, `room-planner/server/readers/fixtures/amazon-labelled.html`, `room-planner/server/readers/fixtures/amazon-challenge.html`, `package.json`, `package-lock.json` | 1, 2 | judgment |
-| 4. Safe page fetch | `room-planner/server/safeFetch.ts`, `room-planner/server/safeFetch.test.ts` | 1 | judgment |
-| 5. Rate limit, handler and route | `room-planner/server/rateLimit.ts`, `room-planner/server/rateLimit.test.ts`, `room-planner/server/lookupHandler.ts`, `room-planner/server/lookupHandler.test.ts`, `app/api/room-planner/lookup/route.ts`, `package.json`, `vitest.config.mts`, `eslint.config.mjs` | 1, 3, 4 | judgment |
-| 6. Recipe from product text | `room-planner/domain/furniture/fromProduct.ts`, `room-planner/domain/furniture/fromProduct.test.ts` | — | judgment |
-| 7. Photo colours | `room-planner/domain/furniture/photoColours.ts`, `room-planner/domain/furniture/photoColours.test.ts`, `room-planner/services/photoSampler.ts`, `room-planner/services/photoSampler.test.ts` | 1 | standard |
-| 8. Store, lookup service and actions | `room-planner/domain/types.ts`, `room-planner/state/planStore.ts`, `room-planner/state/uiStore.ts`, `room-planner/state/actions.ts`, `room-planner/state/stores.test.ts`, `room-planner/state/lookup.test.ts`, `room-planner/services/productLookup.ts`, `room-planner/services/productLookup.test.ts`, `room-planner/services/remoteProductLookup.ts`, `room-planner/services/remoteProductLookup.test.ts`, `room-planner/test/fakePlanStore.ts` | 1, 6, 7 | judgment |
-| 9. Link box and preview card | `room-planner/components/Sidebar/ProductLinkBox.tsx`, `room-planner/components/Sidebar/ProductLinkBox.test.tsx`, `room-planner/components/Sidebar/ProductPreviewCard.tsx`, `room-planner/components/Sidebar/ProductPreviewCard.test.tsx`, `room-planner/components/Sidebar/AddFurnitureSection.tsx`, `room-planner/components/Sidebar/AddFurnitureSection.test.tsx`, `room-planner/components/Sidebar/addFurniture.css`, `room-planner/components/Sidebar/PlanSection.tsx`, `room-planner/components/Sidebar/PlanSection.test.tsx`, `room-planner/three/previewSnapshot.ts`, `room-planner/three/previewSnapshot.test.ts` | 8 | judgment |
-| 10. Docs | `docs/room-planner/README.md`, `docs/room-planner/mistakes-and-fixes.md`, `docs/fixes-log.md`, `README.md` | 1, 2, 3, 4, 5, 6, 7, 8, 9 | mechanical |
+| 3. Shared page reader and IKEA | `room-planner/server/readers/shared.ts`, `room-planner/server/readers/ikea.ts`, `room-planner/server/readers/ikea.test.ts`, `room-planner/server/readers/fixtures/ikea-product.html`, `room-planner/server/readers/fixtures/ikea-category.html`, `package.json`, `package-lock.json` | 1, 2 | judgment |
+| 4. Wayfair and Amazon readers | `room-planner/server/readers/wayfair.ts`, `room-planner/server/readers/amazon.ts`, `room-planner/server/readers/index.ts`, `room-planner/server/readers/readers.test.ts`, `room-planner/server/readers/fixtures/wayfair-product.html`, `room-planner/server/readers/fixtures/wayfair-category.html`, `room-planner/server/readers/fixtures/amazon-product.html`, `room-planner/server/readers/fixtures/amazon-labelled.html`, `room-planner/server/readers/fixtures/amazon-challenge.html` | 3 | judgment |
+| 5. Safe page fetch | `room-planner/server/safeFetch.ts`, `room-planner/server/safeFetch.test.ts` | 1 | judgment |
+| 6. Rate limiter and server tooling | `room-planner/server/rateLimit.ts`, `room-planner/server/rateLimit.test.ts`, `package.json`, `vitest.config.mts`, `eslint.config.mjs` | 3 | standard |
+| 7. Lookup handler and route | `room-planner/server/lookupHandler.ts`, `room-planner/server/lookupHandler.test.ts`, `app/api/room-planner/lookup/route.ts` | 4, 5, 6 | judgment |
+| 8. Recipe from product text | `room-planner/domain/furniture/fromProduct.ts`, `room-planner/domain/furniture/fromProduct.test.ts` | — | judgment |
+| 9. Photo colours | `room-planner/domain/furniture/photoColours.ts`, `room-planner/domain/furniture/photoColours.test.ts`, `room-planner/services/photoSampler.ts`, `room-planner/services/photoSampler.test.ts` | 1 | standard |
+| 10. Add a piece from a spec | `room-planner/domain/types.ts`, `room-planner/state/planStore.ts`, `room-planner/state/stores.test.ts`, `room-planner/test/fakePlanStore.ts` | — | standard |
+| 11. Remote lookup service | `room-planner/services/productLookup.ts`, `room-planner/services/productLookup.test.ts`, `room-planner/services/remoteProductLookup.ts`, `room-planner/services/remoteProductLookup.test.ts` | 1, 8, 9, 10 | judgment |
+| 12. Lookup state and actions | `room-planner/state/uiStore.ts`, `room-planner/state/actions.ts`, `room-planner/state/lookup.test.ts` | 10, 11 | judgment |
+| 13. Piece snapshot | `room-planner/three/previewSnapshot.ts`, `room-planner/three/previewSnapshot.test.ts` | — | standard |
+| 14. Link box and preview card | `room-planner/components/Sidebar/ProductLinkBox.tsx`, `room-planner/components/Sidebar/ProductLinkBox.test.tsx`, `room-planner/components/Sidebar/ProductPreviewCard.tsx`, `room-planner/components/Sidebar/ProductPreviewCard.test.tsx`, `room-planner/components/Sidebar/AddFurnitureSection.tsx`, `room-planner/components/Sidebar/AddFurnitureSection.test.tsx`, `room-planner/components/Sidebar/addFurniture.css` | 12, 13 | judgment |
+| 15. Docs and privacy note | `docs/room-planner/README.md`, `docs/room-planner/mistakes-and-fixes.md`, `docs/fixes-log.md`, `README.md`, `room-planner/components/Sidebar/PlanSection.tsx`, `room-planner/components/Sidebar/PlanSection.test.tsx` | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 | mechanical |
 
-Source files of Tasks 1, 2 and 6 are disjoint. Tasks 3 and 5 both write `package.json`; Task 3
-also writes `package-lock.json` and `node_modules`. Any task whose Verify runs `npm run check`
-writes `.next`.
+Shared writes outside the source files: Tasks 3 and 6 both edit `package.json`; Task 3 also
+writes `package-lock.json` and `node_modules`. Tasks 7 and 14 run `npm run check`, which writes
+`.next`. Tasks 10 and 12 both extend tests under `room-planner/state/` but in different files.
 
 ---
 
 ## Task 1: Contract and shop list
+
+**Spec ref:** section 1 "Shops only", "What comes back"; section 4 "What is saved".
+
 
 **Files:**
 - Create: `room-planner/lookup/contract.ts`
@@ -126,6 +134,9 @@ writes `.next`.
 
 ## Task 2: Size parsing
 
+**Spec ref:** section 2 (IKEA, Wayfair and Amazon size formats).
+
+
 **Files:**
 - Create: `room-planner/server/sizes.ts`
 - Test: `room-planner/server/sizes.test.ts`
@@ -169,32 +180,29 @@ writes `.next`.
 
 ---
 
-## Task 3: Page readers
+## Task 3: Shared page reader and IKEA
+
+**Spec ref:** section 2 "Reading a page" (shared reader, IKEA).
 
 **Files:**
 - Create: `room-planner/server/readers/shared.ts`
 - Create: `room-planner/server/readers/ikea.ts`
-- Create: `room-planner/server/readers/wayfair.ts`
-- Create: `room-planner/server/readers/amazon.ts`
-- Create: `room-planner/server/readers/index.ts`
-- Test: `room-planner/server/readers/readers.test.ts`
+- Test: `room-planner/server/readers/ikea.test.ts`
 - Create: `room-planner/server/readers/fixtures/ikea-product.html`
 - Create: `room-planner/server/readers/fixtures/ikea-category.html`
-- Create: `room-planner/server/readers/fixtures/wayfair-product.html`
-- Create: `room-planner/server/readers/fixtures/wayfair-category.html`
-- Create: `room-planner/server/readers/fixtures/amazon-product.html`
-- Create: `room-planner/server/readers/fixtures/amazon-labelled.html`
-- Create: `room-planner/server/readers/fixtures/amazon-challenge.html`
 - Modify: `package.json`
 - Modify: `package-lock.json`
 
 **Interfaces:**
-- Consumes: `Shop`, `isShopPhotoUrl` (Task 1); `ProductFields`, `LOOKUP_LIMITS`,
-  `SIZE_NOTE_UNLABELLED`, `parseProductFields` (Task 1); `parseLength`, `parseDimensionLine`
-  (Task 2).
-- Produces (`index.ts`): `export function readProduct(shop: Shop, html: string): ProductFields | null;`
-  Null means "not a single product page". Never throws on any input string. Every non-null
-  result passes `parseProductFields`.
+- Consumes: `Shop`, `isShopPhotoUrl`, `ProductFields`, `LOOKUP_LIMITS`, `parseProductFields` (Task 1); `parseLength` (Task 2).
+- Produces (`shared.ts`):
+  - `export function parsePage(html: string): HTMLElement | null;` (node-html-parser root; null for empty input or input over `LOOKUP_LIMITS.pageMax` characters)
+  - `export function findJsonLdProduct(root: HTMLElement): Record<string, unknown> | null;`
+  - `export function metaContent(root: HTMLElement, property: string): string | null;`
+  - `export function canonicalUrl(root: HTMLElement): string | null;`
+  - `export function productFromJsonLd(product: Record<string, unknown>): Partial<ProductFields>;`
+  - `export function finishFields(partial: Partial<ProductFields>): ProductFields | null;` (applies every limit; null when there is no name; the result passes `parseProductFields`)
+- Produces (`ikea.ts`): `export function readIkea(html: string): ProductFields | null;` Never throws.
 
 **Fixtures.** Saved real pages (read-only source, do not copy whole) are in
 `/private/tmp/claude-501/-Users-franciscosoltero-Desktop-Code-Room-Planner-Website/9b1a483d-a2b5-407a-8ced-5e3bf33d5d58/scratchpad/lookup-probe/`:
@@ -206,19 +214,14 @@ values". Remove scripts, styles, reviews and tracking. `amazon-labelled.html` is
 the dimensions cell changed to `35"D x 80"W x 30"H`, and a price block
 `<div id="corePrice_desktop"><span class="a-price"><span class="a-offscreen">$1,299.00</span></span></div>`.
 `amazon-challenge.html` is a 1 KB page with no `productTitle` containing the text
-`api-services-support@amazon.com`.
+`api-services-support@amazon.com`. If that directory is missing, stop and report NEEDS_CONTEXT; do not fetch pages yourself.
 
 **Behavior:**
 
-| Case | Input | Expected |
-|------|-------|----------|
+| Case | Input / state | Expected |
+|------|---------------|----------|
 | IKEA product | `ikea-product.html` | name `BILLY Bookcase - black oak effect 31 1/2x11x41 3/4 "`; price 59; w 31.5; d 11; h 41.75; imageUrl `https://www.ikea.com/us/en/images/products/billy-bookcase-black-oak-effect__1097107_pe864733_s5.jpg`; description starts `BILLY Bookcase - black oak effect`, at most 600 characters; sizeNote null |
 | IKEA category | `ikea-category.html` | `null` |
-| Wayfair product | `wayfair-product.html` | name `Jadier 66" Upholstered Loveseat Square Sofa`; price 319.99 (not the struck-through 412.00); h 32.3; w 65.8; d 32.3; imageUrl is the `og:image` address on `assets.wfcdn.com`; sizeNote null |
-| Wayfair category | `wayfair-category.html` | `null` |
-| Amazon product | `amazon-product.html` | name is the first 200 characters of the trimmed `#productTitle` text; imageUrl `https://m.media-amazon.com/images/I/61fd2oCrvyL._AC_SL1500_.jpg`; d 14.01; w 9.77; h 0.66; sizeNote `SIZE_NOTE_UNLABELLED`; price null |
-| Amazon labelled | `amazon-labelled.html` | name `Rivet Revolve Modern Upholstered Sofa, Navy`; d 35; w 80; h 30; sizeNote null; price 1299 |
-| Amazon challenge | `amazon-challenge.html` | `null` |
 | JSON-LD shapes | Product directly, inside an array, inside `@graph`; `image` as string, string array, `ImageObject`, `ImageObject` array | all read |
 | JSON-LD sizes | `"31 1/2 \""`; `{ "value": 80, "unitCode": "CMT" }`; `{ "value": "31.5", "unitText": "in" }` | 31.5 each |
 | Offers | single `Offer`; array of offers (first USD one); `AggregateOffer` with `lowPrice` | price read |
@@ -228,35 +231,63 @@ the dimensions cell changed to `35"D x 80"W x 30"H`, and a price block
 | Entities | name containing `&quot;`, `&amp;`, `&#x27;` | decoded to `"`, `&`, `'` |
 | Hostile text | name `<img src=x onerror=alert(1)>` (as entity-encoded text in the page) | returned as that literal text; nothing is executed or stripped by the reader |
 | Missing sizes | product page with no size data | w, d, h null; other fields kept |
-| Empty or huge input | `` ; 5 MB of `a` | `null`, returns in well under a second |
+| Empty or huge input | `` ; 5 MB of `a` | `null`; the 5 MB case completes in under 500 ms, asserted in the test |
 
-**Exact values (where each shop's data is):**
-- Shared: `<script type="application/ld+json">` blocks; a Product is an object whose `@type` is
-  `Product` (or an array containing it). `og:title`, `og:image`, `og:description`,
-  `link[rel=canonical]`.
-- IKEA: the JSON-LD Product only. No Product block → `null`.
-- Wayfair: product page when the canonical address contains `/pdp/`. Name:
-  `h1[data-rtl-id="listingHeaderNameHeading"]`, else `og:title` with a trailing
-  ` & Reviews | Wayfair` or ` | Wayfair` removed. Price: the first element with
-  `data-test-id="PriceDisplay"` that is not an `<s>` element, text like `$319.99`. Sizes: the
-  `<dd>` following the `<dt>` whose text is `Overall Dimensions` (or `Overall`), else the first
-  match of `Overall Dimensions\",\"value\":\"…\"` in the embedded data.
-- Amazon: product page when `#productTitle` exists. Photo: the first `data-old-hires`
-  attribute on `m.media-amazon.com`, else the largest entry of `#landingImage`'s
-  `data-a-dynamic-image` JSON. Price: the first `.a-price .a-offscreen` inside
-  `#corePrice_desktop` or `#corePriceDisplay_desktop_feature_div` whose text starts with `$`.
-  Description: the `#feature-bullets li` texts joined by a space. Sizes: the `<td>` of the row
-  whose `<th>` text contains `Product Dimensions` or `Item Dimensions`; letters in that label
-  after the word `Dimensions` (for example `LxWxH`, `D x W x H`) are passed as the order hint.
-  `sizeNote` is `SIZE_NOTE_UNLABELLED` exactly when the parsed line is not labelled.
+**Exact values:** JSON-LD lives in `<script type="application/ld+json">` blocks; a Product is an object whose `@type` is `Product` (or an array containing it), directly, in an array or in `@graph`. Meta: `og:title`, `og:image`, `og:description`, `link[rel=canonical]`. IKEA uses the JSON-LD Product only; no Product block → `null`.
 
-**Verify:** `npx vitest run room-planner/server` → all pass; `npm run typecheck`; `npm audit`
-output reported; `du -k room-planner/server/readers/fixtures/*` shows no file above 30 KB.
-**Commit:** `feat(room-planner): product page readers for IKEA, Wayfair and Amazon`
+**Dependency gate:** add `node-html-parser` to `dependencies`, then run `npm audit --omit=dev`. A high or critical finding in `node-html-parser` or anything it pulls in stops the task: report BLOCKED with the advisory. Lower findings are listed in the task report.
+
+**Verify:** `npx vitest run room-planner/server/readers` → all pass; `npm run typecheck` → no errors; `npm audit --omit=dev` → no high or critical finding from the new package; `du -k room-planner/server/readers/fixtures/*` → no file above 30 KB.
+**Commit:** `feat(room-planner): shared page reader and IKEA reader`
 
 ---
 
-## Task 4: Safe page fetch
+## Task 4: Wayfair and Amazon readers
+
+**Spec ref:** section 2 "Reading a page" (Wayfair, Amazon, price, untrusted text).
+
+**Files:**
+- Create: `room-planner/server/readers/wayfair.ts`
+- Create: `room-planner/server/readers/amazon.ts`
+- Create: `room-planner/server/readers/index.ts`
+- Test: `room-planner/server/readers/readers.test.ts`
+- Create: `room-planner/server/readers/fixtures/wayfair-product.html`
+- Create: `room-planner/server/readers/fixtures/wayfair-category.html`
+- Create: `room-planner/server/readers/fixtures/amazon-product.html`
+- Create: `room-planner/server/readers/fixtures/amazon-labelled.html`
+- Create: `room-planner/server/readers/fixtures/amazon-challenge.html`
+
+**Interfaces:**
+- Consumes: `parsePage`, `findJsonLdProduct`, `metaContent`, `canonicalUrl`, `productFromJsonLd`, `finishFields` (Task 3); `readIkea(html: string): ProductFields | null` (Task 3); `Shop`, `ProductFields`, `SIZE_NOTE_UNLABELLED` (Task 1); `parseLength`, `parseDimensionLine(text: string, order?: string): ParsedSizes | null` (Task 2).
+- Produces: `export function readWayfair(html: string): ProductFields | null;` (`wayfair.ts`); `export function readAmazon(html: string): ProductFields | null;` (`amazon.ts`); `export function readProduct(shop: Shop, html: string): ProductFields | null;` (`index.ts`). Null means "not a single product page". None throws on any input string. Every non-null result passes `parseProductFields`.
+
+Fixtures come from the same saved pages as Task 3, cut the same way (at most 30 KB each; same rule if the directory is missing): `wayfair-p.html`, `wayfair.html`, `amazon-p.html`. `amazon-labelled.html` is `amazon-product.html` with the title changed to `Rivet Revolve Modern Upholstered Sofa, Navy`, the dimensions cell changed to `35"D x 80"W x 30"H`, and a price block `<div id="corePrice_desktop"><span class="a-price"><span class="a-offscreen">$1,299.00</span></span></div>`. `amazon-challenge.html` is a 1 KB page with no `productTitle` containing the text `api-services-support@amazon.com`.
+
+**Behavior:**
+
+| Case | Input / state | Expected |
+|------|---------------|----------|
+| Wayfair product | `wayfair-product.html` | name `Jadier 66" Upholstered Loveseat Square Sofa`; price 319.99 (not the struck-through 412.00); h 32.3; w 65.8; d 32.3; imageUrl is the `og:image` address on `assets.wfcdn.com`; sizeNote null |
+| Wayfair category | `wayfair-category.html` | `null` |
+| Amazon product | `amazon-product.html` | name is the first 200 characters of the trimmed `#productTitle` text; imageUrl `https://m.media-amazon.com/images/I/61fd2oCrvyL._AC_SL1500_.jpg`; d 14.01; w 9.77; h 0.66; sizeNote `SIZE_NOTE_UNLABELLED`; price null |
+| Amazon labelled | `amazon-labelled.html` | name `Rivet Revolve Modern Upholstered Sofa, Navy`; d 35; w 80; h 30; sizeNote null; price 1299 |
+| Amazon challenge | `amazon-challenge.html` | `null` |
+| Dispatcher | `readProduct('ikea' / 'wayfair' / 'amazon', html)` | the matching reader's result |
+| Hostile and huge input | entity-encoded `<img src=x onerror=alert(1)>` as a Wayfair or Amazon title; `` ; 5 MB of `a` | literal text; `null`; the 5 MB case under 500 ms |
+
+**Exact values:**
+- Wayfair: product page when the canonical address contains `/pdp/`. Name: `h1[data-rtl-id="listingHeaderNameHeading"]`, else `og:title` with a trailing ` & Reviews | Wayfair` or ` | Wayfair` removed. Price: the first element with `data-test-id="PriceDisplay"` that is not an `<s>` element, text like `$319.99`. Sizes: the `<dd>` following the `<dt>` whose text is `Overall Dimensions` (or `Overall`), else the first match of `Overall Dimensions\",\"value\":\"…\"` in the embedded data.
+- Amazon: product page when `#productTitle` exists. Photo: the first `data-old-hires` attribute on `m.media-amazon.com`, else the largest entry of `#landingImage`'s `data-a-dynamic-image` JSON. Price: the first `.a-price .a-offscreen` inside `#corePrice_desktop` or `#corePriceDisplay_desktop_feature_div` whose text starts with `$`. Description: the `#feature-bullets li` texts joined by a space. Sizes: the `<td>` of the row whose `<th>` text contains `Product Dimensions` or `Item Dimensions`; letters in that label after the word `Dimensions` (for example `LxWxH`, `D x W x H`) are passed as the order hint. `sizeNote` is `SIZE_NOTE_UNLABELLED` exactly when the parsed line is not labelled.
+
+**Verify:** `npx vitest run room-planner/server/readers` → all pass; `npm run typecheck` → no errors; `du -k room-planner/server/readers/fixtures/*` → no file above 30 KB.
+**Commit:** `feat(room-planner): Wayfair and Amazon page readers`
+
+---
+
+## Task 5: Safe page fetch
+
+**Spec ref:** section 1 "Outgoing request rules", "Limits", "Reader name".
+
 
 **Files:**
 - Create: `room-planner/server/safeFetch.ts`
@@ -310,30 +341,22 @@ output reported; `du -k room-planner/server/readers/fixtures/*` shows no file ab
 
 ---
 
-## Task 5: Rate limit, handler and route
+## Task 6: Rate limiter and server tooling
+
+**Spec ref:** section 1 "Who may call it" (the per-address limit).
 
 **Files:**
 - Create: `room-planner/server/rateLimit.ts`
 - Test: `room-planner/server/rateLimit.test.ts`
-- Create: `room-planner/server/lookupHandler.ts`
-- Test: `room-planner/server/lookupHandler.test.ts`
-- Create: `app/api/room-planner/lookup/route.ts`
 - Modify: `package.json`
 - Modify: `vitest.config.mts`
 - Modify: `eslint.config.mjs`
 
 **Interfaces:**
-- Consumes: `readProduct(shop: Shop, html: string): ProductFields | null` (Task 3);
-  `fetchShopPage(url: string, deps?: Partial<FetchDeps>): Promise<FetchResult>` (Task 4);
-  `shopForHost`, `LOOKUP_LIMITS`, `LookupErrorCode` (Task 1).
+- Consumes: nothing from earlier tasks' code. It follows Task 3 only because both edit `package.json`.
 - Produces:
   - `export interface RateLimiter { allow(key: string, now: number): { ok: true } | { ok: false; retryAfterSec: number } }`
   - `export function createRateLimiter(opts: { limit: number; windowMs: number; maxKeys: number }): RateLimiter;`
-  - `export interface LookupDeps { fetchPage(url: string): Promise<FetchResult>; limiter: RateLimiter; now(): number; log(line: string): void }`
-  - `export async function handleLookup(req: Request, deps?: Partial<LookupDeps>): Promise<Response>;`
-  - `route.ts`: `export const runtime = 'nodejs'; export const dynamic = 'force-dynamic';` and
-    `export async function POST(req: Request): Promise<Response>` returning `handleLookup(req)`.
-    No other method is exported.
 
 **Behavior:**
 
@@ -344,6 +367,37 @@ output reported; `du -k room-planner/server/readers/fixtures/*` shows no file ab
 | Limiter window slides | a call 600,001 ms after the first | `ok` |
 | Limiter keys independent | key A at the limit | key B `ok` |
 | Limiter bounded | more than `maxKeys` distinct keys | the least recently seen key is dropped; the map never holds more than `maxKeys` |
+| Tooling: lint | `npm run lint` | also lints `app/api/room-planner` (the `lint` script in `package.json` gains that path) |
+| Tooling: tests | `vitest.config.mts` | `include` gains `app/api/room-planner/**/*.test.ts` |
+| Tooling: Node globals | `eslint.config.mjs` | one added block: `{ files: ['room-planner/server/**/*.ts', 'app/api/**/*.ts'], languageOptions: { globals: globals.node } }`, using the `globals` import already at the top of the file |
+
+The limiter is in memory, so it is per server instance: it slows abuse and does not stop a determined caller. The hard limit is the owner's Vercel firewall rule (Task 15 writes its text). Owner decision, 2026-11-20: ship with this soft limit; the owner adds the rule after merge.
+
+**Verify:** `npx vitest run room-planner/server/rateLimit.test.ts` → all pass; `npm run lint` → no errors; `npm run typecheck` → no errors.
+**Commit:** `feat(room-planner): lookup rate limiter and server tooling config`
+
+---
+
+## Task 7: Lookup handler and route
+
+**Spec ref:** section 1 "Server step" (who may call it, what comes back, logging).
+
+**Files:**
+- Create: `room-planner/server/lookupHandler.ts`
+- Test: `room-planner/server/lookupHandler.test.ts`
+- Create: `app/api/room-planner/lookup/route.ts`
+
+**Interfaces:**
+- Consumes: `readProduct(shop: Shop, html: string): ProductFields | null` (Task 4); `fetchShopPage(url: string, deps?: Partial<FetchDeps>): Promise<FetchResult>` and `FetchResult` (Task 5); `RateLimiter`, `createRateLimiter(opts: { limit: number; windowMs: number; maxKeys: number }): RateLimiter` (Task 6); `shopForHost`, `LOOKUP_LIMITS`, `LookupErrorCode` (Task 1).
+- Produces:
+  - `export interface LookupDeps { fetchPage(url: string): Promise<FetchResult>; limiter: RateLimiter; now(): number; log(line: string): void }`
+  - `export async function handleLookup(req: Request, deps?: Partial<LookupDeps>): Promise<Response>;`
+  - `route.ts`: `export const runtime = 'nodejs'; export const dynamic = 'force-dynamic';` and `export async function POST(req: Request): Promise<Response>` returning `handleLookup(req)`. No other method is exported.
+
+**Behavior:**
+
+| Case | Input / state | Expected |
+|------|---------------|----------|
 | Success | same-origin POST, JSON `{ "url": "https://www.ikea.com/us/en/p/x/" }`, fetch ok, reader returns fields | 200, body is exactly the `ProductFields` |
 | Origin missing | no `Origin` header | 403 `{ "error": "unavailable" }`; no fetch |
 | Origin foreign | `Origin: https://evil.example`, `Host: frankiesoltero.com` | 403; no fetch |
@@ -355,7 +409,6 @@ output reported; `du -k room-planner/server/readers/fixtures/*` shows no file ab
 | Not a shop | `https://example.com/x` | 400 `unsupported_shop`; no fetch |
 | Rate limited | limiter refuses | 429 `rate_limited`, header `Retry-After: <retryAfterSec>`; no fetch |
 | Limiter key | `x-forwarded-for: 203.0.113.9, 10.0.0.1` | key `203.0.113.9`; with no such header `x-real-ip`; with neither `unknown` |
-| Limiter order | foreign origin or invalid body | the limiter is not charged (checked after origin and body, before the fetch) |
 | Fetch blocked | `{ ok: false, reason: 'blocked' }` | 502 `blocked` |
 | Fetch unavailable | `reason: 'unavailable'` | 502 `unavailable` |
 | Fetch unsupported | `reason: 'unsupported_shop'` | 400 `unsupported_shop` |
@@ -363,19 +416,22 @@ output reported; `du -k room-planner/server/readers/fixtures/*` shows no file ab
 | Handler throws inside | `fetchPage` rejects, or the reader throws | 502 `unavailable`; nothing about the error in the body |
 | Response headers | every response | `Content-Type: application/json; charset=utf-8`, `Cache-Control: no-store`; no `Access-Control-*` header |
 | Log line | every request | one `log` call with the exact JSON shape from Global Constraints; never contains the link or the address |
+| Order of checks | any request | origin, then content type and body, then the link, then the shop list, then the limiter, then the fetch |
+| What charges the limiter | foreign origin, bad body, invalid link, not-a-shop link | not charged; only a request that reaches the fetch is charged |
 
-Config edits: `package.json` `lint` script gains the path `app/api/room-planner`; `vitest.config.mts` `include` gains `app/api/room-planner/**/*.test.ts`; `eslint.config.mjs` gains a block giving `room-planner/server/**` and `app/api/**` Node globals. Task 3's `package.json` edit adds `node-html-parser` to `dependencies`.
+The default limiter is one module-level `createRateLimiter({ limit: 20, windowMs: 600_000, maxKeys: 5000 })`. On Vercel the platform overwrites `x-forwarded-for` with the caller's address, so a caller cannot choose its key there; elsewhere the header can be forged and callers with no address share the key `unknown`. Both are accepted for a soft limit.
 
-The default limiter is one module-level `createRateLimiter({ limit: 20, windowMs: 600_000, maxKeys: 5000 })`.
+No feature flag or kill switch is added: the route does one bounded job, the post-merge live check (Final verification step 4) is the staged gate, and reverting the merge commit removes the route.
 
-**Verify:** `npx vitest run room-planner/server` → all pass; stop any dev server, then
-`npm run check` → typecheck, lint (now including `app/api/room-planner`), all tests and the
-build pass, and the build output lists `/api/room-planner/lookup` as a dynamic route.
+**Verify:** `npx vitest run room-planner/server` → all pass; stop any dev server, then `npm run check` → typecheck, lint, all tests and the build pass, and the build output lists `/api/room-planner/lookup` as a dynamic route.
 **Commit:** `feat(room-planner): product lookup route with origin check and rate limit`
 
 ---
 
-## Task 6: Recipe from product text
+## Task 8: Recipe from product text
+
+**Spec ref:** section 3 "From product to recipe" (type, style, colour words).
+
 
 **Files:**
 - Create: `room-planner/domain/furniture/fromProduct.ts`
@@ -523,7 +579,10 @@ including a test that for every kind, every style rule's result is accepted by `
 
 ---
 
-## Task 7: Photo colours
+## Task 9: Photo colours
+
+**Spec ref:** section 3 "Colours" (sampling the photo).
+
 
 **Files:**
 - Create: `room-planner/domain/furniture/photoColours.ts`
@@ -582,30 +641,19 @@ bucket holding at least 5% of remaining pixels whose colour differs from main by
 
 ---
 
-## Task 8: Store, lookup service and actions
+## Task 10: Add a piece from a spec
+
+**Spec ref:** section 4 "What is saved" and "Preview card" (the piece is an ordinary piece; one undo step).
 
 **Files:**
 - Modify: `room-planner/domain/types.ts`
 - Modify: `room-planner/state/planStore.ts`
-- Modify: `room-planner/state/uiStore.ts`
-- Modify: `room-planner/state/actions.ts`
 - Test: `room-planner/state/stores.test.ts`
-- Test: `room-planner/state/lookup.test.ts`
-- Modify: `room-planner/services/productLookup.ts`
-- Test: `room-planner/services/productLookup.test.ts`
-- Create: `room-planner/services/remoteProductLookup.ts`
-- Test: `room-planner/services/remoteProductLookup.test.ts`
 - Modify: `room-planner/test/fakePlanStore.ts`
 
 **Interfaces:**
-- Consumes: `LOOKUP_PATH`, `LookupErrorCode`, `isLookupErrorCode`, `parseProductFields`,
-  `ProductFields` (Task 1); `shopForHost` (Task 1); `kindFromName`, `styleFromText`,
-  `mainColourFromName`, `accentColourFromText`, `recipeColours` (Task 6);
-  `samplePhotoColours(url, opts?): Promise<PhotoColours>` (Task 7); existing
-  `parseProductUrl`, `capProductText`, `LookupError`, `ProductLookup` in
-  `services/productLookup.ts`; existing `TYPICAL_SIZE`, `KIND_LABELS`, `defaultStyle`,
-  `completeStyle`, `normaliseColour`.
-- Produces (`domain/types.ts`), replacing the current `ProductPreview`:
+- Consumes (existing): `TYPICAL_SIZE`, `KIND_LABELS`, `defaultStyle`, `defaultColours`, `completeStyle`, `normaliseColour` in `domain/furniture/recipe.ts`; `PLANNER_MODEL`, `placeItem`, `interiorPoint`, `roomBounds` as used by `addFurniture` in `planStore.ts`; `PRODUCT_TEXT_LIMITS` in `domain/planSchema.ts`.
+- Produces (`domain/types.ts`), replacing the current `ProductPreview` (grep for its users first; `known` and `model` are removed from it):
   ```ts
   export interface ProductPreview {
     kind: Kind; name: string; host: string; sourceUrl: string; price: number | null;
@@ -614,33 +662,16 @@ bucket holding at least 5% of remaining pixels whose colour differs from main by
     imageUrl: string | null; style: StyleValues; colours: ItemColours;
   }
   ```
-- Produces (`services/productLookup.ts`): `LookupErrorCode` is now re-exported from the
-  contract (six codes); `LOOKUP_MESSAGES: Record<LookupErrorCode, string>` (texts below);
-  `LookupError` unchanged in shape.
-- Produces (`services/remoteProductLookup.ts`):
-  - `export interface RemoteLookupDeps { fetch: typeof fetch; samplePhoto: typeof samplePhotoColours }`
-  - `export function createRemoteProductLookup(deps?: Partial<RemoteLookupDeps>): ProductLookup;`
-  - `export const remoteProductLookup: ProductLookup;`
 - Produces (`state/planStore.ts`):
   - `export interface NewItemSpec { kind: Kind; name?: string; host?: string; sourceUrl?: string | null; price?: number | null; w?: number; d?: number; h?: number; style?: Readonly<Record<string, string>>; colours?: Partial<ItemColours> }`
-  - `addFurnitureFrom(spec: NewItemSpec): string | null;` on `PlanState`. `addFurniture(kind)`
-    keeps its signature and becomes `addFurnitureFrom({ kind })`.
-- Produces (`state/uiStore.ts`):
-  - `export type LookupState = { status: 'idle' } | { status: 'loading' } | { status: 'preview'; preview: ProductPreview } | { status: 'error'; code: LookupErrorCode };`
-  - state `lookup: LookupState` (initially idle), `pendingLink: { url: string; host: string } | null`;
-    setters `setLookup(next: LookupState): void`, `setPendingLink(next: { url: string; host: string } | null): void`.
-- Produces (`state/actions.ts`):
-  - `export async function lookupProduct(raw: string, lookup?: ProductLookup): Promise<void>;`
-  - `export function updatePreview(patch: { kind?: Kind; w?: number; d?: number; h?: number }): void;`
-  - `export function addPreviewToRoom(): string | null;`
-  - `export function dismissLookup(): void;`
+  - `addFurnitureFrom(spec: NewItemSpec): string | null;` on `PlanState`. `addFurniture(kind)` keeps its signature and becomes `addFurnitureFrom({ kind })`. `room-planner/test/fakePlanStore.ts` is edited only if it mirrors the store's shape.
 
 **Behavior — `addFurnitureFrom`:**
 
 | Case | Input / state | Expected |
 |------|---------------|----------|
 | Kind only | `{ kind: 'sofa' }` | identical to today's `addFurniture('sofa')` (existing tests still pass) |
-| Full spec | kind, name, host, link, price, sizes, style, colours | one item with those values, `model` the planner's default, centred and placed by the same rule as `addFurniture`; returns its id |
+| Full spec | kind, name, host, link, price, sizes, style, colours | one item with those values, `model` a copy of the existing `PLANNER_MODEL` constant in `planStore.ts`, centred on `interiorPoint(room.outline)` and placed by the existing `placeItem(item, x, y, roomBounds(room), CONFIG.furnitureSnap)` exactly as `addFurniture` does today; returns its id |
 | One undo step | add from a spec, then undo | the item is gone in one step; redo brings it back whole |
 | Name | trimmed; empty after trimming, or over 200 characters | the kind's label; cut to 200 |
 | Host, link | host over 255; link over 2048 or not `http(s)` | host cut to 255; link `null` |
@@ -650,6 +681,29 @@ bucket holding at least 5% of remaining pixels whose colour differs from main by
 | Colours | partial; a value that is not `#rrggbb` | merged over `defaultColours(kind)`; that colour's default |
 | Plan full | 200 items | `null`, nothing changes |
 | Saved plan stays valid | add from any spec above, save, reload | `parsePlan` accepts it; `schemaVersion` 4; no photo address anywhere in the stored text |
+
+**Verify:** `npx vitest run room-planner/state/stores.test.ts` → all pass; `npm run typecheck` → no errors.
+**Commit:** `feat(room-planner): add a piece from a full product spec`
+
+---
+
+## Task 11: Remote lookup service
+
+**Spec ref:** section 3 (type, style, colours, size) and "Error handling".
+
+**Files:**
+- Modify: `room-planner/services/productLookup.ts`
+- Test: `room-planner/services/productLookup.test.ts`
+- Create: `room-planner/services/remoteProductLookup.ts`
+- Test: `room-planner/services/remoteProductLookup.test.ts`
+
+**Interfaces:**
+- Consumes: `LOOKUP_PATH`, `LookupErrorCode`, `isLookupErrorCode`, `parseProductFields`, `ProductFields`, `shopForHost` (Task 1); `kindFromName`, `styleFromText`, `mainColourFromName`, `accentColourFromText`, `recipeColours` (Task 8); `samplePhotoColours(url: string, opts?): Promise<PhotoColours>` (Task 9); `ProductPreview` (Task 10); existing `parseProductUrl`, `capProductText`, `LookupError`, `ProductLookup` in `services/productLookup.ts`; existing `TYPICAL_SIZE`, `CONFIG.itemDimMin`, `CONFIG.itemDimMax`.
+- Produces (`services/productLookup.ts`): `LookupErrorCode` is re-exported from the contract (six codes); `LOOKUP_MESSAGES: Record<LookupErrorCode, string>` (texts below); `LookupError` unchanged in shape.
+- Produces (`services/remoteProductLookup.ts`):
+  - `export interface RemoteLookupDeps { fetch: typeof fetch; samplePhoto: typeof samplePhotoColours }`
+  - `export function createRemoteProductLookup(deps?: Partial<RemoteLookupDeps>): ProductLookup;`
+  - `export const remoteProductLookup: ProductLookup;`
 
 **Behavior — `remoteProductLookup.lookup(url, { signal })`:**
 
@@ -672,6 +726,43 @@ bucket holding at least 5% of remaining pixels whose colour differs from main by
 | Text caps | long name, host or link | passed through `capProductText` |
 | Result | — | `sourceUrl` the normalised link; `host` the parsed host; `imageUrl` as returned; `sizeNote` as returned |
 
+**Exact values — `LOOKUP_MESSAGES`:**
+- `invalid_url`: `That doesn't look like a link. Paste the full product URL.`
+- `unsupported_shop`: `That shop isn't supported yet. Pick a type below.`
+- `blocked`: `The shop didn't let us read that page. Pick a type below.`
+- `not_a_product`: `That page isn't a single product.`
+- `unavailable`: `Couldn't read that page. Try again, or pick a type below.`
+- `rate_limited`: `Too many lookups. Try again in a few minutes.`
+
+The spec's wording for a page that is not a product is used unchanged. The other failure texts end with "Pick a type below." as in the spec.
+
+**Verify:** `npx vitest run room-planner/services` → all pass; `npm run typecheck` → no errors; `grep -rn "server/" room-planner/services --include=*.ts` → no import from `room-planner/server`.
+**Commit:** `feat(room-planner): remote product lookup service`
+
+---
+
+## Task 12: Lookup state and actions
+
+**Spec ref:** section 4 "Link box", "Preview card", "Failure" (the link is kept on the next piece added).
+
+**Files:**
+- Modify: `room-planner/state/uiStore.ts`
+- Modify: `room-planner/state/actions.ts`
+- Test: `room-planner/state/lookup.test.ts`
+
+**Interfaces:**
+- Consumes: `ProductPreview`, `addFurnitureFrom(spec: NewItemSpec): string | null` (Task 10); `remoteProductLookup`, `LookupErrorCode`, `LookupError`, `ProductLookup`, `parseProductUrl` (Task 11); existing `defaultStyle`; existing `addFurnitureOfKind(kind: Kind): string | null` in `state/actions.ts`, which this task changes (see the last two rows).
+- Produces (`state/uiStore.ts`):
+  - `export type LookupState = { status: 'idle' } | { status: 'loading' } | { status: 'preview'; preview: ProductPreview } | { status: 'error'; code: LookupErrorCode };`
+  - state `lookup: LookupState` (initially idle), `pendingLink: { url: string; host: string } | null`; setters `setLookup(next: LookupState): void`, `setPendingLink(next: { url: string; host: string } | null): void`.
+- Produces (`state/actions.ts`):
+  - `export async function lookupProduct(raw: string, lookup?: ProductLookup): Promise<void>;` (default `remoteProductLookup`)
+  - `export function updatePreview(patch: { kind?: Kind; w?: number; d?: number; h?: number }): void;`
+  - `export function addPreviewToRoom(): string | null;`
+  - `export function dismissLookup(): void;`
+  - `export function clearPendingLink(): void;`
+  - `addFurnitureOfKind` keeps its signature; with a pending link it calls `addFurnitureFrom({ kind, sourceUrl, host })`.
+
 **Behavior — actions:**
 
 | Case | Input / state | Expected |
@@ -686,24 +777,48 @@ bucket holding at least 5% of remaining pixels whose colour differs from main by
 | `addPreviewToRoom` | status preview | `addFurnitureFrom` with the preview's kind, name, host, link, price, sizes, style, colours; the piece is selected; `lookup` idle; returns the id |
 | `addPreviewToRoom`, plan full | 200 items | the existing notice `This plan is full. Remove a piece to add another.`; preview kept; returns `null` |
 | `dismissLookup` | any status | aborts a running lookup; `lookup` idle; `pendingLink` null |
+| `clearPendingLink` | `pendingLink` set | `pendingLink` null; `lookup` unchanged |
 | `addFurnitureOfKind` with a pending link | `pendingLink` set | the new piece gets that `sourceUrl` and `host`; `pendingLink` cleared; `lookup` idle |
 | `addFurnitureOfKind` without one | — | unchanged from today |
 
-**Exact values — `LOOKUP_MESSAGES`:**
-- `invalid_url`: `That doesn't look like a link. Paste the full product URL.`
-- `unsupported_shop`: `That shop isn't supported yet. Pick a type below.`
-- `blocked`: `The shop didn't let us read that page. Pick a type below.`
-- `not_a_product`: `That page isn't a single product. Pick a type below.`
-- `unavailable`: `Couldn't read that page. Try again, or pick a type below.`
-- `rate_limited`: `Too many lookups. Try again in a few minutes.`
-
-**Verify:** `npx vitest run room-planner/state room-planner/services` → all pass;
-`npm run typecheck` → no errors; `grep -rn "from '.*server/" room-planner/state room-planner/services room-planner/domain` → no output.
-**Commit:** `feat(room-planner): lookup service, preview state and add-from-product`
+**Verify:** `npx vitest run room-planner/state` → all pass; `npm run typecheck` → no errors; `grep -rn "server/" room-planner/state --include=*.ts` → no import from `room-planner/server`.
+**Commit:** `feat(room-planner): lookup state and preview actions`
 
 ---
 
-## Task 9: Link box and preview card
+## Task 13: Piece snapshot
+
+**Spec ref:** section 4 "Preview card" (the piece as the generator will draw it).
+
+**Files:**
+- Create: `room-planner/three/previewSnapshot.ts`
+- Test: `room-planner/three/previewSnapshot.test.ts`
+
+**Interfaces:**
+- Consumes (existing): `buildFurniture(item: FurnitureSpec): THREE.Group` and `FurnitureSpec` in `three/furnitureModels.ts`; `CONFIG.hemiIntensity`, `CONFIG.sunIntensity`.
+- Produces:
+  - `export function renderPieceSnapshot(spec: FurnitureSpec, sizePx?: number): string | null;` (a PNG data URL of a three-quarter view framed to the piece's bounding box, default 240 px square; null when WebGL is unavailable or anything fails; never throws)
+  - `export function disposePreviewRenderer(): void;`
+
+**Behavior:**
+
+| Case | Input / state | Expected |
+|------|---------------|----------|
+| Snapshot unavailable | `renderPieceSnapshot` returns null (as in jsdom) | no snapshot image; no error |
+| One renderer | many snapshots | one lazily created module-level `WebGLRenderer` on a canvas that is never attached, reused; `disposePreviewRenderer` (called when the card unmounts) disposes it; each snapshot disposes its own geometries and materials |
+| Snapshot never throws | `THREE.WebGLRenderer` construction throws | `null` |
+| Renders | WebGL available (renderer injected or mocked in the test) | returns a string starting `data:image/png`; the scene holds the group from `buildFurniture(spec)`, one hemisphere light and one directional light |
+| Dispose | `disposePreviewRenderer()` then another snapshot | the old renderer's `dispose` and `forceContextLoss` were called once; a new renderer is created |
+| Dispose with none | `disposePreviewRenderer()` before any snapshot | no-op |
+
+**Verify:** `npx vitest run room-planner/three/previewSnapshot.test.ts` → all pass; `npm run typecheck` → no errors.
+**Commit:** `feat(room-planner): one-off 3D snapshot of a piece`
+
+---
+
+## Task 14: Link box and preview card
+
+**Spec ref:** section 4 "Link box", "Preview card", "Failure"; "Error handling" table.
 
 **Files:**
 - Create: `room-planner/components/Sidebar/ProductLinkBox.tsx`
@@ -713,24 +828,12 @@ bucket holding at least 5% of remaining pixels whose colour differs from main by
 - Modify: `room-planner/components/Sidebar/AddFurnitureSection.tsx`
 - Test: `room-planner/components/Sidebar/AddFurnitureSection.test.tsx`
 - Modify: `room-planner/components/Sidebar/addFurniture.css`
-- Modify: `room-planner/components/Sidebar/PlanSection.tsx`
-- Test: `room-planner/components/Sidebar/PlanSection.test.tsx`
-- Create: `room-planner/three/previewSnapshot.ts`
-- Test: `room-planner/three/previewSnapshot.test.ts`
 
 **Interfaces:**
-- Consumes: `lookupProduct`, `updatePreview`, `addPreviewToRoom`, `dismissLookup` (Task 8);
-  `useUiStore` fields `lookup`, `pendingLink`, `mode` (Task 8); `LOOKUP_MESSAGES` (Task 8);
-  `ProductPreview` (Task 8); existing `DimInput`, `KIND_ORDER`, `KIND_LABELS`,
-  `buildFurniture(item: FurnitureSpec): THREE.Group`, `CONFIG.hemiIntensity`,
-  `CONFIG.sunIntensity`, `CONFIG.itemDimMin`, `CONFIG.itemDimMax`.
+- Consumes: `lookupProduct`, `updatePreview`, `addPreviewToRoom`, `dismissLookup`, `clearPendingLink`; `useUiStore` fields `lookup`, `pendingLink` (Task 12) and the existing field `mode`; `LOOKUP_MESSAGES`, `ProductPreview` (Tasks 10, 11); `renderPieceSnapshot(spec: FurnitureSpec, sizePx?: number): string | null`, `disposePreviewRenderer(): void` (Task 13); existing `DimInput`, `KIND_ORDER`, `KIND_LABELS`, `CONFIG.itemDimMin`, `CONFIG.itemDimMax`.
 - Produces:
   - `export function ProductLinkBox(): JSX.Element;`
   - `export function ProductPreviewCard(props: { preview: ProductPreview }): JSX.Element;`
-  - `export function renderPieceSnapshot(spec: FurnitureSpec, sizePx?: number): string | null;`
-    (a PNG data URL of a three-quarter view, or null when WebGL is unavailable or anything
-    fails; never throws)
-  - `export function disposePreviewRenderer(): void;`
 
 **Behavior:**
 
@@ -741,11 +844,11 @@ bucket holding at least 5% of remaining pixels whose colour differs from main by
 | Submit | Enter in the input, or the button | `lookupProduct(value)` once; an empty value does nothing |
 | Loading | status loading | button disabled and reads `Reading the page…`; the input stays editable; an element with `aria-live="polite"` announces it |
 | Error | status error | the code's `LOOKUP_MESSAGES` text in a `role="alert"` element; the input keeps its value; the type grid stays enabled |
-| Link kept | `pendingLink` set | a line `The next piece you add will keep this link.` with a `Clear` button calling `dismissLookup` |
+| Link kept | `pendingLink` set | a line `The next piece you add will keep this link.`; emptying the link input calls `clearPendingLink()` (no extra button) |
 | Preview card | status preview | the name as text; the shop host; the price as `$1,299` or `$319.99` (omitted when null); the photo `<img>` with `alt=""`, `referrerPolicy="no-referrer"`, `loading="lazy"`, only when `imageUrl` is set; the snapshot `<img>` with `alt="Preview of the piece"` when a snapshot exists |
 | Photo fails | the photo's `error` event | the photo is removed; the rest stays |
 | Type picker | a `<select>` labelled `Type` with the 11 kinds | change calls `updatePreview({ kind })` |
-| Type not found | `kindFound` false | the line `Type not recognised: pick one.` beside the picker |
+| Type not found | `kindFound` false | the picker is highlighted (class `is-attention`) and described by the line `Type not recognised: pick one.` through `aria-describedby` |
 | Sizes | three `DimInput`s labelled Width, Depth, Height | a valid edit calls `updatePreview` with that size |
 | Sizes not found | `sizesFound` false | the line `Sizes not found: check these.` |
 | Size note | `sizeNote` set | shown as text |
@@ -754,28 +857,26 @@ bucket holding at least 5% of remaining pixels whose colour differs from main by
 | Room-edit mode | `mode === 'room'` | input, `Look up` and `Add to room` disabled, like the type grid |
 | Hostile name | name `<img src=x onerror=alert(1)>` | appears as literal text; no `img` element is created from it |
 | Snapshot refresh | kind, sizes, style or colours change | re-rendered at most once per 150 ms |
-| Snapshot unavailable | `renderPieceSnapshot` returns null (as in jsdom) | no snapshot image; no error |
-| One renderer | many snapshots | one lazily created module-level `WebGLRenderer` on a canvas that is never attached, reused; `disposePreviewRenderer` (called when the card unmounts) disposes it; each snapshot disposes its own geometries and materials |
-| Snapshot never throws | `THREE.WebGLRenderer` construction throws | `null` |
 | Keyboard shortcuts | typing in the link input, including Delete, R and Ctrl/Cmd+Z | planner shortcuts do not fire (the existing text-field guard); covered by a test |
-| Privacy note | `PlanSection` | exactly `Saved in this browser only. A share link contains the whole plan. A pasted product link is sent to this site to read the page, and the product photo loads from the shop.` |
 
-Styling follows `addFurniture.css` and `itemList.css` conventions (existing variables, `.btn`,
-`.note`); the card fits the sidebar with no horizontal scroll at 1280 px wide.
+**Styling:** new classes in `addFurniture.css`: `.product-link`, `.product-link-row`, `.product-link-kept`, `.product-card`, `.product-card-photo`, `.product-card-snapshot`, `.product-card-dims`, `.product-card-actions`, and `.is-attention` on the Type picker. Use only the custom properties (`var(--…)`) already referenced in `addFurniture.css` and `itemList.css`, and the existing `.btn`, `.btn-secondary` and `.note` classes; add no new colour value. The no-horizontal-scroll requirement is checked in the browser (Final verification row 10), since jsdom has no layout.
 
-**Verify:** `npx vitest run room-planner/components/Sidebar room-planner/three/previewSnapshot.test.ts`
-→ all pass; then stop any dev server and run `npm run check` → all green.
+**Verify:** `npx vitest run room-planner/components/Sidebar` → all pass; then stop any dev server and run `npm run check` → all green.
 **Commit:** `feat(room-planner): product link box and preview card`
 
 ---
 
-## Task 10: Docs
+## Task 15: Docs and privacy note
+
+**Spec ref:** section 4 "The privacy note"; "Open items for the owner".
 
 **Files:**
 - Modify: `docs/room-planner/README.md`
 - Modify: `docs/room-planner/mistakes-and-fixes.md`
 - Modify: `docs/fixes-log.md`
 - Modify: `README.md`
+- Modify: `room-planner/components/Sidebar/PlanSection.tsx`
+- Test: `room-planner/components/Sidebar/PlanSection.test.tsx`
 
 **Interfaces:** none.
 
@@ -784,35 +885,39 @@ Styling follows `addFurniture.css` and `itemList.css` conventions (existing vari
 | Case | Expected |
 |------|----------|
 | `docs/room-planner/README.md` | a section `Product lookup (slice H)`: the request path from link box to placed piece; the file map (`room-planner/lookup`, `room-planner/server`, `domain/furniture/fromProduct.ts`, `photoColours.ts`, `services/remoteProductLookup.ts`, `services/photoSampler.ts`, the route); the security rules of the route (shop list, address check, pinned address, redirects, limits, origin check, rate limit, logging); how to add a shop; a section `Known limits of the lookup` |
-| Vercel rule | under `Product lookup (slice H)`, the text of the firewall rule for the owner: path equals `/api/room-planner/lookup`, rate limit 20 requests per 10 minutes per IP, action deny with 429 |
+| Vercel rule | under `Product lookup (slice H)`, the text of the firewall rule for the owner: path equals `/api/room-planner/lookup`, rate limit 20 requests per 10 minutes per IP, action deny with 429; with the sentence that the in-app limit is per server instance and this rule is the hard limit, to be added by the owner after merge |
 | `docs/room-planner/mistakes-and-fixes.md` | a heading `## 2026-11-20 — Product lookup` with one entry per defect found during this build (what, cause, fix, how to avoid); taken from the ledger and review reports, not invented |
 | `docs/fixes-log.md` | one dated entry summarising the slice, in the file's existing format |
 | Root `README.md` | the Room Planner line mentions the product lookup and the new route |
+| Privacy note in `PlanSection.tsx` | the note reads exactly `Saved in this browser only. A share link contains the whole plan. A pasted product link is sent to this site to read the page, and the product photo loads from the shop.`; `PlanSection.test.tsx` asserts that text |
 
-**Verify:** `git diff --stat` shows only the four files; every path named in the new sections
-exists (`ls` each).
-**Commit:** `docs(room-planner): product lookup notes, known limits and firewall rule`
+**Verify:** `npx vitest run room-planner/components/Sidebar/PlanSection.test.tsx` → all pass; `git diff --stat HEAD~1` shows only the six files; `grep -n "Product lookup (slice H)\|Known limits of the lookup" docs/room-planner/README.md` → both found; `grep -n "## 2026-11-20 — Product lookup" docs/room-planner/mistakes-and-fixes.md` → found; every path named in the new sections exists (`ls` each).
+**Commit:** `docs(room-planner): product lookup notes, privacy note and firewall rule`
 
 ---
 
-## Final verification (controller, after Task 10)
+## Final verification (controller, after Task 15)
 
 1. `npm run check` green on the final tree.
 2. Whole-branch review, including a security pass over `room-planner/server/` and the route.
+   Pass when the review report has zero unresolved Critical or Important findings: each one is
+   fixed and re-checked, or recorded in `docs/room-planner/mistakes-and-fixes.md` with the reason
+   it stands.
 3. Browser check on a local production build (`npm run build && npx next start -p 3478`). The
    Vercel preview is behind Vercel login and is not opened. Rows, each recorded pass or fail:
 
 | # | Check | Pass when |
 |---|-------|-----------|
 | 1 | Two real product links per shop | each recorded as works or refused, with the recipe produced; at least IKEA works |
-| 2 | Add a looked-up piece | it appears at the page's size in both views, selected, with link and price; one undo removes it |
+| 2 | Add a looked-up piece | the stored item's `w`, `d`, `h` equal the preview's values, it is the selected piece, its `sourceUrl` and `price` are set, both views draw it; one undo removes it |
 | 3 | Edit after adding | type, sizes, style and colours all change the piece |
 | 4 | Each failure | a non-shop link, a shop category page, and `not a link` each show their message with the type grid usable; a non-shop link is kept on the next piece added |
-| 5 | Direct route abuse | `curl` with no `Origin` → 403; with `Origin` of another site → 403; a private-address or non-shop link → 400; 21 lookups in a row → 429 with `Retry-After` |
+| 5 | Direct route abuse | after restarting the server (a fresh limiter): `curl` with no `Origin` → 403; with another site's `Origin` → 403; a non-shop link → 400; then 20 same-origin lookups of one shop link are not 429 and the 21st is 429 with `Retry-After` |
 | 6 | Saved plan and share link | after adding a looked-up piece, stored text is version 4 and contains no photo address; the share link reopens the same room; a plan saved before this change still opens |
 | 7 | Network | opening a share link makes no request to any shop host |
-| 8 | Console | zero errors across rows 1–7 |
-| 9 | Screenshots | each looked-up piece beside its product photo, saved to `docs/room-planner/verification/shots-lookup/` with a record in `docs/room-planner/verification/2026-11-20-lookup-live-check.md` |
+| 8 | Console | zero errors across rows 1–7 and 10 |
+| 9 | Screenshots | one PNG per looked-up piece exists in `docs/room-planner/verification/shots-lookup/` (`ls`), and `docs/room-planner/verification/2026-11-20-lookup-live-check.md` lists each file with its link and recipe |
+| 10 | Sidebar width | at 1280 px wide with the preview card open, the sidebar's `scrollWidth` is at most its `clientWidth` |
 
 4. After the owner's merge: rows 1 and 5 again on the live site. A shop that refuses the live
    server is reported as "hand entry only" and the note under the link box is corrected.
