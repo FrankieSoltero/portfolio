@@ -1,18 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { cpuPerRun, GROWTH_MAX, growthMessage, HANG_GUARD_MS } from '../test/cpuTiming';
+import { growth, GROWTH_MAX, growthMessage, HANG_GUARD_MS } from '../test/cpuTiming';
 import { parseDimensionLine, parseLength } from './sizes';
 
 /**
  * How much more CPU time `parse` takes on its hostile input built at 8 times the size than at the
- * base size (see `test/cpuTiming.ts`). Both inputs are built before either is timed.
+ * base size (see `growth` in `test/cpuTiming.ts`). Both inputs are built before either is timed.
  */
 function growthOf<T>(build: (factor: number) => T, parse: (input: T) => void): { ratio: number; smallMs: number; largeMs: number } {
-  const small = build(1);
-  const large = build(8);
-  const smallMs = cpuPerRun(() => parse(small));
-  const largeMs = cpuPerRun(() => parse(large));
-  return { ratio: largeMs / smallMs, smallMs, largeMs };
+  return growth(parse, build(1), build(8));
 }
 
 describe('parseLength', { retry: 2 }, () => {

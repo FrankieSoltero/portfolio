@@ -10,14 +10,15 @@
  * alone, 2.0 to 2.4 s in the full parallel suite and 4.6 to 6.6 s pinned to efficiency cores.
  *
  * A loose absolute guard, `HANG_GUARD_MS`, stays on the largest inputs. Its only job is to fail if
- * the minutes-long behaviour comes back; it is far above any normal run on any core.
+ * the minutes-long behaviour comes back: every guarded near-4 MiB read measured under 2.3 s of CPU
+ * alone on 2026-11-22, and the defect it catches took 24 s to minutes.
  */
 
 /** The largest CPU-time ratio accepted between an input 8 times larger and the small one. */
 export const GROWTH_MAX = 24;
 
 /** The CPU time, in ms, above which a full-size read counts as hung. */
-export const HANG_GUARD_MS = 15_000;
+export const HANG_GUARD_MS = 8_000;
 
 /** The per-test timeout for a test that runs a full-size read, in ms. */
 export const HANG_TIMEOUT_MS = 60_000;
@@ -51,12 +52,22 @@ export function cpuPerRun(run: () => void): number {
   return total / calls;
 }
 
+/** How many times the small input is measured; the median is used. */
+const SMALL_SAMPLES = 3;
+
 /**
- * How much more CPU time `read` takes on `large` (8 times the size of `small`) than on `small`,
- * with each measured by `cpuPerRun`, back to back. Also gives both times for the failure message.
+ * How much more CPU time `read` takes on `large` (8 times the size of `small`) than on `small`.
+ * The small input is read once untimed first (so compiling the code is not counted against it),
+ * then measured `SMALL_SAMPLES` times with `cpuPerRun` and the median kept, so one slow sample
+ * (a garbage collection, a move to a slower core) cannot shrink the ratio; the large input is then
+ * measured once, right after. Also gives both times for the failure message.
  */
-export function growth(read: (input: string) => void, small: string, large: string): { ratio: number; smallMs: number; largeMs: number } {
-  const smallMs = cpuPerRun(() => read(small));
+export function growth<T>(read: (input: T) => void, small: T, large: T): { ratio: number; smallMs: number; largeMs: number } {
+  read(small);
+  const samples: number[] = [];
+  for (let i = 0; i < SMALL_SAMPLES; i += 1) samples.push(cpuPerRun(() => read(small)));
+  samples.sort((a, b) => a - b);
+  const smallMs = samples[Math.floor(SMALL_SAMPLES / 2)];
   const largeMs = cpuPerRun(() => read(large));
   return { ratio: largeMs / smallMs, smallMs, largeMs };
 }

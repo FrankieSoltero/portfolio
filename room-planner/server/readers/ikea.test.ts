@@ -272,12 +272,12 @@ describe('parsePage on hostile pages', { retry: 2 }, () => {
       const html = build(LOOKUP_LIMITS.pageMax);
       expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
       expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 64);
-      const elapsed = cpuMs(() => {
-        expect(parsePage(html)).not.toBeNull();
-        expect(readIkea(html)?.name).toBe('KIVIK Sofa');
-      });
+      // Each step is guarded on its own: the parse, then the whole read (which parses again).
+      const parseMs = cpuMs(() => expect(parsePage(html)).not.toBeNull());
+      const readMs = cpuMs(() => expect(readIkea(html)?.name).toBe('KIVIK Sofa'));
       // A hang guard only: it fails if the minutes-long behaviour comes back, not on a slow core.
-      expect(elapsed, `took ${elapsed} ms`).toBeLessThan(HANG_GUARD_MS);
+      expect(parseMs, `parsing took ${parseMs} ms`).toBeLessThan(HANG_GUARD_MS);
+      expect(readMs, `reading took ${readMs} ms`).toBeLessThan(HANG_GUARD_MS);
     },
     HANG_TIMEOUT_MS,
   );

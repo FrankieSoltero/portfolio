@@ -439,10 +439,13 @@ describe('Wayfair and Amazon readers on hostile pages', { retry: 2 }, () => {
    * reader on 2026-11-22 (0.5 to 0.9 s alone; every other shape took 0.1 to 0.55 s). Nested `<i>`
    * then `<li>`, inside and outside the bullets, builds the most elements; `<li>` nested in `<div>`
    * walks the bullets block; `<dt>` nested in `<span>` makes Wayfair read many labels; deep
-   * nesting above a price makes Amazon walk a long chain. The growth check covers every shape.
+   * nesting above a price makes Amazon walk a long chain. The `<dt>Overall</dt>` flood is guarded
+   * for Wayfair too: it is the shape whose sibling rescans once took minutes there. The growth
+   * check covers every shape.
    */
   const GUARDED: Record<(typeof readers)[number][0], ReadonlySet<string>> = {
     readWayfair: new Set([
+      '<dt>Overall</dt> repeated',
       '<i> then <li> inside #feature-bullets',
       '<i> then <li> outside #feature-bullets',
       '<dt> nested in unclosed <span>',
