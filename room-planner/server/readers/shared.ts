@@ -1,5 +1,5 @@
-import { type HTMLElement, TextNode, parse } from 'node-html-parser';
-import { LOOKUP_LIMITS, parseProductFields, type ProductFields } from '../../lookup/contract';
+import { type HTMLElement, type Node, NodeType, TextNode, parse } from 'node-html-parser';
+import { LOOKUP_LIMITS, parseProductFields, type ProductFields, SIZE_NOTE_MAX } from '../../lookup/contract';
 import { isShopPhotoUrl } from '../../lookup/shops';
 import { parseLength } from '../sizes';
 
@@ -25,12 +25,6 @@ const UNIT_CODES: ReadonlyMap<string, string> = new Map([
   ['FOT', 'ft'],
 ]);
 
-/**
- * The longest size note kept, in characters. It matches `SIZE_NOTE_MAX` in `lookup/contract.ts`,
- * which is not exported; a longer note is cut rather than failing the whole product there.
- */
-const SIZE_NOTE_MAX = 200;
-
 /** True when `value` is a plain JSON object. */
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -48,9 +42,124 @@ function decodedText(value: unknown): string | null {
   return new TextNode(value, null).text;
 }
 
+/** Text with each run of whitespace made one space and the ends trimmed. */
+export function plain(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 /** Text with each run of whitespace made one space and the ends trimmed; '' for a non-string. */
 function collapseSpace(value: unknown): string {
-  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  return typeof value === 'string' ? plain(value) : '';
+}
+
+/**
+ * A US dollar amount written as `$49.99` or `$1,299.00`; null for any other text. Only text that
+ * starts with `$` counts as dollars (the JSON-LD price reader below does not check for it).
+ */
+export function dollars(text: string): number | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('$')) return null;
+  const amount = trimmed.slice(1).replace(/,/g, '').trim();
+  return /^\d+(?:\.\d+)?$/.test(amount) ? Number(amount) : null;
+}
+
+/**
+ * How much reading text may still do: characters of raw page text kept, and nodes visited. Reads
+ * that share one budget take from it in turn, so together they never do more than it allows.
+ */
+export interface TextBudget {
+  chars: number;
+  nodes: number;
+}
+
+/**
+ * The text of `element` and everything inside it, entity-decoded, read in document order with an
+ * explicit stack until `budget` runs out; `complete` is false when it ran out first. A `<br>` reads
+ * as a line break, as the parser's own `text` does. Unlike that getter, the cost is bounded by the
+ * budget, so reading the text of many nested elements (on a hostile page each one holds all the
+ * ones after it) stays linear instead of growing with the square of the nesting.
+ */
+export function readText(element: HTMLElement, budget: TextBudget): { text: string; complete: boolean } {
+  let raw = '';
+  const stack: Node[] = [];
+  for (let i = element.childNodes.length - 1; i >= 0; i -= 1) stack.push(element.childNodes[i]);
+  while (stack.length > 0) {
+    if (budget.nodes <= 0) return { text: new TextNode(raw, null).text, complete: false };
+    const node = stack.pop() as Node;
+    budget.nodes -= 1;
+    let piece = '';
+    if (node.nodeType !== NodeType.ELEMENT_NODE) {
+      piece = node.rawText;
+    } else if ((node as HTMLElement).rawTagName.toLowerCase() === 'br') {
+      piece = '\n';
+    } else {
+      for (let i = node.childNodes.length - 1; i >= 0; i -= 1) stack.push(node.childNodes[i]);
+    }
+    if (piece.length > budget.chars) {
+      raw += piece.slice(0, budget.chars);
+      budget.chars = 0;
+      return { text: new TextNode(raw, null).text, complete: false };
+    }
+    raw += piece;
+    budget.chars -= piece.length;
+  }
+  return { text: new TextNode(raw, null).text, complete: true };
+}
+
+/**
+ * The text of `element` (see `readText`) when it holds at most `maxChars` characters of raw text
+ * in at most `maxNodes` nodes; null when it holds more. For short fields such as a label or a price.
+ */
+export function shortText(element: HTMLElement, maxChars: number, maxNodes: number): string | null {
+  const read = readText(element, { chars: maxChars, nodes: maxNodes });
+  return read.complete ? read.text : null;
+}
+
+/**
+ * The elements inside `scope` (not `scope` itself), in document order, found by one walk with an
+ * explicit stack; a caller that stops early stops the walk. Used in place of
+ * `scope.querySelectorAll` on an element below the root: there the selector engine checks every
+ * candidate's ancestors back up to `scope`, which on a page of deep unclosed tags takes time
+ * growing with the square of the depth (measured: 2.5 s at 128 KiB, 50 s at 512 KiB).
+ */
+export function* descendants(scope: HTMLElement): Generator<HTMLElement> {
+  const stack: Node[] = [];
+  for (let i = scope.childNodes.length - 1; i >= 0; i -= 1) stack.push(scope.childNodes[i]);
+  while (stack.length > 0) {
+    const node = stack.pop() as Node;
+    if (node.nodeType !== NodeType.ELEMENT_NODE) continue;
+    yield node as HTMLElement;
+    for (let i = node.childNodes.length - 1; i >= 0; i -= 1) stack.push(node.childNodes[i]);
+  }
+}
+
+/**
+ * The first element in document order with each of `ids`, found in one walk of the page (which
+ * stops once all are found); an id no element has is missing from the map. One walk in place of
+ * one `getElementById` walk per id.
+ */
+export function elementsById(root: HTMLElement, ids: readonly string[]): Map<string, HTMLElement> {
+  const wanted = new Set(ids);
+  const found = new Map<string, HTMLElement>();
+  for (const element of descendants(root)) {
+    const id = element.id;
+    if (id === '' || !wanted.has(id) || found.has(id)) continue;
+    found.set(id, element);
+    if (found.size === wanted.size) break;
+  }
+  return found;
+}
+
+/**
+ * The first element after `node` among its parent's children, or null. Reads the parent's children
+ * once, by index; the parser's own `nextElementSibling` rescans them from the first on every call.
+ */
+export function nextElement(node: HTMLElement): HTMLElement | null {
+  const siblings = node.parentNode?.childNodes ?? [];
+  for (let i = siblings.indexOf(node) + 1; i < siblings.length; i += 1) {
+    if (siblings[i].nodeType === NodeType.ELEMENT_NODE) return siblings[i] as HTMLElement;
+  }
+  return null;
 }
 
 /** Text cut to at most `max` characters, never leaving half of a surrogate pair at the end. */
@@ -101,10 +210,11 @@ function cutUnterminated(html: string, opener: string, closer: string): string {
  * parsed. A flood of unterminated `<!--` or `<![CDATA[` openers is cut off first (see
  * `cutUnterminated`), and unclosed tags are left where they are (`parseNoneClosedTags`) rather
  * than moved up the tree, which the parser otherwise does in time growing with the square of the
- * nesting depth. Measured on near-4 MiB hostile pages (deep unclosed or closed nesting, `<dl><dt>`,
- * `<ul><li>`, `<table>` rows, `<p>`, `<br/>`, `<div></span>`, comment and CDATA floods), parsing
- * takes up to about 0.8 s on the development machine; the slowest seen is a flood of `<a>`, about
- * 0.8 s there and 1.2 s (1.4 s with the reader's queries) on a reviewer's run. Never throws.
+ * nesting depth. Measured as CPU time on the development machine (2026-11-22) on 25 near-4 MiB
+ * hostile shapes (deep unclosed or closed nesting, `<dt>`, `<li>`, `<tr>`, price and label floods,
+ * comment and CDATA floods), a whole read takes 0.1 to 1.8 s through each of the three readers;
+ * the slowest is a flood of `<a>`, 1.4 to 1.5 s through the IKEA reader (almost all of it this
+ * parse) and up to 1.8 s through the Wayfair and Amazon readers. Never throws.
  */
 export function parsePage(html: string): HTMLElement | null {
   if (typeof html !== 'string' || html.length === 0 || html.length > LOOKUP_LIMITS.pageMax) return null;

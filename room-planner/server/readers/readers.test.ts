@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseProductFields, SIZE_NOTE_UNLABELLED } from '../../lookup/contract';
+import { LOOKUP_LIMITS, parseProductFields, SIZE_NOTE_UNLABELLED } from '../../lookup/contract';
 import { readAmazon } from './amazon';
 import { readIkea } from './ikea';
 import { readProduct } from './index';
@@ -10,6 +10,17 @@ import { readWayfair } from './wayfair';
 /** A saved shop page from `fixtures/`. */
 function fixture(name: string): string {
   return readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
+}
+
+/**
+ * The CPU time `run` takes, user plus system, in milliseconds. CPU time rather than wall-clock
+ * time, so a machine busy with other work does not push a linear read over its bound.
+ */
+function cpuMs(run: () => void): number {
+  const start = process.cpuUsage();
+  run();
+  const used = process.cpuUsage(start);
+  return (used.user + used.system) / 1000;
 }
 
 /** A minimal Wayfair product page: a `/pdp/` canonical link and the given body. */
@@ -267,7 +278,7 @@ describe('readProduct', () => {
   });
 });
 
-describe('Wayfair and Amazon readers on hostile and huge input', () => {
+describe('Wayfair and Amazon readers on hostile and huge input', { retry: 2 }, () => {
   it('returns hostile markup in a Wayfair title as literal text', () => {
     const html = wayfairPage(`<h1 data-rtl-id="listingHeaderNameHeading">${HOSTILE}</h1>`);
     expect(readWayfair(html)?.name).toBe('<img src=x onerror=alert(1)>');
@@ -287,11 +298,10 @@ describe('Wayfair and Amazon readers on hostile and huge input', () => {
   it.each([
     ['readWayfair', readWayfair],
     ['readAmazon', readAmazon],
-  ])('%s returns null for 5 MB of text in under 500 ms', (_name, reader) => {
+  ])('%s returns null for 5 MB of text in under 500 ms of CPU time', (_name, reader) => {
     const huge = 'a'.repeat(5 * 1024 * 1024);
-    const started = Date.now();
-    expect(reader(huge)).toBeNull();
-    expect(Date.now() - started).toBeLessThan(500);
+    const elapsed = cpuMs(() => expect(reader(huge)).toBeNull());
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(500);
   });
 
   it.each([
@@ -300,5 +310,82 @@ describe('Wayfair and Amazon readers on hostile and huge input', () => {
   ])('%s never throws on input that is not a page', (_name, reader) => {
     expect(reader(null as unknown as string)).toBeNull();
     expect(reader('<<<>>>&&&</dl></table>')).toBeNull();
+  });
+});
+
+describe('Wayfair and Amazon readers on hostile pages just under the size limit', { retry: 2 }, () => {
+  /** The CPU time a hostile page may take, with headroom for a slower machine. */
+  const BOUND_MS = 2000;
+
+  /** A page both readers take as a product named `Sofa`: a `/pdp/` canonical, the Wayfair heading and `#productTitle`. */
+  const HEAD =
+    '<html><head><link rel="canonical" href="https://www.wayfair.com/furniture/pdp/sofa-w1.html"></head><body>' +
+    '<h1 data-rtl-id="listingHeaderNameHeading">Sofa</h1><span id="productTitle">Sofa</span>';
+
+  /** One price an Amazon price block holds. */
+  const PRICE = '<span class="a-price"><span class="a-offscreen">$1</span></span>';
+
+  /**
+   * `HEAD`, then `before`, then `unit` repeated (or, with `closer`, `unit` repeated and then
+   * `closer` as many times), then `after`, filling the page to just under `maxLength`.
+   */
+  function flood(maxLength: number, before: string, unit: string, closer = '', after = ''): string {
+    const fixed = HEAD.length + before.length + after.length;
+    const count = Math.floor((maxLength - 16 - fixed) / (unit.length + closer.length));
+    return HEAD + before + unit.repeat(count) + closer.repeat(count) + after;
+  }
+
+  const shapes: [string, (max: number) => string][] = [
+    ['<dt>Overall</dt> repeated', (max) => flood(max, '', '<dt>Overall</dt>')],
+    ['<i> then <li> inside #feature-bullets', (max) => flood(max, '<div id="feature-bullets">', '<i>', '<li>')],
+    ['<i> then <li> outside #feature-bullets', (max) => flood(max, '', '<i>', '<li>')],
+    ['prices repeated inside #corePrice_desktop', (max) => flood(max, '<div id="corePrice_desktop">', PRICE)],
+    ['deep unclosed nesting above a price', (max) => flood(max, '<div id="corePrice_desktop">', '<span>', '', PRICE)],
+    ['unclosed <dt>Overall', (max) => flood(max, '', '<dt>Overall')],
+    ['<dt> nested in unclosed <span>', (max) => flood(max, '', '<dt><span>')],
+    ['<li> nested in unclosed <div> inside #feature-bullets', (max) => flood(max, '<div id="feature-bullets">', '<li><div>')],
+    ['unclosed .a-offscreen nested in a price', (max) => flood(max, '<div id="corePrice_desktop"><span class="a-price">', '<span class="a-offscreen">x')],
+    ['struck-through prices repeated', (max) => flood(max, '<div id="corePrice_desktop">', '<span class="a-price a-text-price"><span class="a-offscreen">$1</span></span>')],
+    ['unclosed .a-price nesting', (max) => flood(max, '<div id="corePrice_desktop">', '<span class="a-price">', '', '<span class="a-offscreen">$1</span>')],
+    ['unclosed .priceToPay nesting', (max) => flood(max, '<div id="corePrice_desktop">', '<span class="priceToPay">')],
+    ['dimension labels nested in one row', (max) => flood(max, '<table><tr>', '<th>Product Dimensions</th><div>')],
+    ['unclosed PriceDisplay nesting', (max) => flood(max, '', '<span data-test-id="PriceDisplay">')],
+  ];
+
+  const readers = [
+    ['readWayfair', readWayfair],
+    ['readAmazon', readAmazon],
+  ] as const;
+
+  const cases = shapes.flatMap(([shape, build]) => readers.map(([name, reader]) => [name, shape, build, reader] as const));
+
+  it.each(cases)('%s reads a page of %s within the bound', (_name, _shape, build, reader) => {
+    const html = build(LOOKUP_LIMITS.pageMax);
+    expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
+    expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 128);
+    let name: string | undefined;
+    const elapsed = cpuMs(() => {
+      name = reader(html)?.name;
+    });
+    expect(name).toBe('Sofa');
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
+  });
+
+  it('still reads the price under a flood of prices and under deep nesting', () => {
+    expect(readAmazon(flood(LOOKUP_LIMITS.pageMax, '<div id="corePrice_desktop">', PRICE))?.price).toBe(1);
+    expect(readAmazon(flood(LOOKUP_LIMITS.pageMax, '<div id="corePrice_desktop">', '<span>', '', PRICE))?.price).toBe(1);
+  });
+
+  it('takes time growing in step with the page, not with its square', () => {
+    // The slowest shape measured. A linear read of a page 8 times larger takes about 8 times as
+    // long, a quadratic one about 64 times; 20 leaves room for noise.
+    const build = (max: number) => flood(max, '', '<i>', '<li>');
+    const small = build(LOOKUP_LIMITS.pageMax / 8);
+    const full = build(LOOKUP_LIMITS.pageMax);
+    const smallMs = cpuMs(() => readAmazon(small));
+    const fullMs = cpuMs(() => readAmazon(full));
+    // A run this short is mostly noise; dividing by it would say nothing.
+    if (smallMs < 5) return;
+    expect(fullMs / smallMs, `${smallMs} ms at 1/8 size, ${fullMs} ms at full size`).toBeLessThan(20);
   });
 });

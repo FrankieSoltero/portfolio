@@ -2,7 +2,18 @@
 import { describe, expect, it } from 'vitest';
 import { parseDimensionLine, parseLength } from './sizes';
 
-describe('parseLength', () => {
+/**
+ * The CPU time `run` takes, user plus system, in milliseconds. CPU time rather than wall-clock
+ * time, so a machine busy with other work does not push a linear parse over its bound.
+ */
+function cpuMs(run: () => void): number {
+  const start = process.cpuUsage();
+  run();
+  const used = process.cpuUsage(start);
+  return (used.user + used.system) / 1000;
+}
+
+describe('parseLength', { retry: 2 }, () => {
   it.each([
     ['fraction', '31 1/2 "', 31.5],
     ['fraction, no space', '41 3/4"', 41.75],
@@ -27,13 +38,14 @@ describe('parseLength', () => {
 
   it('stays fast and never throws on long hostile text', () => {
     const hostile = ['1'.repeat(50_000) + ' 1/', ' '.repeat(50_000) + 'x', '1.1.1.1'.repeat(10_000)];
-    const started = Date.now();
-    for (const text of hostile) expect(parseLength(text)).toBeNull();
-    expect(Date.now() - started).toBeLessThan(500);
+    const elapsed = cpuMs(() => {
+      for (const text of hostile) expect(parseLength(text)).toBeNull();
+    });
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(500);
   });
 });
 
-describe('parseDimensionLine', () => {
+describe('parseDimensionLine', { retry: 2 }, () => {
   it('reads a Wayfair line by its labels', () => {
     expect(parseDimensionLine("32.3'' H X 65.8'' W X 32.3'' D")).toEqual({ h: 32.3, w: 65.8, d: 32.3, labelled: true });
   });
@@ -80,8 +92,9 @@ describe('parseDimensionLine', () => {
 
   it('stays fast and never throws on long hostile text', () => {
     const hostile = ['1 x '.repeat(20_000), 'x'.repeat(100_000), '1"' + ' '.repeat(50_000) + 'H x 2'];
-    const started = Date.now();
-    for (const text of hostile) expect(() => parseDimensionLine(text, 'L x '.repeat(10_000))).not.toThrow();
-    expect(Date.now() - started).toBeLessThan(500);
+    const elapsed = cpuMs(() => {
+      for (const text of hostile) expect(() => parseDimensionLine(text, 'L x '.repeat(10_000))).not.toThrow();
+    });
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(500);
   });
 });

@@ -2,23 +2,36 @@ import type { HTMLElement } from 'node-html-parser';
 import { SIZE_NOTE_UNLABELLED, type ProductFields } from '../../lookup/contract';
 import { isShopPhotoUrl } from '../../lookup/shops';
 import { parseDimensionLine } from '../sizes';
-import { finishFields, parsePage } from './shared';
+import { descendants, dollars, elementsById, finishFields, nextElement, parsePage, plain, readText, shortText, type TextBudget } from './shared';
 
 /**
  * Reads an Amazon product page from its markup: the `#productTitle` text, the main photo, the
  * price in the core price block, the feature bullets and the "Product Dimensions" or "Item
  * Dimensions" row of the details table. A page without `#productTitle` (such as a bot-check page)
  * is not a product.
+ *
+ * Every step is linear in the page, so a hostile page costs about what parsing it does (see
+ * `parsePage`): the blocks are found by their ids in one walk of the page, and what is inside one by
+ * more walk (`descendants`) testing one tag or one class, never by a selector (a selector with a
+ * descendant step, or any selector run on an element below the root, makes the selector engine
+ * walk the ancestors of every candidate); ancestor walks stop after `ANCESTOR_STEPS_MAX` levels;
+ * and text is read up to a bound (`readText`), never with the parser's own `text`, which reads
+ * everything inside an element again for each nested element.
  */
 
 /** The host the main photo must be on when it is read from `data-old-hires`. */
 const AMAZON_PHOTO_HOST = 'm.media-amazon.com';
 
-/** The price blocks searched for the price, in order. */
-const PRICE_BLOCKS = ['#corePrice_desktop', '#corePriceDisplay_desktop_feature_div'];
+/** The ids of the price blocks searched for the price, in order. */
+const PRICE_BLOCKS = ['corePrice_desktop', 'corePriceDisplay_desktop_feature_div'];
 
-/** The prices Amazon marks as the one to pay; searched before any other price. */
-const PRICE_TO_PAY = '.priceToPay .a-offscreen, .apexPriceToPay .a-offscreen';
+/** The classes Amazon marks the price to pay with; searched before any other price. */
+const PRICE_TO_PAY = ['priceToPay', 'apexPriceToPay'];
+
+/** The ids of the title, the main photo and the feature bullets block. */
+const TITLE_ID = 'productTitle';
+const LANDING_IMAGE_ID = 'landingImage';
+const BULLETS_ID = 'feature-bullets';
 
 /** The details table row labels that hold the sizes. */
 const SIZE_LABELS = ['Product Dimensions', 'Item Dimensions'];
@@ -26,22 +39,22 @@ const SIZE_LABELS = ['Product Dimensions', 'Item Dimensions'];
 /** The word in a sizes label after which an order hint such as `LxWxH` may follow. */
 const DIMENSIONS_WORD = 'Dimensions';
 
-/** Text with each run of whitespace made one space and the ends trimmed. */
-function plain(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
-}
+/** The most levels an ancestor walk climbs; Amazon's price markup is a few levels deep. */
+const ANCESTOR_STEPS_MAX = 16;
+
+/** The most characters and nodes read from one price, or one details label; more is neither. */
+const SHORT_TEXT_MAX = 200;
+const SHORT_NODES_MAX = 16;
+
+/** The most characters and nodes read from the details cell holding the sizes; more is not a sizes line. */
+const SIZES_TEXT_MAX = 1000;
+const SIZES_NODES_MAX = 256;
 
 /**
- * A US dollar amount written as `$49.99` or `$1,299.00`; null for any other text. Only text that
- * starts with `$` counts as dollars. (`shared.ts` keeps its price reader private and does not
- * check for the `$`, so this one is local; `wayfair.ts` holds the same helper.)
+ * What reading the feature bullets may do in all: raw characters kept and nodes visited. A real
+ * bullets block is a few thousand characters in a few hundred nodes; the description is cut to 600.
  */
-function dollars(text: string): number | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('$')) return null;
-  const amount = trimmed.slice(1).replace(/,/g, '').trim();
-  return /^\d+(?:\.\d+)?$/.test(amount) ? Number(amount) : null;
-}
+const BULLETS_BUDGET: Readonly<TextBudget> = { chars: 20_000, nodes: 5_000 };
 
 /** An address normalised by the URL parser when it is a shop photo on `m.media-amazon.com` (or a subdomain); null otherwise. */
 function amazonPhoto(value: string): string | null {
@@ -61,8 +74,8 @@ function amazonPhoto(value: string): string | null {
  * larger foreign or junk key cannot hide a valid one; of those, the largest width × height wins.
  * Null when the attribute is missing, is not JSON, or has no usable entry.
  */
-function largestDynamicImage(root: HTMLElement): string | null {
-  const attribute = root.querySelector('#landingImage')?.getAttribute('data-a-dynamic-image');
+function largestDynamicImage(landingImage: HTMLElement | undefined): string | null {
+  const attribute = landingImage?.getAttribute('data-a-dynamic-image');
   if (!attribute) return null;
   let data: unknown;
   try {
@@ -88,82 +101,117 @@ function largestDynamicImage(root: HTMLElement): string | null {
   return best;
 }
 
-/** The first `data-old-hires` photo on `m.media-amazon.com`, else the largest `data-a-dynamic-image` entry. */
-function readPhoto(root: HTMLElement): string | null {
+/**
+ * The first `data-old-hires` photo on `m.media-amazon.com`, else the largest `data-a-dynamic-image`
+ * entry of `#landingImage`.
+ */
+function readPhoto(root: HTMLElement, landingImage: HTMLElement | undefined): string | null {
   for (const element of root.querySelectorAll('[data-old-hires]')) {
     const photo = amazonPhoto(element.getAttribute('data-old-hires') ?? '');
     if (photo) return photo;
   }
-  return largestDynamicImage(root);
+  return largestDynamicImage(landingImage);
 }
 
 /**
- * True when `element` sits inside a struck-through `.a-price` (the old "List Price"): one with
- * `data-a-strike="true"` or class `a-text-price`, between `element` and `container`.
+ * How `element` sits in the price markup between it and `container`, looking at most
+ * `ANCESTOR_STEPS_MAX` levels up: `inPrice` when an ancestor is an `.a-price`, and `struck` when
+ * one such `.a-price` is struck through (the old "List Price": `data-a-strike="true"` or class
+ * `a-text-price`).
  */
-function isStruckThrough(element: HTMLElement, container: HTMLElement): boolean {
-  for (let node = element.parentNode; node && node !== container; node = node.parentNode) {
+function priceAncestry(element: HTMLElement, container: HTMLElement): { inPrice: boolean; struck: boolean } {
+  let inPrice = false;
+  let node = element.parentNode;
+  for (let steps = 0; node && node !== container && steps < ANCESTOR_STEPS_MAX; steps += 1, node = node.parentNode) {
     if (!node.classList.contains('a-price')) continue;
-    if (node.getAttribute('data-a-strike') === 'true' || node.classList.contains('a-text-price')) return true;
+    inPrice = true;
+    if (node.getAttribute('data-a-strike') === 'true' || node.classList.contains('a-text-price')) return { inPrice, struck: true };
   }
-  return false;
+  return { inPrice, struck: false };
 }
 
 /**
- * The first element matching `selector` in the core price blocks whose text starts with `$` and
- * that `keep` accepts, read as dollars; null when there is none.
+ * The first `.a-offscreen` inside `scope` whose text starts with `$` and that `keep` accepts, read
+ * as dollars; null when there is none. Text longer than a price is not one.
  */
-function firstDollars(root: HTMLElement, selector: string, keep: (element: HTMLElement, container: HTMLElement) => boolean): number | null {
-  for (const block of PRICE_BLOCKS) {
-    const container = root.querySelector(block);
-    if (!container) continue;
-    for (const element of container.querySelectorAll(selector)) {
-      const text = element.text.trim();
-      if (text.startsWith('$') && keep(element, container)) return dollars(text);
-    }
+function firstDollars(scope: HTMLElement, keep: (element: HTMLElement) => boolean): number | null {
+  for (const element of descendants(scope)) {
+    if (!element.classList.contains('a-offscreen')) continue;
+    const text = shortText(element, SHORT_TEXT_MAX, SHORT_NODES_MAX)?.trim() ?? '';
+    if (text.startsWith('$') && keep(element)) return dollars(text);
   }
   return null;
 }
 
 /**
- * The price in the core price blocks: the price Amazon marks as the one to pay (`.priceToPay` or
- * `.apexPriceToPay`), else the first `.a-price .a-offscreen` that is not struck through. Only
- * text that starts with `$` counts.
+ * The price in the core price blocks (`blocks`: `#corePrice_desktop`, then
+ * `#corePriceDisplay_desktop_feature_div`, those the page has): the `.a-offscreen` price inside the
+ * first element Amazon marks as the one to pay (`.priceToPay` or `.apexPriceToPay`) in either
+ * block, else the first `.a-offscreen` inside an `.a-price` that is not struck through. Only text
+ * that starts with `$` counts.
  */
-function readPrice(root: HTMLElement): number | null {
-  return (
-    firstDollars(root, PRICE_TO_PAY, () => true) ??
-    firstDollars(root, '.a-price .a-offscreen', (element, container) => !isStruckThrough(element, container))
-  );
-}
-
-/** The `#feature-bullets` list item texts joined by a space. */
-function readDescription(root: HTMLElement): string {
-  return root
-    .querySelectorAll('#feature-bullets li')
-    .map((item) => plain(item.text))
-    .filter((text) => text !== '')
-    .join(' ');
+function readPrice(blocks: readonly HTMLElement[]): number | null {
+  for (const block of blocks) {
+    let toPay: HTMLElement | undefined;
+    for (const element of descendants(block)) {
+      if (PRICE_TO_PAY.some((name) => element.classList.contains(name))) {
+        toPay = element;
+        break;
+      }
+    }
+    const price = toPay === undefined ? null : firstDollars(toPay, () => true);
+    if (price !== null) return price;
+  }
+  for (const block of blocks) {
+    const price = firstDollars(block, (element) => {
+      const { inPrice, struck } = priceAncestry(element, block);
+      return inPrice && !struck;
+    });
+    if (price !== null) return price;
+  }
+  return null;
 }
 
 /**
- * Width, depth, height and size note from the first details row whose `<th>` names the product or
- * item dimensions. Letters after the word `Dimensions` in that label (`LxWxH`, `D x W x H`) are the
- * order hint. The note warns when the numbers were not labelled.
+ * The `#feature-bullets` list item texts joined by a space. All the items together are read
+ * within `BULLETS_BUDGET`, so nested items on a hostile page cannot make this quadratic; a real
+ * block fits well within it.
+ */
+function readDescription(block: HTMLElement | undefined): string {
+  if (block === undefined) return '';
+  const budget: TextBudget = { ...BULLETS_BUDGET };
+  const texts: string[] = [];
+  for (const item of descendants(block)) {
+    if (budget.nodes <= 0 || budget.chars <= 0) break;
+    if (item.tagName !== 'LI') continue;
+    const text = plain(readText(item, budget).text);
+    if (text !== '') texts.push(text);
+  }
+  return texts.join(' ');
+}
+
+/**
+ * Width, depth, height and size note from the first details `<th>` that names the product or item
+ * dimensions and the `<td>` right after it. Letters after the word `Dimensions` in that label
+ * (`LxWxH`, `D x W x H`) are the order hint. The note warns when the numbers were not labelled.
+ * Each `<th>` is read only up to a label's length, and only the first match looks at its siblings.
  */
 function readSizes(root: HTMLElement): Partial<ProductFields> {
-  for (const row of root.querySelectorAll('tr')) {
-    const label = plain(row.querySelector('th')?.text ?? '');
-    if (!SIZE_LABELS.some((wanted) => label.includes(wanted))) continue;
-    const cell = row.querySelector('td');
-    if (!cell) continue;
-    const after = label.slice(label.indexOf(DIMENSIONS_WORD) + DIMENSIONS_WORD.length);
-    const order = /[a-z]/i.test(after) ? after : undefined;
-    const sizes = parseDimensionLine(cell.text, order);
-    if (!sizes) return {};
-    return { w: sizes.w, d: sizes.d, h: sizes.h, sizeNote: sizes.labelled ? null : SIZE_NOTE_UNLABELLED };
-  }
-  return {};
+  let label = '';
+  const heading = root.querySelectorAll('th').find((th) => {
+    label = plain(shortText(th, SHORT_TEXT_MAX, SHORT_NODES_MAX) ?? '');
+    return SIZE_LABELS.some((wanted) => label.includes(wanted));
+  });
+  if (heading === undefined) return {};
+  const cell = nextElement(heading);
+  if (cell === null || cell.tagName !== 'TD') return {};
+  const line = shortText(cell, SIZES_TEXT_MAX, SIZES_NODES_MAX);
+  if (line === null) return {};
+  const after = label.slice(label.indexOf(DIMENSIONS_WORD) + DIMENSIONS_WORD.length);
+  const order = /[a-z]/i.test(after) ? after : undefined;
+  const sizes = parseDimensionLine(line, order);
+  if (!sizes) return {};
+  return { w: sizes.w, d: sizes.d, h: sizes.h, sizeNote: sizes.labelled ? null : SIZE_NOTE_UNLABELLED };
 }
 
 /**
@@ -174,13 +222,15 @@ export function readAmazon(html: string): ProductFields | null {
   try {
     const root = parsePage(html);
     if (!root) return null;
-    const title = root.querySelector('#productTitle');
+    const byId = elementsById(root, [TITLE_ID, LANDING_IMAGE_ID, BULLETS_ID, ...PRICE_BLOCKS]);
+    const title = byId.get(TITLE_ID);
     if (!title) return null;
+    const priceBlocks = PRICE_BLOCKS.flatMap((id) => byId.get(id) ?? []);
     return finishFields({
       name: title.text,
-      description: readDescription(root),
-      price: readPrice(root),
-      imageUrl: readPhoto(root),
+      description: readDescription(byId.get(BULLETS_ID)),
+      price: readPrice(priceBlocks),
+      imageUrl: readPhoto(root, byId.get(LANDING_IMAGE_ID)),
       ...readSizes(root),
     });
   } catch {

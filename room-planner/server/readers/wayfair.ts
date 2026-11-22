@@ -1,7 +1,7 @@
 import type { HTMLElement } from 'node-html-parser';
 import { SIZE_NOTE_UNLABELLED, type ProductFields } from '../../lookup/contract';
 import { parseDimensionLine } from '../sizes';
-import { canonicalUrl, finishFields, metaContent, parsePage } from './shared';
+import { canonicalUrl, dollars, finishFields, metaContent, nextElement, parsePage, plain, shortText } from './shared';
 
 /**
  * Reads a Wayfair product page. Wayfair publishes no JSON-LD Product, so the name, photo, price
@@ -32,10 +32,16 @@ const COPY_MARKER = String.raw`\"marketingCopy\":\"`;
 /** The most raw characters of embedded data read for the marketing copy. */
 const COPY_MAX = 1500;
 
-/** Text with each run of whitespace made one space and the ends trimmed. */
-function plain(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
-}
+/**
+ * The most characters and nodes read from one `<dt>` to compare it with the labels, or from one
+ * price. A label or a price is far shorter; an element holding more is neither.
+ */
+const LABEL_TEXT_MAX = 200;
+const LABEL_NODES_MAX = 16;
+
+/** The most characters and nodes read from the `<dd>` holding the sizes line; more is not one. */
+const SIZES_TEXT_MAX = 1000;
+const SIZES_NODES_MAX = 256;
 
 /** The listing heading's text, else `og:title` without its trailing shop name; null when neither. */
 function readName(root: HTMLElement): string | null {
@@ -49,34 +55,32 @@ function readName(root: HTMLElement): string | null {
 }
 
 /**
- * A US dollar amount written as `$319.99` or `$1,299.00`; null for any other text. Only text
- * that starts with `$` counts as dollars. (`shared.ts` keeps its price reader private and does not
- * check for the `$`, so this one is local; `amazon.ts` holds the same helper.)
+ * The first `PriceDisplay` that is not struck through (an `<s>`, the old price), read as dollars.
+ * Null when there is none, or it holds more text than a price.
  */
-function dollars(text: string): number | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('$')) return null;
-  const amount = trimmed.slice(1).replace(/,/g, '').trim();
-  return /^\d+(?:\.\d+)?$/.test(amount) ? Number(amount) : null;
-}
-
-/** The first `PriceDisplay` that is not struck through (an `<s>`, the old price), read as dollars. */
 function readPrice(root: HTMLElement): number | null {
   for (const element of root.querySelectorAll('[data-test-id="PriceDisplay"]')) {
     if (element.tagName === 'S') continue;
-    return dollars(element.text);
+    const text = shortText(element, LABEL_TEXT_MAX, LABEL_NODES_MAX);
+    return text === null ? null : dollars(text);
   }
   return null;
 }
 
-/** The text of the `<dd>` after the `<dt>` labelled `Overall Dimensions` or `Overall`; null when none. */
+/**
+ * The text of the `<dd>` right after the first `<dt>` labelled `Overall Dimensions` or `Overall`;
+ * null when there is no such `<dt>`, the element after it is not a `<dd>`, or the `<dd>` holds more
+ * than a sizes line. Linear on any page: each `<dt>` is read only up to a label's length, and only
+ * the first match looks at its siblings, once.
+ */
 function listedSizes(root: HTMLElement): string | null {
-  for (const term of root.querySelectorAll('dt')) {
-    if (!OVERALL_LABELS.has(plain(term.text))) continue;
-    const next = term.nextElementSibling;
-    if (next && next.tagName === 'DD') return next.text;
-  }
-  return null;
+  const term = root.querySelectorAll('dt').find((dt) => {
+    const label = shortText(dt, LABEL_TEXT_MAX, LABEL_NODES_MAX);
+    return label !== null && OVERALL_LABELS.has(plain(label));
+  });
+  if (term === undefined) return null;
+  const next = nextElement(term);
+  return next !== null && next.tagName === 'DD' ? shortText(next, SIZES_TEXT_MAX, SIZES_NODES_MAX) : null;
 }
 
 /** One backslash escape at `index`: `\uXXXX` as its character, `\n`, `\r`, `\t` as a space, else the escaped character. */
@@ -138,7 +142,8 @@ function readSizes(root: HTMLElement, html: string): Partial<ProductFields> {
 /**
  * The product fields on a Wayfair page, cut to the lookup's limits, or null when the page is
  * empty, too large, not a product page (its canonical address has no `/pdp/`), or has no name.
- * Never throws.
+ * Never throws. Every step is linear in the page, so a hostile page costs about what parsing it
+ * does (see `parsePage`).
  */
 export function readWayfair(html: string): ProductFields | null {
   try {

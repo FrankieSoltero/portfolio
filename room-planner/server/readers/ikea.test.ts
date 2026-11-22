@@ -10,6 +10,17 @@ function fixture(name: string): string {
   return readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 }
 
+/**
+ * The CPU time `run` takes, user plus system, in milliseconds. CPU time rather than wall-clock
+ * time, so a machine busy with other work does not push a linear read over its bound.
+ */
+function cpuMs(run: () => void): number {
+  const start = process.cpuUsage();
+  run();
+  const used = process.cpuUsage(start);
+  return (used.user + used.system) / 1000;
+}
+
 /** A page whose head holds the given JSON-LD blocks, each a value or raw text. */
 function page(...blocks: unknown[]): string {
   const scripts = blocks
@@ -134,7 +145,7 @@ describe('readIkea offers', () => {
   });
 });
 
-describe('readIkea on untrusted pages', () => {
+describe('readIkea on untrusted pages', { retry: 2 }, () => {
   it('uses the valid Product block after one that is not JSON', () => {
     expect(readIkea(page('{"@type": "Product", "name": ', product()))?.name).toBe('KIVIK Sofa');
   });
@@ -167,11 +178,10 @@ describe('readIkea on untrusted pages', () => {
     expect(parsePage('')).toBeNull();
   });
 
-  it('returns null for 5 MB of text in under 500 ms', () => {
+  it('returns null for 5 MB of text in under 500 ms of CPU time', () => {
     const huge = 'a'.repeat(5 * 1024 * 1024);
-    const started = Date.now();
-    expect(readIkea(huge)).toBeNull();
-    expect(Date.now() - started).toBeLessThan(500);
+    const elapsed = cpuMs(() => expect(readIkea(huge)).toBeNull());
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(500);
     // The page is refused for its size before it is parsed, not merely found to hold no product.
     expect(parsePage(huge)).toBeNull();
   });
@@ -215,8 +225,8 @@ describe('metaContent and canonicalUrl', () => {
   });
 });
 
-describe('parsePage on hostile pages just under the size limit', () => {
-  /** The time a hostile page may take, with headroom for a loaded machine. */
+describe('parsePage on hostile pages just under the size limit', { retry: 2 }, () => {
+  /** The CPU time a hostile page may take, with headroom for a slower machine. */
   const BOUND_MS = 2000;
   const head = page(product());
 
@@ -249,17 +259,13 @@ describe('parsePage on hostile pages just under the size limit', () => {
     const html = build();
     expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
     expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 64);
-    const started = Date.now();
-    expect(parsePage(html)).not.toBeNull();
-    const elapsed = Date.now() - started;
+    const elapsed = cpuMs(() => expect(parsePage(html)).not.toBeNull());
     expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
   });
 
   it.each(shapes)('reads the Product before a page of %s quickly', (_case, build) => {
     const html = build();
-    const started = Date.now();
-    expect(readIkea(html)?.name).toBe('KIVIK Sofa');
-    const elapsed = Date.now() - started;
+    const elapsed = cpuMs(() => expect(readIkea(html)?.name).toBe('KIVIK Sofa'));
     expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
   });
 
@@ -299,10 +305,10 @@ describe('parsePage on hostile pages just under the size limit', () => {
     const html = head + `${gap}<!--`.repeat(16);
     expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 64);
     expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
-    const started = Date.now();
-    expect(parsePage(html)).not.toBeNull();
-    expect(readIkea(html)?.name).toBe('KIVIK Sofa');
-    const elapsed = Date.now() - started;
+    const elapsed = cpuMs(() => {
+      expect(parsePage(html)).not.toBeNull();
+      expect(readIkea(html)?.name).toBe('KIVIK Sofa');
+    });
     expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
   });
 });

@@ -38,8 +38,11 @@ export const LOOKUP_LIMITS = {
 /** The note shown when a page gave three sizes without saying which is width, depth or height. */
 export const SIZE_NOTE_UNLABELLED = 'Check these sizes: the page did not say which is which.';
 
-/** The longest size note accepted, in characters (a project bound, not one the spec names). */
-const SIZE_NOTE_MAX = 200;
+/**
+ * The longest size note accepted, in characters (a project bound, not one the spec names). The
+ * page readers cut a longer note to it rather than failing the whole product here.
+ */
+export const SIZE_NOTE_MAX = 200;
 
 /** What a lookup returns for a product. A field the page did not give is null. */
 export interface ProductFields {
