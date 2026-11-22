@@ -105,7 +105,9 @@ export function ProductLinkBox(): JSX.Element {
   }
 
   return (
-    <form className="product-link" onSubmit={onSubmit}>
+    // noValidate: the planner's own link check decides, not the browser's URL field check, which
+    // would block `not a link` (hiding the planner's message) and links pasted without https://.
+    <form className="product-link" noValidate onSubmit={onSubmit}>
       <div className="field">
         <label htmlFor={inputId}>Paste a product link</label>
         <div className="product-link-row">

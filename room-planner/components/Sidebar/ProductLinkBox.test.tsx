@@ -96,6 +96,25 @@ describe('ProductLinkBox', () => {
     expect(lookupProduct).toHaveBeenCalledWith(LINK);
   });
 
+  // The browser's own URL field check must not decide: the planner's link check gives the message,
+  // and links pasted without https:// are still looked up.
+  it.each(['not a link', 'www.ikea.com/us/en/p/x/'])('looks up %j when Enter is pressed, not blocked by the browser', async (raw) => {
+    const user = userEvent.setup();
+    render(<ProductLinkBox />);
+    await user.type(linkInput(), raw + '{Enter}');
+    expect(lookupProduct).toHaveBeenCalledTimes(1);
+    expect(lookupProduct).toHaveBeenCalledWith(raw);
+  });
+
+  it.each(['not a link', 'www.ikea.com/us/en/p/x/'])('looks up %j when Look up is clicked, not blocked by the browser', async (raw) => {
+    const user = userEvent.setup();
+    render(<ProductLinkBox />);
+    await user.type(linkInput(), raw);
+    await user.click(screen.getByRole('button', { name: 'Look up' }));
+    expect(lookupProduct).toHaveBeenCalledTimes(1);
+    expect(lookupProduct).toHaveBeenCalledWith(raw);
+  });
+
   it('does nothing for an empty or blank link', async () => {
     const user = userEvent.setup();
     render(<ProductLinkBox />);
