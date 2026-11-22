@@ -124,6 +124,23 @@ widened as follows; everything else in Task 8 stands.
    lookup. A link kept after a failure is stored in its `https` form. The preview photo is
    requested with `crossOrigin="anonymous"`, so no shop cookie is sent with it.
 
+**Amendment 4 (2026-11-21, after the browser check on the final build with six real products).**
+
+1. Amendment 3 item 5 is corrected: the preview photo is NOT requested with
+   `crossOrigin="anonymous"`. That made the browser reuse a cached copy fetched without CORS and
+   block the photo. The photo loads plainly; the colour sampler fetches its own copy with
+   `cache: 'no-store'` and no cookies.
+2. Amazon price: the current page keeps the price in `#apex-pricetopay-accessibility-label` and
+   in `.a-price-symbol` / `.a-price-whole` / `.a-price-fraction`, with an empty `.a-offscreen`.
+   The reader tries those before the earlier rules. Fixtures cut from two real pages.
+3. Swapped sizes: for a sofa, dresser, TV stand, desk or shelf whose page gives a depth more
+   than 1.5 times its width, the lookup swaps the two and adds the note "Check these sizes:
+   width and depth looked swapped on the page."
+4. Sofa seats also read `N person` and `N-person`.
+5. Timing tests: a warm-up run and the median of three small runs; the hang guard is 8000 ms.
+   Known limit: a mild slowdown of about 6 to 8 s on a 4 MiB page sits at both bounds and can
+   pass on a retry; the tests reliably catch the tens-of-seconds class.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
