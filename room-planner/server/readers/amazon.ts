@@ -1,4 +1,4 @@
-import type { HTMLElement } from 'node-html-parser';
+import { type HTMLElement, NodeType, TextNode } from 'node-html-parser';
 import { SIZE_NOTE_UNLABELLED, type ProductFields } from '../../lookup/contract';
 import { isShopPhotoUrl } from '../../lookup/shops';
 import { parseDimensionLine } from '../sizes';
@@ -27,6 +27,9 @@ const PRICE_BLOCKS = ['corePrice_desktop', 'corePriceDisplay_desktop_feature_div
 
 /** The classes Amazon marks the price to pay with; searched before any other price. */
 const PRICE_TO_PAY = ['priceToPay', 'apexPriceToPay'];
+
+/** The id of the text Amazon writes for screen readers with the price to pay, such as ` $139.99 `. */
+const PRICE_LABEL_ID = 'apex-pricetopay-accessibility-label';
 
 /** The ids of the title, the main photo and the feature bullets block. */
 const TITLE_ID = 'productTitle';
@@ -144,13 +147,74 @@ function firstDollars(scope: HTMLElement, keep: (element: HTMLElement) => boolea
 }
 
 /**
- * The price in the core price blocks (`blocks`: `#corePrice_desktop`, then
- * `#corePriceDisplay_desktop_feature_div`, those the page has): the `.a-offscreen` price inside the
- * first element Amazon marks as the one to pay (`.priceToPay` or `.apexPriceToPay`) in either
- * block, else the first `.a-offscreen` inside an `.a-price` that is not struck through. Only text
- * that starts with `$` counts.
+ * The text directly inside `element`, without the text of the elements in it (so the whole-dollar
+ * part without its nested decimal point), entity-decoded. Null when it has more than
+ * `SHORT_NODES_MAX` children or `SHORT_TEXT_MAX` characters: that is not a price part.
  */
-function readPrice(blocks: readonly HTMLElement[]): number | null {
+function ownText(element: HTMLElement): string | null {
+  const children = element.childNodes;
+  if (children.length > SHORT_NODES_MAX) return null;
+  let raw = '';
+  for (const child of children) {
+    if (child.nodeType === NodeType.ELEMENT_NODE) continue;
+    raw += child.rawText;
+    if (raw.length > SHORT_TEXT_MAX) return null;
+  }
+  return new TextNode(raw, null).text;
+}
+
+/**
+ * A price composed from the parts the page shows: `symbol` (only `$` counts), `whole` (digits,
+ * commas dropped) and `fraction` (digits, or none). Null for any other parts.
+ */
+function composedDollars(symbol: string | null, whole: string | null, fraction: string | null): number | null {
+  if (symbol?.trim() !== '$' || whole === null) return null;
+  const dollarsText = whole.replace(/,/g, '').trim();
+  const centsText = (fraction ?? '').trim();
+  if (!/^\d+$/.test(dollarsText) || (centsText !== '' && !/^\d+$/.test(centsText))) return null;
+  return Number(centsText === '' ? dollarsText : `${dollarsText}.${centsText}`);
+}
+
+/**
+ * The price inside the price-to-pay element `toPay`, found in one walk: the first `.a-offscreen`
+ * whose text starts with `$`, else the price composed from the first `.a-price-symbol`,
+ * `.a-price-whole` (its own text) and `.a-price-fraction` (Amazon's current markup leaves the
+ * offscreen text empty and shows the price only in those parts). Null when neither gives one.
+ */
+function priceToPayDollars(toPay: HTMLElement): number | null {
+  let symbol: string | null = null;
+  let whole: string | null = null;
+  let fraction: string | null = null;
+  for (const element of descendants(toPay)) {
+    const classes = element.classList;
+    if (classes.contains('a-offscreen')) {
+      const text = shortText(element, SHORT_TEXT_MAX, SHORT_NODES_MAX)?.trim() ?? '';
+      if (text.startsWith('$')) return dollars(text);
+    } else if (symbol === null && classes.contains('a-price-symbol')) {
+      symbol = shortText(element, SHORT_TEXT_MAX, SHORT_NODES_MAX) ?? '';
+    } else if (whole === null && classes.contains('a-price-whole')) {
+      whole = ownText(element) ?? '';
+    } else if (fraction === null && classes.contains('a-price-fraction')) {
+      fraction = shortText(element, SHORT_TEXT_MAX, SHORT_NODES_MAX) ?? '';
+    }
+  }
+  return composedDollars(symbol, whole, fraction);
+}
+
+/**
+ * The price, in this order: the accessibility label `label` (`#apex-pricetopay-accessibility-label`)
+ * when its text starts with `$`; then, in the core price blocks (`blocks`: `#corePrice_desktop`,
+ * then `#corePriceDisplay_desktop_feature_div`, those the page has), the price inside the first
+ * element Amazon marks as the one to pay (`.priceToPay` or `.apexPriceToPay`, see
+ * `priceToPayDollars`); else the first `.a-offscreen` inside an `.a-price` that is not struck
+ * through. Only US dollars count.
+ */
+function readPrice(label: HTMLElement | undefined, blocks: readonly HTMLElement[]): number | null {
+  const labelText = label === undefined ? '' : (shortText(label, SHORT_TEXT_MAX, SHORT_NODES_MAX)?.trim() ?? '');
+  if (labelText.startsWith('$')) {
+    const price = dollars(labelText);
+    if (price !== null) return price;
+  }
   for (const block of blocks) {
     let toPay: HTMLElement | undefined;
     for (const element of descendants(block)) {
@@ -159,7 +223,7 @@ function readPrice(blocks: readonly HTMLElement[]): number | null {
         break;
       }
     }
-    const price = toPay === undefined ? null : firstDollars(toPay, () => true);
+    const price = toPay === undefined ? null : priceToPayDollars(toPay);
     if (price !== null) return price;
   }
   for (const block of blocks) {
@@ -222,14 +286,14 @@ export function readAmazon(html: string): ProductFields | null {
   try {
     const root = parsePage(html);
     if (!root) return null;
-    const byId = elementsById(root, [TITLE_ID, LANDING_IMAGE_ID, BULLETS_ID, ...PRICE_BLOCKS]);
+    const byId = elementsById(root, [TITLE_ID, LANDING_IMAGE_ID, BULLETS_ID, PRICE_LABEL_ID, ...PRICE_BLOCKS]);
     const title = byId.get(TITLE_ID);
     if (!title) return null;
     const priceBlocks = PRICE_BLOCKS.flatMap((id) => byId.get(id) ?? []);
     return finishFields({
       name: title.text,
       description: readDescription(byId.get(BULLETS_ID)),
-      price: readPrice(priceBlocks),
+      price: readPrice(byId.get(PRICE_LABEL_ID), priceBlocks),
       imageUrl: readPhoto(root, byId.get(LANDING_IMAGE_ID)),
       ...readSizes(root),
     });

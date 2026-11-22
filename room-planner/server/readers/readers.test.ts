@@ -167,6 +167,76 @@ describe('readAmazon on saved pages', () => {
     expect(html).toContain('api-services-support@amazon.com');
     expect(readAmazon(html)).toBeNull();
   });
+
+  it('reads the price from the current price markup, where the price-to-pay offscreen text is empty', () => {
+    const fields = readAmazon(fixture('amazon-apex-price.html'));
+    expect(fields).toMatchObject({
+      price: 139.99,
+      d: 15.7,
+      w: 47.2,
+      h: 32,
+      sizeNote: null,
+      imageUrl: 'https://m.media-amazon.com/images/I/81z-nvSknnL._AC_SL1415_.jpg',
+    });
+    // The page's #productTitle has no brand name; the brand appears only in the photo's alt text.
+    expect(fields?.name.startsWith('Wood Dresser for Bedroom, 6 Drawer Dresser with Metal Handles')).toBe(true);
+    expect(fields?.description.startsWith('Classic Dresser:')).toBe(true);
+    expect(parseProductFields(fields)).toEqual(fields);
+  });
+
+  it('gives no price for an unavailable product, and the sizes exactly as the page labels them', () => {
+    const fields = readAmazon(fixture('amazon-unavailable.html'));
+    expect(fields).toMatchObject({ price: null, d: 84, w: 32.5, h: 29, sizeNote: null });
+    expect(fields?.name.startsWith('Velvet Sofa, 84')).toBe(true);
+    expect(parseProductFields(fields)).toEqual(fields);
+  });
+});
+
+describe('readAmazon price-to-pay markup', () => {
+  /** A price-to-pay element whose offscreen text is `offscreen` and whose visible parts are `parts`. */
+  function toPay(offscreen: string, parts: string): string {
+    return `<span class="a-price aok-align-center priceToPay apex-pricetopay-value"><span class="a-offscreen">${offscreen}</span><span aria-hidden="true">${parts}</span></span>`;
+  }
+
+  /** Visible price parts: symbol, whole with its nested decimal point, and fraction. */
+  function parts(symbol: string, whole: string, fraction: string): string {
+    return `<span class="a-price-symbol">${symbol}</span><span class="a-price-whole">${whole}<span class="a-price-decimal">.</span></span><span class="a-price-fraction">${fraction}</span>`;
+  }
+
+  function priceOf(block: string): number | null | undefined {
+    return readAmazon(amazonPage('Sofa', `<div id="corePriceDisplay_desktop_feature_div">${block}</div>`))?.price;
+  }
+
+  it('composes the price from symbol, whole (commas dropped) and fraction when the offscreen text is empty', () => {
+    expect(priceOf(toPay(' ', parts('$', '1,299', '00')))).toBe(1299);
+    expect(priceOf(toPay('', parts('$', '139', '99')))).toBe(139.99);
+  });
+
+  it('composes nothing when the symbol is not $', () => {
+    expect(priceOf(toPay(' ', parts('€', '139', '99')))).toBeNull();
+  });
+
+  it('still prefers a non-empty offscreen price inside the price to pay', () => {
+    expect(priceOf(toPay('$49.99', parts('$', '139', '99')))).toBe(49.99);
+  });
+
+  it('falls back to the first price that is not struck through when the price to pay has neither', () => {
+    const block = `${toPay(' ', '')}<span class="a-price"><span class="a-offscreen">$75.00</span></span>`;
+    expect(priceOf(block)).toBe(75);
+  });
+
+  it('takes the accessibility label first, over a struck-through list price', () => {
+    const block =
+      '<span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">$1,499.00</span></span>' +
+      '<span id="apex-pricetopay-accessibility-label" class="aok-offscreen"> $1,299.00 </span>' +
+      toPay(' ', '');
+    expect(priceOf(block)).toBe(1299);
+  });
+
+  it('ignores an accessibility label that does not start with $', () => {
+    const block = `<span id="apex-pricetopay-accessibility-label" class="aok-offscreen"> £12.00 </span>${toPay(' ', parts('$', '139', '99'))}`;
+    expect(priceOf(block)).toBe(139.99);
+  });
 });
 
 describe('readAmazon fields', () => {
@@ -320,6 +390,9 @@ describe('Wayfair and Amazon readers on hostile pages', { retry: 2 }, () => {
   /** One price an Amazon price block holds. */
   const PRICE = '<span class="a-price"><span class="a-offscreen">$1</span></span>';
 
+  /** A price block opening a price to pay whose offscreen text is empty, so its parts are read. */
+  const TO_PAY_EMPTY = '<div id="corePriceDisplay_desktop_feature_div"><span class="a-price priceToPay"><span class="a-offscreen"> </span>';
+
   /**
    * `HEAD`, then `before`, then `unit` repeated (or, with `closer`, `unit` repeated and then
    * `closer` as many times), then `after`, filling the page to just under `maxLength`.
@@ -345,6 +418,8 @@ describe('Wayfair and Amazon readers on hostile pages', { retry: 2 }, () => {
     ['unclosed .priceToPay nesting', (max) => flood(max, '<div id="corePrice_desktop">', '<span class="priceToPay">')],
     ['dimension labels nested in one row', (max) => flood(max, '<table><tr>', '<th>Product Dimensions</th><div>')],
     ['unclosed PriceDisplay nesting', (max) => flood(max, '', '<span data-test-id="PriceDisplay">')],
+    ['price parts repeated inside the price to pay', (max) => flood(max, TO_PAY_EMPTY, '<span class="a-price-whole">1</span>')],
+    ['unclosed price parts nested inside the price to pay', (max) => flood(max, TO_PAY_EMPTY, '<span class="a-price-whole">1')],
   ];
 
   const readers = [
