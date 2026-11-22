@@ -3,9 +3,10 @@ import { isShopPhotoUrl } from '../lookup/shops';
 
 /**
  * Samples a product photo in the browser to find a piece's main and accent colours. This is the
- * thin browser step: it loads the photo from a shop's own photo host, reads its pixels from a
- * small canvas that is never added to the document, and hands them to `dominantColours`. The
- * photo address is only used here; it is never stored.
+ * thin browser step: it fetches its own copy of the photo from a shop's own photo host (without
+ * cookies and without the browser's cache, see `createPixelLoader`), reads its pixels from a small
+ * canvas that is never added to the document, and hands them to `dominantColours`. The photo
+ * address is only used here and by the preview card's image; it is never stored.
  */
 
 /** The photo is drawn at this many pixels square before its colours are read. */
@@ -32,7 +33,7 @@ export async function samplePhotoColours(
   if (!isShopPhotoUrl(url)) return noColours();
   const outer = opts?.signal;
   if (outer?.aborted) return noColours();
-  const loadPixels = opts?.deps?.loadPixels ?? loadImagePixels;
+  const loadPixels = opts?.deps?.loadPixels ?? createPixelLoader();
   const inner = new AbortController();
 
   return new Promise<PhotoColours>((resolve) => {
@@ -70,62 +71,80 @@ function noColours(): PhotoColours {
   return { main: null, accent: null };
 }
 
-/**
- * The default loadPixels: loads the photo anonymously (no cookies, no referrer), draws it at
- * `size` × `size` on a detached canvas and reads the pixels back. Rejects, rather than hanging,
- * when there is no 2D canvas context (as in jsdom), when the photo fails to load, when reading
- * the canvas is refused (a photo served without CORS taints it), or when `signal` aborts.
- */
-function loadImagePixels(url: string, size: number, signal: AbortSignal): Promise<Uint8ClampedArray> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(new DOMException('The photo load was aborted.', 'AbortError'));
-      return;
-    }
-    // The context is checked before the photo is requested, so nothing is fetched when it is missing.
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    let context: CanvasRenderingContext2D | null;
-    try {
-      context = canvas.getContext('2d', { willReadFrequently: true });
-    } catch {
-      context = null;
-    }
-    if (context === null) {
-      reject(new Error('No 2D canvas context is available.'));
-      return;
-    }
-    const ctx = context;
+/** The largest photo the sampler reads, in bytes; a larger one is refused. */
+export const PHOTO_BYTES_MAX = 8 * 1024 * 1024;
 
-    const img = new Image();
-    const cleanUp = (): void => {
-      img.onload = null;
-      img.onerror = null;
-      signal.removeEventListener('abort', onAbort);
-    };
-    const onAbort = (): void => {
-      cleanUp();
-      img.removeAttribute('src');
-      reject(new DOMException('The photo load was aborted.', 'AbortError'));
-    };
-    img.onload = () => {
-      cleanUp();
-      try {
-        ctx.drawImage(img, 0, 0, size, size);
-        resolve(ctx.getImageData(0, 0, size, size).data);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    img.onerror = () => {
-      cleanUp();
-      reject(new Error('The photo failed to load.'));
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
-    // Both must be set before `src`, or the request goes out with credentials and a referrer.
-    img.crossOrigin = 'anonymous';
-    img.referrerPolicy = 'no-referrer';
-    img.src = url;
-  });
+/**
+ * How the sampler requests its own copy of the photo: CORS, so its pixels can be read; no cookies,
+ * no referrer and no redirects; and never from or into the browser's cache. That cache is shared
+ * with the preview card's ordinary `<img>` load of the same photo, which is not a CORS request; a
+ * shop that sends its allow-origin header only when asked, without `Vary: Origin`, leaves a cached
+ * copy that a CORS request is blocked from reading.
+ */
+const PHOTO_REQUEST: Readonly<Omit<RequestInit, 'signal'>> = {
+  mode: 'cors',
+  credentials: 'omit',
+  cache: 'no-store',
+  referrerPolicy: 'no-referrer',
+  redirect: 'error',
+};
+
+/** The browser parts the default loader uses, replaceable in tests. */
+export interface PixelLoaderEnv {
+  fetch: typeof fetch;
+  /** Missing where the browser has none (as in jsdom); the loader then rejects without fetching. */
+  createImageBitmap?: (image: Blob, options: ImageBitmapOptions) => Promise<ImageBitmap>;
+  /** The RGBA pixels of `bitmap` drawn at `size` × `size`. Throws when they cannot be read. */
+  readBitmap(bitmap: ImageBitmap, size: number): Uint8ClampedArray;
+}
+
+/** Draws `bitmap` at `size` × `size` on a detached canvas and reads the pixels back. */
+function readBitmapOnCanvas(bitmap: ImageBitmap, size: number): Uint8ClampedArray {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (context === null) throw new Error('No 2D canvas context is available.');
+  context.drawImage(bitmap, 0, 0, size, size);
+  return context.getImageData(0, 0, size, size).data;
+}
+
+/** The browser's own parts, read when a load starts. */
+function browserEnv(): PixelLoaderEnv {
+  const create: PixelLoaderEnv['createImageBitmap'] =
+    typeof globalThis.createImageBitmap === 'function' ? (image, options) => globalThis.createImageBitmap(image, options) : undefined;
+  return {
+    fetch: (input, init) => globalThis.fetch(input, init),
+    createImageBitmap: create,
+    readBitmap: readBitmapOnCanvas,
+  };
+}
+
+/**
+ * The default loadPixels, with `env` replacing any of the browser parts. It fetches its own copy
+ * of the photo (see `PHOTO_REQUEST`), refuses a response that is not ok or a photo over
+ * `PHOTO_BYTES_MAX` bytes, decodes it with `createImageBitmap` at `size` × `size`, reads the
+ * pixels from a detached canvas and closes the bitmap. Rejects on any failure, when `signal`
+ * aborts, and (before fetching anything) when there is no `createImageBitmap`.
+ */
+export function createPixelLoader(env: Partial<PixelLoaderEnv> = {}): SamplerDeps['loadPixels'] {
+  return async (url, size, signal) => {
+    const { fetch: fetchPhoto, createImageBitmap: createBitmap, readBitmap } = { ...browserEnv(), ...env };
+    if (typeof createBitmap !== 'function') throw new Error('createImageBitmap is not available.');
+    signal.throwIfAborted();
+    const response = await fetchPhoto(url, { ...PHOTO_REQUEST, signal });
+    if (!response.ok) throw new Error(`The photo request failed with status ${response.status}.`);
+    // A declared size over the limit is refused before the body is read.
+    if (Number(response.headers.get('content-length')) > PHOTO_BYTES_MAX) throw new Error('The photo is too large.');
+    const blob = await response.blob();
+    if (blob.size > PHOTO_BYTES_MAX) throw new Error('The photo is too large.');
+    signal.throwIfAborted();
+    const bitmap = await createBitmap(blob, { resizeWidth: size, resizeHeight: size, resizeQuality: 'low' });
+    try {
+      signal.throwIfAborted();
+      return readBitmap(bitmap, size);
+    } finally {
+      bitmap.close();
+    }
+  };
 }

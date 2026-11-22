@@ -108,9 +108,12 @@ describe('ProductPreviewCard', () => {
     expect(img).toHaveAttribute('decoding', 'async');
   });
 
-  it('requests the product photo anonymously, so no shop cookie is sent with it', () => {
+  it('loads the product photo as a plain image, with no CORS mode that a cached copy could fail', () => {
+    // A CORS request answered from a copy the browser cached without CORS is blocked, and the
+    // photo would not show; the colour sampler fetches its own uncached copy instead.
     const img = photo(renderCard(preview()).container);
-    expect(img).toHaveAttribute('crossorigin', 'anonymous');
+    expect(img).not.toHaveAttribute('crossorigin');
+    expect(img).toHaveAttribute('referrerPolicy', 'no-referrer');
   });
 
   it('shows no photo when there is no image address', () => {
