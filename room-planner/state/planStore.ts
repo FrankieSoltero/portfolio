@@ -28,10 +28,10 @@ import {
   validateOpenings,
 } from '../domain/openings';
 import { OUTLINE_PROBLEM_TEXT, type OutlineProblem, type OutlineResult } from '../domain/outline';
-import { PRODUCT_TEXT_LIMITS } from '../domain/planSchema';
+import { isWebUrl, PRICE_MAX, PRODUCT_TEXT_LIMITS } from '../domain/planSchema';
 import { interiorPoint, round2 } from '../domain/polygon';
 import { roomBounds, roomOutline } from '../domain/shape';
-import type { Corner, Item, ItemColours, ItemModel, Kind, Obstacle, PlanDocument, Units } from '../domain/types';
+import type { Corner, Item, ItemColours, ItemModel, Kind, Obstacle, PlanDocument, StyleValues, Units } from '../domain/types';
 
 /** Why a room edit (its outline, doors and windows, or obstacles) was refused. */
 export type RoomProblem = OutlineProblem | OpeningProblem | ObstacleProblem;
@@ -47,6 +47,23 @@ export const ROOM_PROBLEM_TEXT: Readonly<Record<RoomProblem, string>> = {
 export interface ItemPatch {
   name?: string;
   kind?: Kind;
+  w?: number;
+  d?: number;
+  h?: number;
+  style?: Readonly<Record<string, string>>;
+  colours?: Partial<ItemColours>;
+}
+
+/**
+ * A piece to add: its kind, and optionally what a looked-up product says about it. Every field
+ * other than `kind` is untrusted (it may come from a shop page) and is checked by addFurnitureFrom.
+ */
+export interface NewItemSpec {
+  kind: Kind;
+  name?: string;
+  host?: string;
+  sourceUrl?: string | null;
+  price?: number | null;
   w?: number;
   d?: number;
   h?: number;
@@ -110,6 +127,18 @@ export interface PlanState extends PlanDocument {
    * the plan already has CONFIG.maxItems items.
    */
   addFurniture(kind: Kind): string | null;
+  /**
+   * Adds the piece `spec` describes in one write (so one undo step), placed like addFurniture, with
+   * the planner's own model. Each value is kept only in a form a saved plan accepts: the name is
+   * trimmed and cut to 200 characters (the kind's label when empty); the host is cut to 255; the
+   * link is kept only when it is an http: or https: URL of at most 2048 characters, else null; the
+   * price only when finite and within [0, 10,000,000], else null; each size is clamped to
+   * [CONFIG.itemDimMin, CONFIG.itemDimMax], or is the kind's typical size when missing or not
+   * finite; `style` is merged over the kind's default style (the default when any key or value is
+   * unknown); each colour goes through normaliseColour (its default when refused). Returns the new
+   * id, or null (changing nothing) when the plan already has CONFIG.maxItems items or `kind` is unknown.
+   */
+  addFurnitureFrom(spec: NewItemSpec): string | null;
   /**
    * Applies a valid patch to the item; returns false and changes nothing when the item is missing or
    * any given field is invalid. A name is trimmed and must then have 1 to 200 characters; a `w`, `d`
@@ -219,6 +248,71 @@ const PLANNER_MODEL: ItemModel = { tier: 'parametric', label: 'Built by the plan
 /** True when `v` is a length a piece may have: finite and within [CONFIG.itemDimMin, CONFIG.itemDimMax]. */
 function isItemDim(v: number): boolean {
   return Number.isFinite(v) && v >= CONFIG.itemDimMin && v <= CONFIG.itemDimMax;
+}
+
+/**
+ * `v` when it is a link a saved plan accepts (parsePlan's rule, `isWebUrl`): at most
+ * PRODUCT_TEXT_LIMITS.urlMax characters, an absolute http: or https: URL, with nothing the URL
+ * parser would strip at either end. Anything else is null.
+ */
+function storedLink(v: unknown): string | null {
+  return typeof v === 'string' && v.length <= PRODUCT_TEXT_LIMITS.urlMax && isWebUrl(v) ? v : null;
+}
+
+/** `v` when it is a finite price within [0, PRICE_MAX] (a saved plan's price limit); anything else is null. */
+function storedPrice(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= PRICE_MAX ? v : null;
+}
+
+/** `v` clamped to [CONFIG.itemDimMin, CONFIG.itemDimMax], or `typical` when `v` is not a finite number. */
+function storedSize(v: unknown, typical: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(Math.max(v, CONFIG.itemDimMin), CONFIG.itemDimMax) : typical;
+}
+
+/** `given` merged over the kind's default style, or the default style when any key or value is unknown. */
+function storedStyle(kind: Kind, given: unknown): StyleValues {
+  if (typeof given !== 'object' || given === null) return defaultStyle(kind);
+  return completeStyle(kind, { ...defaultStyle(kind), ...(given as Readonly<Record<string, string>>) }) ?? defaultStyle(kind);
+}
+
+/** The kind's default colours with each given `#rrggbb` colour (lower-cased) in place of its default. */
+function storedColours(kind: Kind, given: unknown): ItemColours {
+  const colours = defaultColours(kind);
+  if (typeof given !== 'object' || given === null) return colours;
+  for (const key of ['main', 'accent'] as const) {
+    const value: unknown = (given as Partial<ItemColours>)[key];
+    const colour = typeof value === 'string' ? normaliseColour(value) : null;
+    if (colour !== null) colours[key] = colour;
+  }
+  return colours;
+}
+
+/**
+ * The unplaced piece `spec` describes, at (0, 0), unrotated, every value checked by the rules of
+ * addFurnitureFrom. Only the fields named here are read, so any other key the caller passes (an id,
+ * a position, a model or a photo address) is never stored.
+ */
+function itemFromSpec(spec: NewItemSpec, id: string): Item {
+  const { kind } = spec;
+  const typical = TYPICAL_SIZE[kind];
+  const name = typeof spec.name === 'string' ? spec.name.trim().slice(0, PRODUCT_TEXT_LIMITS.nameMax) : '';
+  return {
+    id,
+    kind,
+    name: name === '' ? KIND_LABELS[kind] : name,
+    host: typeof spec.host === 'string' ? spec.host.slice(0, PRODUCT_TEXT_LIMITS.hostMax) : '',
+    sourceUrl: storedLink(spec.sourceUrl),
+    price: storedPrice(spec.price),
+    w: storedSize(spec.w, typical.w),
+    d: storedSize(spec.d, typical.d),
+    h: storedSize(spec.h, typical.h),
+    x: 0,
+    y: 0,
+    angle: 0,
+    model: { ...PLANNER_MODEL },
+    style: storedStyle(kind, spec.style),
+    colours: storedColours(kind, spec.colours),
+  };
 }
 
 /** `item` with `patch` applied by the rules of updateItem, or null when any given field is invalid. */
@@ -331,27 +425,15 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
   removeObstacle: (id) =>
     set((s) => (s.obstacles.some((o) => o.id === id) ? { obstacles: s.obstacles.filter((o) => o.id !== id) } : s)),
 
-  addFurniture: (kind) => {
+  addFurniture: (kind) => get().addFurnitureFrom({ kind }),
+
+  addFurnitureFrom: (spec) => {
     const { room, items } = get();
-    if (items.length >= CONFIG.maxItems) return null;
+    if (items.length >= CONFIG.maxItems || !KIND_ORDER.includes(spec.kind)) return null;
     const id = crypto.randomUUID();
     const centre = interiorPoint(room.outline);
-    const unplaced: Item = {
-      id,
-      kind,
-      name: KIND_LABELS[kind],
-      host: '',
-      sourceUrl: null,
-      price: null,
-      ...TYPICAL_SIZE[kind],
-      x: 0,
-      y: 0,
-      angle: 0,
-      model: { ...PLANNER_MODEL },
-      style: defaultStyle(kind),
-      colours: defaultColours(kind),
-    };
-    const item = placeItem(unplaced, centre.x, centre.y, roomBounds(room), CONFIG.furnitureSnap);
+    const item = placeItem(itemFromSpec(spec, id), centre.x, centre.y, roomBounds(room), CONFIG.furnitureSnap);
+    // One write, so the history records the whole piece as one undo step.
     set((s) => ({ items: [...s.items, item] }));
     return id;
   },

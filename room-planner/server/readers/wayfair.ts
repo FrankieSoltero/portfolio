@@ -1,0 +1,165 @@
+import type { HTMLElement } from 'node-html-parser';
+import { SIZE_NOTE_UNLABELLED, type ProductFields } from '../../lookup/contract';
+import { parseDimensionLine } from '../sizes';
+import { canonicalUrl, dollars, finishFields, metaContent, nextElement, parsePage, plain, shortText } from './shared';
+
+/**
+ * Reads a Wayfair product page. Wayfair publishes no JSON-LD Product, so the name, photo, price
+ * and sizes come from the page markup: the listing heading (or `og:title`), `og:image`, the lead
+ * price, and the "Overall Dimensions" line of the dimensions list, or of the page's embedded data
+ * when the list is missing. The description is the embedded marketing copy. A page whose
+ * canonical address has no `/pdp/` is not a product.
+ */
+
+/** The shop name Wayfair adds to the end of `og:title`, longest form first. */
+const TITLE_SUFFIXES = [' & Reviews | Wayfair', ' | Wayfair'];
+
+/** The labels, exactly, of the dimensions list entry that holds the overall sizes. */
+const OVERALL_LABELS = new Set(['Overall Dimensions', 'Overall']);
+
+/**
+ * Where the overall sizes start in the page's embedded data. The data is JSON written inside a
+ * JavaScript string, so its quotes appear escaped as `\"`.
+ */
+const SIZES_MARKER = String.raw`Overall Dimensions\",\"value\":\"`;
+
+/** The most raw characters of embedded data read for the sizes; a sizes line is far shorter. */
+const SIZES_MAX = 300;
+
+/** Where the marketing copy starts in the page's embedded data, escaped the same way. */
+const COPY_MARKER = String.raw`\"marketingCopy\":\"`;
+
+/** The most raw characters of embedded data read for the marketing copy. */
+const COPY_MAX = 1500;
+
+/**
+ * The most characters and nodes read from one `<dt>` to compare it with the labels, or from one
+ * price. A label or a price is far shorter; an element holding more is neither.
+ */
+const LABEL_TEXT_MAX = 200;
+const LABEL_NODES_MAX = 16;
+
+/** The most characters and nodes read from the `<dd>` holding the sizes line; more is not one. */
+const SIZES_TEXT_MAX = 1000;
+const SIZES_NODES_MAX = 256;
+
+/** The listing heading's text, else `og:title` without its trailing shop name; null when neither. */
+function readName(root: HTMLElement): string | null {
+  const heading = root.querySelector('h1[data-rtl-id="listingHeaderNameHeading"]');
+  const headingText = heading ? plain(heading.text) : '';
+  if (headingText !== '') return headingText;
+  const title = metaContent(root, 'og:title');
+  if (title === null) return null;
+  const suffix = TITLE_SUFFIXES.find((ending) => title.endsWith(ending));
+  return suffix ? title.slice(0, -suffix.length) : title;
+}
+
+/**
+ * The first `PriceDisplay` that is not struck through (an `<s>`, the old price), read as dollars.
+ * Null when there is none, or it holds more text than a price.
+ */
+function readPrice(root: HTMLElement): number | null {
+  for (const element of root.querySelectorAll('[data-test-id="PriceDisplay"]')) {
+    if (element.tagName === 'S') continue;
+    const text = shortText(element, LABEL_TEXT_MAX, LABEL_NODES_MAX);
+    return text === null ? null : dollars(text);
+  }
+  return null;
+}
+
+/**
+ * The text of the `<dd>` right after the first `<dt>` labelled `Overall Dimensions` or `Overall`;
+ * null when there is no such `<dt>`, the element after it is not a `<dd>`, or the `<dd>` holds more
+ * than a sizes line. Linear on any page: each `<dt>` is read only up to a label's length, and only
+ * the first match looks at its siblings, once.
+ */
+function listedSizes(root: HTMLElement): string | null {
+  const term = root.querySelectorAll('dt').find((dt) => {
+    const label = shortText(dt, LABEL_TEXT_MAX, LABEL_NODES_MAX);
+    return label !== null && OVERALL_LABELS.has(plain(label));
+  });
+  if (term === undefined) return null;
+  const next = nextElement(term);
+  return next !== null && next.tagName === 'DD' ? shortText(next, SIZES_TEXT_MAX, SIZES_NODES_MAX) : null;
+}
+
+/** One backslash escape at `index`: `\uXXXX` as its character, `\n`, `\r`, `\t` as a space, else the escaped character. */
+function readEscape(text: string, index: number): { char: string; length: number } {
+  const next = text[index + 1];
+  const hex = text.slice(index + 2, index + 6);
+  if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(hex)) return { char: String.fromCharCode(parseInt(hex, 16)), length: 6 };
+  if (next === 'n' || next === 'r' || next === 't') return { char: ' ', length: 2 };
+  return { char: next ?? '', length: 2 };
+}
+
+/**
+ * Reads `text` undoing one level of backslash escapes: `\"` to `"`, `\\` to `\`, and `\u`
+ * with four hex digits to its character. With `stopAtQuote`, reading ends at the first unescaped
+ * `"`, which closes a JSON string. `closed` says whether that quote was found.
+ */
+function unescapeText(text: string, stopAtQuote: boolean): { text: string; closed: boolean } {
+  let result = '';
+  let i = 0;
+  while (i < text.length) {
+    const char = text[i];
+    if (stopAtQuote && char === '"') return { text: result, closed: true };
+    if (char === '\\') {
+      const escape = readEscape(text, i);
+      result += escape.char;
+      i += escape.length;
+    } else {
+      result += char;
+      i += 1;
+    }
+  }
+  return { text: result, closed: false };
+}
+
+/**
+ * The first JSON string value after `marker` in the page's embedded data. Only `max` raw
+ * characters after the marker are read, so this stays linear in the page size. The value is JSON
+ * inside a JavaScript string, so the string's escapes are undone first and the JSON string is
+ * then read up to its closing quote. Null when the marker is missing, or when the value does not
+ * close within the slice and `acceptUnclosed` is false.
+ */
+function embeddedString(html: string, marker: string, max: number, acceptUnclosed: boolean): string | null {
+  const start = html.indexOf(marker);
+  if (start === -1) return null;
+  const from = start + marker.length;
+  const json = unescapeText(html.slice(from, from + max), false).text;
+  const value = unescapeText(json, true);
+  return value.closed || acceptUnclosed ? value.text : null;
+}
+
+/** Width, depth, height and size note from the dimensions list, else from the embedded data. */
+function readSizes(root: HTMLElement, html: string): Partial<ProductFields> {
+  const line = listedSizes(root) ?? embeddedString(html, SIZES_MARKER, SIZES_MAX, false);
+  const sizes = line === null ? null : parseDimensionLine(line);
+  if (!sizes) return {};
+  return { w: sizes.w, d: sizes.d, h: sizes.h, sizeNote: sizes.labelled ? null : SIZE_NOTE_UNLABELLED };
+}
+
+/**
+ * The product fields on a Wayfair page, cut to the lookup's limits, or null when the page is
+ * empty, too large, not a product page (its canonical address has no `/pdp/`), or has no name.
+ * Never throws. Every step is linear in the page, so a hostile page costs about what parsing it
+ * does (see `parsePage`).
+ */
+export function readWayfair(html: string): ProductFields | null {
+  try {
+    const root = parsePage(html);
+    if (!root) return null;
+    if (!canonicalUrl(root)?.includes('/pdp/')) return null;
+    const name = readName(root);
+    if (name === null) return null;
+    return finishFields({
+      name,
+      description: embeddedString(html, COPY_MARKER, COPY_MAX, true) ?? '',
+      price: readPrice(root),
+      imageUrl: metaContent(root, 'og:image'),
+      ...readSizes(root, html),
+    });
+  } catch {
+    return null;
+  }
+}

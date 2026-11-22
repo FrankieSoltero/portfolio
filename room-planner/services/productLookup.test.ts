@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRODUCT_TEXT_LIMITS, parsePlan } from '../domain/planSchema';
+import { LOOKUP_ERROR_CODES } from '../lookup/contract';
 import { furnishedDocument } from '../test/fixtures';
 import { LOOKUP_MESSAGES, LookupError, UNTITLED_PRODUCT, capProductText, parseProductUrl } from './productLookup';
 
@@ -17,9 +18,15 @@ function expectInvalid(raw: string): void {
 describe('LOOKUP_MESSAGES', () => {
   it('has the exact user-facing copy', () => {
     expect(LOOKUP_MESSAGES.invalid_url).toBe("That doesn't look like a link. Paste the full product URL.");
-    expect(LOOKUP_MESSAGES.unavailable).toBe(
-      "Couldn't read that page. Try again, or enter the product by hand later.",
-    );
+    expect(LOOKUP_MESSAGES.unsupported_shop).toBe("That shop isn't supported yet. Pick a type below.");
+    expect(LOOKUP_MESSAGES.blocked).toBe("The shop didn't let us read that page. Pick a type below.");
+    expect(LOOKUP_MESSAGES.not_a_product).toBe("That page isn't a single product.");
+    expect(LOOKUP_MESSAGES.unavailable).toBe("Couldn't read that page. Try again, or pick a type below.");
+    expect(LOOKUP_MESSAGES.rate_limited).toBe('Too many lookups. Try again in a few minutes.');
+  });
+
+  it('has a message for each of the six lookup error codes and no other', () => {
+    expect(Object.keys(LOOKUP_MESSAGES).sort()).toEqual([...LOOKUP_ERROR_CODES].sort());
   });
 });
 
@@ -30,6 +37,12 @@ describe('LookupError', () => {
     expect(err.code).toBe('unavailable');
     expect(err.message).toBe(LOOKUP_MESSAGES.unavailable);
     expect(err.name).toBe('LookupError');
+  });
+
+  it.each(LOOKUP_ERROR_CODES)('takes every contract code: %s', (code) => {
+    const err = new LookupError(code);
+    expect(err.code).toBe(code);
+    expect(err.message).toBe(LOOKUP_MESSAGES[code]);
   });
 });
 

@@ -263,3 +263,33 @@ MDX content, not user input.
 ### Lesson
 - A placeholder that returns made-up data looks like a feature. Remove it when the real thing is
   not ready, and say so, rather than leaving it in front of visitors.
+
+## 2026-11-20 — Product lookup
+
+### Changes
+- The Room Planner can look up a product from a pasted IKEA, Amazon or Wayfair link. A server route,
+  `POST /api/room-planner/lookup` (the site's first), fetches the page and returns only the product
+  fields. The browser turns them into a furniture recipe and shows a preview; Add to room places the
+  piece. Anything else the visitor pastes is refused, and the type grid stays usable.
+- The route fetches only shop hosts, over `https`, at an address it checked to be public, with
+  redirects, size, time and rate limits, an `Origin` check and one log line per request. Details,
+  how to add a shop and the Vercel firewall rule the owner adds after merge are in
+  `docs/room-planner/README.md` under "Product lookup (slice H)".
+- The plan format stays at version 4. The photo address is never saved or shared.
+- The privacy note under "Plan" no longer says nothing is sent anywhere: a pasted product link is sent
+  to this site to read the page, and the product photo loads from the shop. The root `README.md` says
+  the same.
+- Final fix wave (2026-11-22, `4ae70fd`, `6513398`, `7a9afae`, `b5e7644`): the link box uses the
+  planner's own link check, the Wayfair and Amazon readers stay linear on hostile pages, timing tests
+  measure CPU time, room photos are coloured from their centre, and the route and fetch were hardened
+  (`maxDuration`, IPv4 preference, reset dismisses a running lookup, anonymous photo request,
+  `Retry-After` only when valid).
+- Live-check fixes (2026-11-22, `7e32dc3`, `44cc518`, `f16c16d`, `748d9ba`): the preview photo loads as a
+  plain image and the colour sampler fetches its own uncached copy, Amazon's current price markup is
+  read, a mislabelled width and depth is swapped with a note, `N-person` sofas set seats, and the
+  timing tests' growth check is steadier.
+
+### Lessons
+- A size cap is not a time cap: the HTML parser needed its own limit and its own timed tests.
+- A security gate validates its own input; two layers that check the same value must agree.
+- Fifteen build mistakes are in `docs/room-planner/mistakes-and-fixes.md`.

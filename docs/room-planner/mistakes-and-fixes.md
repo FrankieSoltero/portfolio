@@ -945,3 +945,112 @@ Eight entries. Entry 1 was found by the Task 6 implementer, entries 2, 3, 4, 6 a
 - **Root cause:** Two sessions used one working tree.
 - **Fix:** Afterwards every commit in this plan checked `git branch --show-current` first (plan Amendment 1).
 - **How to avoid:** One working tree per session. Check the branch before each commit.
+
+## 2026-11-20 — Product lookup
+
+Fifteen entries, taken from the build ledger and the review reports. Entry 1 was found by the plan review, entries 2 to 10 by the per-task reviews, entry 11 was noticed by the controller, entries 12 and 13 were found by the whole-branch review (entry 12 also by the browser check), entry 14 by the full check, and entry 15 by the live browser check with real shop pages. Items left as they are are listed under "Known limits of the lookup" in `docs/room-planner/README.md`.
+
+### The plan was too coarse and the review had no pass condition (plan review round 1)
+- **Date:** 2026-11-20
+- **What happened:** Plan review round 1 blocked the plan. One task bundled the store, the service and the actions (11 files), and the whole-branch review had no objective pass condition.
+- **Root cause:** The plan was written too coarsely.
+- **Fix:** The plan was split into 15 tasks and the pass condition was stated (plan commit `cfbfa51`).
+- **How to avoid:** Keep tasks to one layer each. Give every review step a pass condition.
+
+### `shopForHost` accepted malformed strings that end in a shop domain
+- **Date:** 2026-11-20
+- **What happened:** `shopForHost` returned a shop for strings such as `evil.example#.ikea.com` and `a b.ikea.com`, which are not host names but end in a shop domain.
+- **Root cause:** It only lower-cased the input and matched the end of it, and relied on callers passing an already parsed host name.
+- **Fix:** Commit `85ec4e9`: the whole string must be a plain host name of at most 253 characters.
+- **How to avoid:** A security gate validates its own input. It does not rely on how callers happen to call it.
+
+### The word rules matched only the exact spellings in the plan (plan Amendment 1)
+- **Date:** 2026-11-20
+- **What happened:** `3-Seater Sofa`, `5 Tier Bookshelf`, `Bar Stools`, `Area Rugs` and `TV-Stand` matched nothing.
+- **Root cause:** The plan listed sample spellings, and the implementer rightly read them literally.
+- **Fix:** Plan Amendment 1 and commit `f9c738a`: hyphen and space joins, plurals and number forms are accepted.
+- **How to avoid:** When a plan lists words, say whether the list is exact or only examples, and test against real product names.
+
+### The 4 MiB page cap counted only decompressed bytes
+- **Date:** 2026-11-20
+- **What happened:** A gzip body made of empty stored blocks was read without limit until the 8 s deadline. The reviewer measured over 12,000 MB.
+- **Root cause:** The cap sat after the decompression. The implementer wrongly assumed decoded bytes are never fewer than compressed bytes.
+- **Fix:** Commit `df28447`: raw bytes are counted before decompression too, and each redirect hop is released before the next.
+- **How to avoid:** Cap both sides of any decompression. Test with a body that inflates to nothing.
+
+### A pasted `http://` shop link always failed
+- **Date:** 2026-11-20
+- **What happened:** A link such as `http://www.ikea.com/...` was answered "That doesn't look like a link".
+- **Root cause:** The link checker accepts `http`, the route accepts only `https`, and nothing in between upgraded it.
+- **Fix:** Commit `135c804`: the service upgrades an `http` shop link to `https`.
+- **How to avoid:** When two layers validate the same value, check that their rules agree, and test each accepted form from end to end.
+
+### The HTML parser's time grew with the square of the input
+- **Date:** 2026-11-20
+- **What happened:** `node-html-parser` took minutes on unclosed or deeply nested tags and on unterminated comments, blocking the server on a page under 4 MiB.
+- **Root cause:** The size cap limited bytes, not time. The first hostile-input test used input that the length check refused before it reached the parser.
+- **Fix:** Commit `16e4688`: `parseNoneClosedTags: true` plus a pre-pass for unterminated comments and CDATA. Eight hostile shapes are timed in tests; the worst takes about 0.6 to 1.4 s. The remaining cost is listed under "Known limits of the lookup" in `docs/room-planner/README.md`.
+- **How to avoid:** A size cap is not a time cap. Time the parser on hostile input that passes the size check.
+
+### The first version of that pre-pass cut real product pages
+- **Date:** 2026-11-20
+- **What happened:** The pre-pass cut the page at any unterminated `<!--`. A normal page with one stray opener inside a script string, an attribute or a JSON-LD string lost its product.
+- **Root cause:** The controller specified the fix without checking where such openers legitimately occur.
+- **Fix:** Commit `643b0c8`: the page is cut only when it has more than 16 unterminated openers.
+- **How to avoid:** A hardening step needs a test that normal input still works, written before the fix.
+
+### The Amazon reader returned the struck-through list price
+- **Date:** 2026-11-20
+- **What happened:** When the "List Price" row came first, the reader returned 1499 instead of 1299.
+- **Root cause:** The plan's selector was "the first price in the block", and the saved sample page had no price block to check it against.
+- **Fix:** Commit `a146145`: the reader prefers the price-to-pay element and skips struck-through prices.
+- **How to avoid:** When a fixture lacks the element a rule reads, build a realistic one before trusting the rule.
+
+### Wayfair gave an empty description
+- **Date:** 2026-11-20
+- **What happened:** Style words such as "tufting" were lost because the Wayfair description was empty.
+- **Root cause:** The plan named no source for the field.
+- **Fix:** Commit `a146145`: the reader takes the description from the page's embedded marketing copy.
+- **How to avoid:** List the source of every field for every shop in the plan.
+
+### Keyboard focus fell to the page body (Task 14)
+- **Date:** 2026-11-20
+- **What happened:** Focus fell to the page body when the preview card closed, or when Look up disabled its own focused button.
+- **Root cause:** The focused element was removed or disabled with nothing to receive the focus.
+- **Fix:** Commit `48e2bad` (`fix(room-planner): keep focus in the link box and tighten the preview card`): focus returns to the link input.
+- **How to avoid:** Whenever a control removes or disables itself, decide where the focus goes.
+
+### Commits carry different model names in their trailers
+- **Date:** 2026-11-20
+- **What happened:** Several commits carry a `Co-Authored-By: Claude Opus 5.5` trailer and others `Claude Fable 5.2`.
+- **Root cause:** Each implementer followed its own session's attribution rule over the constraints file.
+- **Fix:** Left as written, since each trailer names the model that wrote that commit.
+- **How to avoid:** Do not put a fixed model name in shared constraints. Let each session attribute itself.
+
+### The browser's own link check blocked the planner's (whole-branch review, browser check)
+- **Date:** 2026-11-22
+- **What happened:** Typing `not a link` and pressing Enter showed the browser's native validation bubble instead of the planner's message, and a link pasted without `https://` (`www.ikea.com/us/en/p/...`), which the planner's link check accepts, was never looked up.
+- **Root cause:** The link box is a `<form>` holding a `type="url"` input with no `noValidate`, so the browser checked the field first and refused to submit. The tests only ever typed full `https://` links, which pass both checks.
+- **Fix:** Commit `4ae70fd`: the form is `noValidate`; tests type `not a link` and a scheme-less link, by Enter and by the button.
+- **How to avoid:** When an input has a browser-checked type inside a form, decide which check wins and test the inputs only one of them accepts.
+
+### The Wayfair and Amazon readers were quadratic on hostile pages after the parser fix
+- **Date:** 2026-11-22
+- **What happened:** A page of repeated `<dt>Overall</dt>` with a `/pdp/` canonical took 24 s of CPU through the Wayfair reader at near 4 MiB. A page of nested `<i>` then `<li>` inside `#feature-bullets` took 11 s at 256 KiB through the Amazon reader, and 50 s at 512 KiB.
+- **Root cause:** The parser fix was timed only through the IKEA reader. Wayfair called `nextElementSibling` on every `<dt>`, which rescans the parent's children from the first each time. Amazon used selectors with a descendant step and ran selectors on an element below the root; either way the selector engine walks the ancestors of every candidate. The parser's own `text` reads everything inside an element again for each nested element, and the struck-price ancestor walk had no bound.
+- **Fix:** Commit `6513398`: blocks are found by id in one walk; what is inside them is found by one more walk testing one tag or class; text is read up to a bound; the next sibling is found by index once; ancestor walks stop at 16 levels. The worst of 25 shapes measured is 1.8 s of CPU, a flood of `<a>` that is almost all parsing. The tests that guard it are described in entry 14: every hostile shape, through both readers, is checked for growth (256 KiB against 2 MiB, ratio under 24), and the worst shapes per reader have a near-4 MiB hang guard.
+- **How to avoid:** Time every consumer of a hostile input, not just the first one, and test growth (a page 8 times larger) as well as one size.
+
+### The parser timing tests failed the full check under load
+- **Date:** 2026-11-22
+- **What happened:** During the full check two hostile-page tests failed at 2084 ms and 2242 ms against their 2000 ms bound, although the code had not changed.
+- **Root cause:** They asserted an absolute time. Wall-clock time grows when the machine is busy with other test files, and CPU time is no better here: this machine (Apple M5) has performance and efficiency cores, and the same work costs several times more CPU time on an efficiency core. Commit `6513398` first switched to CPU time with a retry; the heaviest case then took 0.5 to 0.9 s alone, 2.0 to 2.4 s in the full suite (one case failed in each of two full runs) and 4.6 to 6.6 s pinned to efficiency cores.
+- **Fix:** Commit `eef51e2`: the tests assert growth instead. Each hostile shape is read at 256 KiB and at 2 MiB back to back, and the CPU-time ratio must stay under 24 (linear is about 8, quadratic about 64; measured 0.2 to 15.4). The worst three or four shapes per reader also get a near-4 MiB hang guard, which only catches a return of the minutes-long behaviour: 15 s at first, 8 s from commit `748d9ba` (every guarded read measured under 2.3 s alone), which also reads the small size once untimed and takes the median of three measurements. With the old quadratic Wayfair loop put back, the growth test failed at ratios 40 to 51. On 2026-11-22 the full suite passed three runs in a row and a fourth with a second copy of the hostile tests running alongside. A milder defect, a sibling rescan on every 4th `<dt>`, measured ratios of 24.5 to 34 and 8.1 to 8.6 s, right at both bounds, and passed one run on a retry: it is not reliably caught.
+- **How to avoid:** Assert how time grows with input size, not an absolute time: an absolute bound depends on the load and on the kind of core the test lands on. Keep only a loose guard against hangs.
+
+### The preview photo was blocked by CORS after `crossOrigin` was added
+- **Date:** 2026-11-22
+- **What happened:** In a real browser the preview card sometimes showed no photo, and the console said `Access to image at 'https://www.ikea.com/…jpg' … has been blocked by CORS policy`. The same mix-up could leave the colour sampler with no pixels.
+- **Root cause:** Commit `b5e7644` gave the preview `<img>` `crossOrigin="anonymous"`, on the controller's request, so it made a CORS request. The browser answered it from a copy of the photo it had cached earlier from a request without CORS. IKEA sends its allow-origin header only when asked, and without `Vary: Origin`, so that cached copy has no such header and the CORS request is refused.
+- **Fix:** Commit `7e32dc3`: the preview photo is a plain image again (no referrer). The colour sampler fetches its own copy with `fetch(url, { mode: 'cors', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', redirect: 'error' })`, refuses a response that is not ok or over 8 MiB, decodes it with `createImageBitmap` at 64 × 64 and closes the bitmap, so it never shares the browser cache with the page's image.
+- **How to avoid:** Never mix CORS and non-CORS requests for the same address through the shared browser cache. Test a hardening change in a real browser with a warm cache, not only in jsdom.

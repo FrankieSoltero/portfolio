@@ -18,7 +18,7 @@ import {
 import { parsePlan } from '../domain/planSchema';
 import { boundsOf, pointInPolygon } from '../domain/polygon';
 import { footprintCorners, itemFootprint } from '../domain/shape';
-import type { Corner, Door, Item, Obstacle, PlanDocument, WindowOpening } from '../domain/types';
+import type { Corner, Door, Item, Kind, Obstacle, PlanDocument, ProductPreview, WindowOpening } from '../domain/types';
 import {
   addCornerOnWall,
   addFurnitureOfKind,
@@ -43,7 +43,8 @@ import {
   updateSelectedObstacle,
   updateSelectedOpening,
 } from './actions';
-import { type ItemPatch, ROOM_PROBLEM_TEXT, usePlanStore } from './planStore';
+import { clearHistory, redo, undo } from './historyStore';
+import { type ItemPatch, type NewItemSpec, ROOM_PROBLEM_TEXT, usePlanStore } from './planStore';
 import { totalPrice, useConflicts, useSelectedItem, useWarnings } from './selectors';
 import { furnishedDocument } from '../test/fixtures';
 import { type UiState, useUiStore } from './uiStore';
@@ -585,6 +586,180 @@ describe('planStore: updateItem', () => {
       expect(usePlanStore.getState().updateItem(id, { w: 200 })).toBe(true);
       expect(itemById(id).w).toBe(200);
     });
+  });
+});
+
+describe('planStore: addFurnitureFrom', () => {
+  /** A full product spec; its sizes are even, so the piece lands centred on the seed room's (72, 84). */
+  const FULL_SPEC: NewItemSpec = {
+    kind: 'sofa',
+    name: 'Kivik sofa',
+    host: 'www.ikea.com',
+    sourceUrl: 'https://www.ikea.com/us/en/p/kivik-sofa-12345/',
+    price: 899,
+    w: 90,
+    d: 38,
+    h: 32,
+    style: { back: 'high', arms: 'slim' },
+    colours: { main: '#112233', accent: '#AABBCC' },
+  };
+
+  /** A product photo address: it must never reach the plan. */
+  const PHOTO = 'https://www.ikea.com/us/en/images/products/kivik-sofa__0123_pe.jpg';
+
+  /** Adds from `spec` in the empty starting room and returns the stored piece. */
+  function addedFrom(spec: NewItemSpec): Item {
+    usePlanStore.getState().reset();
+    return itemById(req(usePlanStore.getState().addFurnitureFrom(spec) ?? undefined, 'added id'));
+  }
+
+  it('kind only adds exactly what addFurniture adds', () => {
+    for (const kind of ['sofa', 'desk', 'rug'] as const) {
+      const fromSpec = addedFrom({ kind });
+      const byKind = itemById(req(usePlanStore.getState().addFurniture(kind) ?? undefined, 'added id'));
+      expect({ ...fromSpec, id: '' }).toEqual({ ...byKind, id: '' });
+      expect(fromSpec.id).not.toBe(byKind.id);
+    }
+  });
+
+  it('a full spec adds one piece with its values, the planner’s model, centred and placed like addFurniture', () => {
+    usePlanStore.getState().reset();
+    const id = req(usePlanStore.getState().addFurnitureFrom(FULL_SPEC) ?? undefined, 'added id');
+    const { items } = usePlanStore.getState();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual({
+      id, kind: 'sofa', name: 'Kivik sofa', host: 'www.ikea.com', sourceUrl: 'https://www.ikea.com/us/en/p/kivik-sofa-12345/',
+      price: 899, w: 90, d: 38, h: 32, x: 72, y: 84, angle: 0, model: PLANNER_MODEL,
+      style: { ...defaultStyle('sofa'), back: 'high', arms: 'slim' }, colours: { main: '#112233', accent: '#aabbcc' },
+    });
+    // An odd width puts the footprint's min corner on the 1 in grid, as addFurniture does.
+    const odd = addedFrom({ ...FULL_SPEC, w: 55 });
+    expect(odd).toMatchObject({ x: 72.5, y: 84 });
+    // Each piece gets its own copy of the model.
+    const other = req(usePlanStore.getState().addFurnitureFrom(FULL_SPEC) ?? undefined, 'second id');
+    expect(itemById(other).model).not.toBe(odd.model);
+  });
+
+  it('adds in one undo step: undo takes the piece away, redo brings it back whole', () => {
+    usePlanStore.getState().reset();
+    clearHistory();
+    const before = usePlanStore.getState().items;
+    const id = req(usePlanStore.getState().addFurnitureFrom(FULL_SPEC) ?? undefined, 'added id');
+    const added = itemById(id);
+    expect(undo()).toBe(true);
+    expect(usePlanStore.getState().items).toEqual(before);
+    expect(undo()).toBe(false);
+    expect(redo()).toBe(true);
+    expect(usePlanStore.getState().items).toEqual([added]);
+  });
+
+  it('trims the name; an empty name becomes the kind’s label and a long one is cut to 200 characters', () => {
+    expect(addedFrom({ kind: 'sofa', name: '  Kivik  ' }).name).toBe('Kivik');
+    expect(addedFrom({ kind: 'sofa', name: '' }).name).toBe('Sofa');
+    expect(addedFrom({ kind: 'tvstand', name: '   ' }).name).toBe('TV stand');
+    expect(addedFrom({ kind: 'sofa', name: 'n'.repeat(250) }).name).toBe('n'.repeat(200));
+    expect(addedFrom({ kind: 'sofa', name: 42 as unknown as string }).name).toBe('Sofa');
+  });
+
+  it('cuts the host to 255 characters and keeps only an http(s) link of at most 2048 characters', () => {
+    expect(addedFrom({ kind: 'sofa', host: 'h'.repeat(300) }).host).toBe('h'.repeat(255));
+    expect(addedFrom({ kind: 'sofa' }).host).toBe('');
+    const longest = `https://example.com/${'a'.repeat(2048 - 20)}`;
+    expect(longest).toHaveLength(2048);
+    expect(addedFrom({ kind: 'sofa', sourceUrl: longest }).sourceUrl).toBe(longest);
+    expect(addedFrom({ kind: 'sofa', sourceUrl: 'http://example.com/a' }).sourceUrl).toBe('http://example.com/a');
+    for (const bad of [
+      `${longest}a`, 'javascript:alert(1)', 'ftp://example.com/a', 'data:text/html,hi', 'not a link', '',
+      ' https://example.com/a', 'https://example.com/a\n', null, undefined, 7 as unknown as string,
+    ]) {
+      expect(addedFrom({ kind: 'sofa', sourceUrl: bad }).sourceUrl).toBeNull();
+    }
+  });
+
+  it('keeps a price within [0, 10,000,000]; a negative, NaN, larger or non-number price becomes null', () => {
+    expect(addedFrom({ kind: 'sofa', price: 12.5 }).price).toBe(12.5);
+    expect(addedFrom({ kind: 'sofa', price: 10_000_000 }).price).toBe(10_000_000);
+    for (const bad of [-1, Number.NaN, 10_000_001, Number.POSITIVE_INFINITY, null, undefined, '5' as unknown as number]) {
+      expect(addedFrom({ kind: 'sofa', price: bad }).price).toBeNull();
+    }
+  });
+
+  it('clamps a size to [0.25, 240]; a size that is missing or not finite is the kind’s typical size', () => {
+    expect(addedFrom({ kind: 'sofa', w: 0.1, d: 500, h: 240 })).toMatchObject({ w: 0.25, d: 240, h: 240 });
+    expect(addedFrom({ kind: 'sofa', w: -3, d: 0.25, h: 0 })).toMatchObject({ w: 0.25, d: 0.25, h: 0.25 });
+    expect(addedFrom({ kind: 'sofa', w: Number.NaN, d: Number.POSITIVE_INFINITY })).toMatchObject({ w: 84, d: 36, h: 33 });
+    expect(addedFrom({ kind: 'bed', h: '40' as unknown as number })).toMatchObject({ w: 64, d: 85, h: 38 });
+  });
+
+  it('merges a partial style over the kind’s default; an unknown key or value gives the default style', () => {
+    expect(addedFrom({ kind: 'sofa', style: { back: 'high' } }).style).toEqual({ ...defaultStyle('sofa'), back: 'high' });
+    expect(addedFrom({ kind: 'sofa', style: { back: 'high', wheels: 'yes' } }).style).toEqual(defaultStyle('sofa'));
+    expect(addedFrom({ kind: 'sofa', style: { arms: 'huge' } }).style).toEqual(defaultStyle('sofa'));
+    expect(addedFrom({ kind: 'sofa', style: JSON.parse('{"__proto__":{"back":"high"}}') }).style).toEqual(defaultStyle('sofa'));
+    expect(addedFrom({ kind: 'sofa', style: null as unknown as Record<string, string> }).style).toEqual(defaultStyle('sofa'));
+  });
+
+  it('merges partial colours over the kind’s defaults; a colour that is not #rrggbb gets its default', () => {
+    const fallback = defaultColours('sofa');
+    expect(addedFrom({ kind: 'sofa', colours: { main: '#112233' } }).colours).toEqual({ main: '#112233', accent: fallback.accent });
+    expect(addedFrom({ kind: 'sofa', colours: { main: 'red', accent: '#AABBCC' } }).colours).toEqual({ main: fallback.main, accent: '#aabbcc' });
+    expect(addedFrom({ kind: 'sofa', colours: { main: 123 as unknown as string } }).colours).toEqual(fallback);
+  });
+
+  it('returns null and changes nothing when the plan already has 200 items', () => {
+    const doc = furnishedDocument();
+    const bed = req(doc.items[0], 'seed bed');
+    usePlanStore.getState().reset({ ...doc, items: Array.from({ length: CONFIG.maxItems }, (_, i) => ({ ...bed, id: `bed-${i}` })) });
+    expect(CONFIG.maxItems).toBe(200);
+    const before = usePlanStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = usePlanStore.subscribe(listener);
+    const added = usePlanStore.getState().addFurnitureFrom(FULL_SPEC);
+    unsubscribe();
+    expect(added).toBeNull();
+    expect(usePlanStore.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('returns null and changes nothing for a kind it does not know', () => {
+    const before = usePlanStore.getState();
+    expect(usePlanStore.getState().addFurnitureFrom({ kind: 'lamp' as unknown as Kind })).toBeNull();
+    expect(usePlanStore.getState()).toBe(before);
+  });
+
+  it('every piece it adds saves and reloads through parsePlan, at version 4, with no photo address in the text', () => {
+    const preview: ProductPreview = {
+      kind: 'sofa', name: 'Kivik sofa', host: 'www.ikea.com', sourceUrl: FULL_SPEC.sourceUrl ?? '', price: 899,
+      w: 90, d: 38, h: 32, kindFound: true, sizesFound: true, sizeNote: null, imageUrl: PHOTO,
+      style: { back: 'high' }, colours: { main: '#112233', accent: '#445566' },
+    };
+    // Untrusted extras a caller might pass along: none of them may be stored.
+    const extras = { id: '../../bad id', x: Number.NaN, y: 1e9, angle: Number.NaN, model: { tier: 'retailer', label: 'x', assetUrl: PHOTO } };
+    const specs: NewItemSpec[] = [
+      { kind: 'sofa' },
+      FULL_SPEC,
+      preview,
+      { ...preview, ...extras } as unknown as NewItemSpec,
+      {
+        kind: 'rug', name: ' '.repeat(5), host: 'h'.repeat(999), sourceUrl: `https://a.co/${'x'.repeat(3000)}`, price: Number.NaN,
+        w: Number.NEGATIVE_INFINITY, d: 1e6, h: 0, style: { pile: '<script>' }, colours: { main: '#zzzzzz', accent: '' },
+      },
+      { kind: 'desk', name: 'd'.repeat(500), sourceUrl: 'javascript:alert(1)', price: -5, w: 0.01, d: 241, h: 1e-9 },
+    ];
+    for (const spec of specs) {
+      usePlanStore.getState().reset();
+      usePlanStore.getState().addFurniture('bed');
+      expect(usePlanStore.getState().addFurnitureFrom(spec)).not.toBeNull();
+      const text = JSON.stringify(docOf(usePlanStore.getState()));
+      const parsed = parsePlan(JSON.parse(text));
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) {
+        expect(parsed.doc.schemaVersion).toBe(4);
+        expect(parsed.doc.items).toHaveLength(2);
+      }
+      expect(text).not.toContain(PHOTO);
+      expect(text).not.toContain('images/products');
+    }
   });
 });
 

@@ -9,12 +9,14 @@ Three sections, three deliberately different design languages:
   by Next.js (App Router) from MDX files in `content/papers/`. Styled as a technical
   experiment log (IBM Plex, Run Cards), not the 8-bit theme.
 - **`/room-planner`** — a room layout tool: 2D plan and 3D check, React and three.js,
-  client-side only. Source in `room-planner/`, mounted by `app/room-planner/`. Has its
+  client-side except one product lookup route. Source in `room-planner/`, mounted by `app/room-planner/`. Has its
   own design language (Industry), not the 8-bit theme. The room is an outline edited in
   "Edit room" mode, and furniture rotates to any angle. Walls can be dragged on the plan
   and each shows its length, which can be typed there. Undo and redo (Cmd/Ctrl+Z) cover everything
   saved in the plan except the units choice. The plan is saved in the browser
-  under `room-planner:plan:v1`, validated on load and never sent to a server.
+  under `room-planner:plan:v1`, validated on load and never sent to a server. A pasted IKEA, Amazon
+  or Wayfair link is looked up through `POST /api/room-planner/lookup`, which sends only that link to
+  the site's server. The product photo loads from the shop while the preview is open and is never saved.
 
 ## Run locally
 
@@ -45,11 +47,11 @@ byte-identical with zero build processing.
 - `room-planner/` — the Room Planner source (React + three.js). `PlannerRoot.tsx` renders
   the `.room-planner` wrapper and imports the self-hosted fonts and stylesheets. Styles
   live in `room-planner/styles/` and must stay scoped to `.room-planner` (enforced by
-  `room-planner/styles/scoping.test.ts`). No backend: the plan is saved in the browser
+  `room-planner/styles/scoping.test.ts`). No backend except the one lookup route: the plan is saved in the browser
   under `room-planner:plan:v1`, validated on load and never sent to a server; "Reset
   plan" erases it. The room carries doors, windows and fixed obstacles (boxes, raised
   boxes, columns). Undo and redo history is kept for the visit in
-  `room-planner/state/historyStore.ts`. Furniture is generated in the browser from a saved recipe (`room-planner/domain/furniture/`); there is no product lookup yet.
+  `room-planner/state/historyStore.ts`. Furniture is generated in the browser from a saved recipe (`room-planner/domain/furniture/`); a pasted shop link fills in the recipe through the product lookup (`room-planner/lookup/`, `room-planner/server/`, `app/api/room-planner/lookup/`).
 - `app/room-planner/` — the `/room-planner` route: `page.tsx`, `PlannerLoader.tsx`
   (loads the planner client-side only) and `error.tsx` (load-failure screen).
 - `docs/room-planner/` — specs, plans, plan reviews, verification notes, the read-only

@@ -46,6 +46,12 @@ export const PRODUCT_TEXT_LIMITS = {
 } as const;
 
 /**
+ * The highest price, in dollars, a saved plan accepts (`LIMITS.priceMax`). Exported so a piece
+ * added from a product keeps to it.
+ */
+export const PRICE_MAX = 10_000_000;
+
+/**
  * Limits of the stored format (Task 16 "Exact values"). The room size, coordinate, corner count
  * and item count limits are the planner's own (CONFIG), enforced when editing too, so a plan it can
  * draw is never refused on load; the rest are fixed by the format, not tunable.
@@ -61,7 +67,7 @@ const LIMITS = {
   obstaclesMax: CONFIG.maxObstacles,
   obstacleLabelMax: CONFIG.obstacleLabelMax,
   ...PRODUCT_TEXT_LIMITS,
-  priceMax: 10_000_000,
+  priceMax: PRICE_MAX,
   sizeMax: 720,
   styleKeysMax: 12,
   styleTextMax: 24,
@@ -114,8 +120,11 @@ function isEdgeJunk(c: string): boolean {
   return c.charCodeAt(0) <= 0x20 || /\s/.test(c);
 }
 
-/** An absolute http: or https: URL with nothing the URL parser would strip at either end. */
-function isWebUrl(s: string): boolean {
+/**
+ * An absolute http: or https: URL with nothing the URL parser would strip at either end: the link
+ * rule of a saved plan (its length limit, `PRODUCT_TEXT_LIMITS.urlMax`, is checked separately).
+ */
+export function isWebUrl(s: string): boolean {
   if (s.length === 0 || isEdgeJunk(s[0]) || isEdgeJunk(s[s.length - 1])) return false;
   let url: URL;
   try {
