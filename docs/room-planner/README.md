@@ -470,14 +470,16 @@ nothing in the code adds it.
   becomes hand entry only.
 - The rate limit is in memory, per server instance. It slows abuse and does not stop a determined
   caller. The hard limit is the Vercel firewall rule the owner adds.
-- A hostile page just under 4 MiB can still cost up to about 1.8 s of CPU time on the development
-  machine (measured 2026-11-22 on 25 shapes through all three readers; the slowest is a flood of
+- A hostile page just under 4 MiB can still cost up to about 1.8 s of CPU time on a performance
+  core of the development machine, several times more on an efficiency core (measured 2026-11-22
+  on 25 shapes through all three readers; the slowest is a flood of
   `<a>`, which is almost all parsing). Every reader step is linear: blocks are found by id in one
   walk, nothing inside them is found with a selector, ancestor walks stop at 16 levels, and text is
   read up to a bound.
-- Timing tests measure CPU time (`process.cpuUsage()`) and retry twice. On a machine with
-  efficiency cores the heaviest hostile case can still exceed its 2 s bound in the full parallel run
-  (CPU time on an efficiency core is several times longer); see entry 14 in
+- Timing tests assert growth, not an absolute time: each hostile shape is read at 256 KiB and at
+  2 MiB, and the CPU time (`process.cpuUsage()`) may grow at most 24 times (linear is about 8). The
+  worst shapes per reader also get a near-4 MiB hang guard of 15 s. They retry twice. An absolute
+  bound failed under load because CPU time depends on the core the test lands on; see entry 14 in
   `mistakes-and-fixes.md`.
 - A 422 or other refusal from the route shows as a "Failed to load resource" line in the browser
   console, which the browser writes itself.

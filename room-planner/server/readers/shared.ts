@@ -212,9 +212,12 @@ function cutUnterminated(html: string, opener: string, closer: string): string {
  * than moved up the tree, which the parser otherwise does in time growing with the square of the
  * nesting depth. Measured as CPU time on the development machine (2026-11-22) on 25 near-4 MiB
  * hostile shapes (deep unclosed or closed nesting, `<dt>`, `<li>`, `<tr>`, price and label floods,
- * comment and CDATA floods), a whole read takes 0.1 to 1.8 s through each of the three readers;
- * the slowest is a flood of `<a>`, 1.4 to 1.5 s through the IKEA reader (almost all of it this
- * parse) and up to 1.8 s through the Wayfair and Amazon readers. Never throws.
+ * comment and CDATA floods), a whole read took 0.1 to 1.8 s through each of the three readers on
+ * a performance core; the slowest is a flood of `<a>`, 1.4 to 1.5 s through the IKEA reader (almost
+ * all of it this parse) and up to 1.8 s through the Wayfair and Amazon readers. These times depend
+ * on load and on the kind of core, several times longer on an efficiency core, so the tests do not
+ * bound them: they check that the time grows in step with the page (see `test/cpuTiming.ts`).
+ * Never throws.
  */
 export function parsePage(html: string): HTMLElement | null {
   if (typeof html !== 'string' || html.length === 0 || html.length > LOOKUP_LIMITS.pageMax) return null;
