@@ -142,3 +142,41 @@ describe('dominantColours', () => {
     expect(picture.colours()).toEqual({ main: '#2f4057', accent: null });
   });
 });
+
+describe('dominantColours on room photos', () => {
+  const CREAM = hex('#f3ede5');
+
+  /**
+   * A 64 × 64 room scene: a `surround` colour everywhere, `centre` over the central half
+   * (x and y 16 to 47), and four corner pixels that differ from each other by more than 24.
+   */
+  function scene(surround: Rgba, centre: Rgba): Picture {
+    return new Picture(64, 64, surround)
+      .fill(16, 16, 32, 32, centre)
+      .fill(0, 0, 1, 1, hex('#c8b8a0'))
+      .fill(63, 0, 1, 1, hex('#5a4a3a'))
+      .fill(0, 63, 1, 1, hex('#8c6e50'))
+      .fill(63, 63, 1, 1, hex('#2a2a30'));
+  }
+
+  it('reads the sofa in the middle, not the wall around it', () => {
+    expect(scene(CREAM, hex('#7b7f86')).colours().main).toBe('#7b7f86');
+  });
+
+  it('counts only the central half, so a colour in the outer ring alone is not main', () => {
+    expect(scene(hex('#7b7f86'), hex('#b0302a')).colours().main).toBe('#b0302a');
+  });
+
+  it('gives nulls when the centre of a room photo is all white', () => {
+    expect(scene(CREAM, WHITE).colours()).toEqual({ main: null, accent: null });
+  });
+
+  it('still removes the backdrop when the corners agree within 24', () => {
+    // One corner is 16 lighter than the others: still a backdrop. The object sits off-centre,
+    // so counting only the central half would give the backdrop colour instead.
+    const offCentre = new Picture(64, 64, hex('#e8e0d0')).fill(2, 2, 32, 32, hex('#6b2331')).fill(63, 63, 1, 1, hex('#f8f0e0'));
+    expect(offCentre.colours()).toEqual({ main: '#6b2331', accent: null });
+    const existing = new Picture(64, 64, hex('#e8e0d0')).fill(16, 16, 32, 32, hex('#6b2331'));
+    expect(existing.colours()).toEqual({ main: '#6b2331', accent: null });
+  });
+});
