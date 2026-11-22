@@ -9,6 +9,8 @@ import { handleLookup } from '@/room-planner/server/lookupHandler';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+/** The longest the platform lets one call run, in seconds; a lookup itself gives up after 8 s. */
+export const maxDuration = 20;
 
 /** Answers one lookup request. */
 export async function POST(req: Request): Promise<Response> {

@@ -201,10 +201,20 @@ describe('lookupProduct', () => {
     expect(useUiStore.getState().pendingLink).toBeNull();
   });
 
-  it('an abort error from the current lookup is swallowed too: no error is shown and no link kept', async () => {
+  it('an abort error from the lookup that is still the current one shows unavailable instead of staying on loading', async () => {
     await expect(lookupProduct(LINK, rejectingLookup(abortError()))).resolves.toBeUndefined();
-    expect(lookupState()).toEqual({ status: 'loading' });
-    expect(useUiStore.getState().pendingLink).toBeNull();
+    expect(lookupState()).toEqual({ status: 'error', code: 'unavailable' });
+    expect(useUiStore.getState().pendingLink).toEqual(PARSED);
+  });
+
+  it('keeps a pasted http link in its https form after a failure', async () => {
+    await lookupProduct('http://www.ikea.com/us/en/p/alder-3-seat-sofa-12345/', rejectingLookup(new LookupError('blocked')));
+    expect(useUiStore.getState().pendingLink).toEqual(PARSED);
+  });
+
+  it('keeps an http link with an explicit port as it was', async () => {
+    await lookupProduct('http://www.ikea.com:8080/us/en/p/x/', rejectingLookup(new LookupError('unavailable')));
+    expect(useUiStore.getState().pendingLink).toEqual({ url: 'http://www.ikea.com:8080/us/en/p/x/', host: 'ikea.com' });
   });
 });
 

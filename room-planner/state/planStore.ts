@@ -28,7 +28,7 @@ import {
   validateOpenings,
 } from '../domain/openings';
 import { OUTLINE_PROBLEM_TEXT, type OutlineProblem, type OutlineResult } from '../domain/outline';
-import { PRODUCT_TEXT_LIMITS } from '../domain/planSchema';
+import { isWebUrl, PRICE_MAX, PRODUCT_TEXT_LIMITS } from '../domain/planSchema';
 import { interiorPoint, round2 } from '../domain/polygon';
 import { roomBounds, roomOutline } from '../domain/shape';
 import type { Corner, Item, ItemColours, ItemModel, Kind, Obstacle, PlanDocument, StyleValues, Units } from '../domain/types';
@@ -251,34 +251,15 @@ function isItemDim(v: number): boolean {
 }
 
 /**
- * The highest price a saved plan accepts. It must equal parsePlan's own price limit (LIMITS.priceMax
- * in domain/planSchema.ts), which that module does not export.
- */
-const PRICE_MAX = 10_000_000;
-
-/** True when c is whitespace or a C0 control character, which the URL parser would silently strip. */
-function isEdgeJunk(c: string): boolean {
-  return c.charCodeAt(0) <= 0x20 || /\s/.test(c);
-}
-
-/**
- * `v` when it is a link a saved plan accepts (parsePlan's rule): at most
+ * `v` when it is a link a saved plan accepts (parsePlan's rule, `isWebUrl`): at most
  * PRODUCT_TEXT_LIMITS.urlMax characters, an absolute http: or https: URL, with nothing the URL
  * parser would strip at either end. Anything else is null.
  */
 function storedLink(v: unknown): string | null {
-  if (typeof v !== 'string' || v.length === 0 || v.length > PRODUCT_TEXT_LIMITS.urlMax) return null;
-  if (isEdgeJunk(v[0]) || isEdgeJunk(v[v.length - 1])) return null;
-  let url: URL;
-  try {
-    url = new URL(v);
-  } catch {
-    return null;
-  }
-  return url.protocol === 'http:' || url.protocol === 'https:' ? v : null;
+  return typeof v === 'string' && v.length <= PRODUCT_TEXT_LIMITS.urlMax && isWebUrl(v) ? v : null;
 }
 
-/** `v` when it is a finite price within [0, PRICE_MAX]; anything else is null. */
+/** `v` when it is a finite price within [0, PRICE_MAX] (a saved plan's price limit); anything else is null. */
 function storedPrice(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= PRICE_MAX ? v : null;
 }

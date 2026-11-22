@@ -175,6 +175,29 @@ describe('fetchShopPage', () => {
     expect(deps.request).not.toHaveBeenCalled();
   });
 
+  it('connects to the IPv4 address when the host has both families, IPv6 listed first', async () => {
+    const v6 = { address: '2606:4700::1', family: 6 as const };
+    const deps = fakeDeps([page(HTML)], [[v6, PUBLIC]]);
+    expect(await fetchShopPage('https://www.ikea.com/x', deps)).toEqual({ ok: true, html: HTML });
+    const target = deps.request.mock.calls[0][0];
+    expect(target.address).toBe('104.16.0.1');
+    expect(target.family).toBe(4);
+  });
+
+  it('connects to the IPv6 address when it is the only one', async () => {
+    const deps = fakeDeps([page(HTML)], [[{ address: '2606:4700::1', family: 6 }]]);
+    expect(await fetchShopPage('https://www.ikea.com/x', deps)).toEqual({ ok: true, html: HTML });
+    const target = deps.request.mock.calls[0][0];
+    expect(target.address).toBe('2606:4700::1');
+    expect(target.family).toBe(6);
+  });
+
+  it('still refuses a private IPv4 address listed beside a public IPv6 one', async () => {
+    const deps = fakeDeps([page(HTML)], [[{ address: '2606:4700::1', family: 6 }, { address: '10.0.0.5', family: 4 }]]);
+    expect(await fetchShopPage('https://www.ikea.com/x', deps)).toEqual({ ok: false, reason: 'unavailable' });
+    expect(deps.request).not.toHaveBeenCalled();
+  });
+
   it('is unavailable when resolving fails', async () => {
     const deps = fakeDeps([page(HTML)]);
     deps.resolve.mockRejectedValueOnce(new Error('ENOTFOUND'));

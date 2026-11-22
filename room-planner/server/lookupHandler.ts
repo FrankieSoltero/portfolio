@@ -64,12 +64,16 @@ export async function handleLookup(req: Request, deps?: Partial<LookupDeps>): Pr
   const seen: { shop: Shop | null } = { shop: null };
 
   let outcome: Outcome;
+  let response: Response;
   try {
     const merged = { ...DEFAULT_DEPS, ...definedOnly(deps) };
     log = merged.log;
     outcome = await lookup(req, merged, seen);
+    // Built here, so a failure while building the answer is a 502 too, never a throw.
+    response = respond(outcome);
   } catch {
     outcome = refuse(502, 'unavailable');
+    response = respond(outcome);
   }
 
   try {
@@ -77,7 +81,7 @@ export async function handleLookup(req: Request, deps?: Partial<LookupDeps>): Pr
   } catch {
     // A failing log must not change the answer.
   }
-  return respond(outcome);
+  return response;
 }
 
 /** The checks and the lookup itself, in order. May throw; the caller turns that into 502. */
@@ -206,13 +210,18 @@ function limiterKey(headers: Headers): string {
   return key.slice(0, KEY_MAX);
 }
 
-/** The JSON answer for an outcome: the product fields, or `{ error }` plus `Retry-After` on 429. */
+/**
+ * The JSON answer for an outcome: the product fields, or `{ error }`, plus `Retry-After` on 429
+ * when the limiter's wait is a whole number of seconds of at least 1. Any other wait (0, a
+ * fraction, NaN, a value that is not a number) is left out, and the answer is still 429.
+ */
 function respond(outcome: Outcome): Response {
   if ('fields' in outcome) {
     return new Response(JSON.stringify(outcome.fields), { status: 200, headers: BASE_HEADERS });
   }
   const headers: Record<string, string> = { ...BASE_HEADERS };
-  if (outcome.retryAfterSec !== undefined) headers['Retry-After'] = String(outcome.retryAfterSec);
+  const wait = outcome.retryAfterSec;
+  if (Number.isSafeInteger(wait) && (wait as number) >= 1) headers['Retry-After'] = String(wait);
   return new Response(JSON.stringify({ error: outcome.code }), { status: outcome.status, headers });
 }
 

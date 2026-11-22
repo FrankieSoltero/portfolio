@@ -75,20 +75,28 @@ export function addFurnitureOfKind(kind: Kind): string | null {
 let activeLookup: AbortController | null = null;
 
 /**
- * True when `err` is the error a fetch or signal raises on an abort. Checked by name, because a
- * DOMException is not an Error everywhere (it is not under jsdom).
+ * The link as it is kept after a failed lookup: an `http:` link with no port of its own in its
+ * `https:` form (the same page on every shop the planner reads), any other link as it is.
  */
-function isAbortError(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError';
+function keptLink(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' || parsed.port !== '') return url;
+    parsed.protocol = 'https:';
+    return parsed.href;
+  } catch {
+    return url;
+  }
 }
 
 /**
  * Looks up the product behind the pasted link `raw` with `lookup` (the site's lookup route by
  * default), aborting any lookup still running. The lookup goes loading, then preview (clearing the
  * pending link) or error. A link that does not parse is `invalid_url` and makes no request; any other
- * failure keeps the parsed link as the pending link, so the next piece added by type carries it. An
- * error that is not a LookupError counts as `unavailable`. A superseded or dismissed call changes
- * nothing, an abort is swallowed, and the returned promise never rejects. The link is never logged.
+ * failure keeps the parsed link (in its `https` form, see `keptLink`) as the pending link, so the
+ * next piece added by type carries it. An error that is not a LookupError counts as `unavailable`,
+ * an abort error from the call that is still the current one included. A superseded or dismissed
+ * call changes nothing, and the returned promise never rejects. The link is never logged.
  */
 export async function lookupProduct(raw: string, lookup: ProductLookup = remoteProductLookup): Promise<void> {
   activeLookup?.abort();
@@ -114,11 +122,12 @@ export async function lookupProduct(raw: string, lookup: ProductLookup = remoteP
     useUiStore.getState().setPendingLink(null);
     useUiStore.getState().setLookup({ status: 'preview', preview });
   } catch (err) {
+    // Only this module aborts a lookup, and it always replaces `activeLookup` first: an abort that
+    // reaches a call still current came from somewhere else and is shown as `unavailable`.
     if (activeLookup !== controller) return;
     activeLookup = null;
-    if (isAbortError(err)) return;
     const code = err instanceof LookupError ? err.code : 'unavailable';
-    useUiStore.getState().setPendingLink(code === 'invalid_url' ? null : { url: link.url, host: link.host });
+    useUiStore.getState().setPendingLink(code === 'invalid_url' ? null : { url: keptLink(link.url), host: link.host });
     useUiStore.getState().setLookup({ status: 'error', code });
   }
 }
@@ -491,4 +500,3 @@ export function removeSelectedRoomThing(): void {
   recordRoomOutcome(null);
   useUiStore.getState().selectObstacle(null);
 }
-

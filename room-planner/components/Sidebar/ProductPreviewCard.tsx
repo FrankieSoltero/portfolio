@@ -74,8 +74,11 @@ export function ProductPreviewCard({ preview }: { preview: ProductPreview }): JS
   return (
     <div className="product-card">
       {preview.imageUrl !== null && !photoFailed && (
+        // crossOrigin="anonymous": no shop cookie is sent with the photo, and the browser can reuse
+        // the colour sampler's request for it, which is made the same way.
         <img
           className="product-card-photo"
+          crossOrigin="anonymous"
           src={preview.imageUrl}
           alt=""
           referrerPolicy="no-referrer"

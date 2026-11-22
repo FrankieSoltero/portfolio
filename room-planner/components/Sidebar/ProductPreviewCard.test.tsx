@@ -108,6 +108,11 @@ describe('ProductPreviewCard', () => {
     expect(img).toHaveAttribute('decoding', 'async');
   });
 
+  it('requests the product photo anonymously, so no shop cookie is sent with it', () => {
+    const img = photo(renderCard(preview()).container);
+    expect(img).toHaveAttribute('crossorigin', 'anonymous');
+  });
+
   it('shows no photo when there is no image address', () => {
     const { container } = renderCard(preview({ imageUrl: null }));
     expect(photo(container)).toBeNull();

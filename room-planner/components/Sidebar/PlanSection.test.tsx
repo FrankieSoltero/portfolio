@@ -2,7 +2,11 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialDocument } from '../../domain/catalog';
+import { defaultColours, defaultStyle } from '../../domain/furniture/recipe';
+import type { ProductPreview } from '../../domain/types';
+import type { ProductLookup } from '../../services/productLookup';
 import { clearShareFragment } from '../../services/shareLocation';
+import { lookupProduct } from '../../state/actions';
 import { clearHistory, undo, useHistoryStore } from '../../state/historyStore';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
@@ -295,5 +299,55 @@ describe('PlanSection: undo history', () => {
     expectStartingPlanAndFreshUi();
     expect(useHistoryStore.getState().canUndo).toBe(false);
     expect(useHistoryStore.getState().canRedo).toBe(false);
+  });
+});
+
+describe('PlanSection: reset during a lookup', () => {
+  const LINK = 'https://www.ikea.com/us/en/p/alder-sofa-12345678/';
+
+  /** A product the fake lookup answers with, once the test lets it. */
+  const PRODUCT: ProductPreview = {
+    kind: 'sofa',
+    name: 'Alder 3-seat sofa',
+    host: 'ikea.com',
+    sourceUrl: LINK,
+    price: 499,
+    w: 80,
+    d: 35,
+    h: 30,
+    kindFound: true,
+    sizesFound: true,
+    sizeNote: null,
+    imageUrl: null,
+    style: defaultStyle('sofa'),
+    colours: defaultColours('sofa'),
+  };
+
+  it('a lookup still running when the plan is reset posts no preview when it answers later', async () => {
+    let answer!: (preview: ProductPreview) => void;
+    const lookup: ProductLookup = {
+      lookup: () =>
+        new Promise<ProductPreview>((resolve) => {
+          answer = resolve;
+        }),
+    };
+    render(<PlanSection planStore={createFakePlanStore()} />);
+    let running!: Promise<void>;
+    act(() => {
+      running = lookupProduct(LINK, lookup);
+    });
+    expect(useUiStore.getState().lookup).toEqual({ status: 'loading' });
+
+    await act(async () => {
+      await confirmReset();
+    });
+    expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
+
+    await act(async () => {
+      answer(PRODUCT);
+      await running;
+    });
+    expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
+    expect(useUiStore.getState().pendingLink).toBeNull();
   });
 });

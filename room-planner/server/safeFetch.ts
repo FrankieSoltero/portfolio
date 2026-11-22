@@ -10,8 +10,9 @@ import { shopForHost } from '../lookup/shops';
  * Fetches a shop's product page from a link a visitor pasted, without letting that link reach
  * anything but a shop. The only hosts ever contacted are IKEA, Amazon and Wayfair hosts (as
  * `shopForHost` decides), over `https` on port 443, at an address this module has itself checked
- * to be public; the connection is pinned to that checked address, and every redirect is checked
- * again from the start. One deadline covers the whole call. Nothing here throws or logs.
+ * to be public; every address the host resolves to must pass, the first IPv4 one is used when
+ * there is one (else the first address), the connection is pinned to it, and every redirect is
+ * checked again from the start. One deadline covers the whole call. Nothing here throws or logs.
  *
  * Known behaviour of the default `resolve` and `request`:
  * - `dns.promises.lookup` cannot be cancelled. At the deadline the fetch gives up waiting and
@@ -286,7 +287,8 @@ export async function fetchShopPage(url: string, deps?: Partial<FetchDeps>): Pro
       checkTime();
       if (!Array.isArray(addresses) || addresses.length === 0) return unavailable;
       if (!addresses.every(({ address, family }) => isPublicAddress(address, family))) return unavailable;
-      const { address, family } = addresses[0];
+      // Every address has passed; IPv4 is preferred because a server often has no IPv6 route out.
+      const { address, family } = addresses.find((answer) => answer.family === 4) ?? addresses[0];
 
       const response = await within(
         Promise.resolve(request({ url: current, address, family, headers: { ...READER_HEADERS }, signal: controller.signal })),

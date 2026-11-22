@@ -278,6 +278,22 @@ describe('handleLookup: rate limit', () => {
     expect(fetchPage).not.toHaveBeenCalled();
   });
 
+  it.each<[string, unknown]>([
+    ['0', 0],
+    ['negative', -3],
+    ['a fraction', 1.5],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['a string with a line break', '5\r\nSet-Cookie: x=1'],
+    ['an object whose text throws', { toString: () => { throw new Error('bad'); } }],
+  ])('answers 429 rate_limited without Retry-After when the limiter gives %s', async (_label, retryAfterSec) => {
+    const { deps, log } = fakeDeps({ limiter: { allow: () => ({ ok: false, retryAfterSec }) as unknown as ReturnType<RateLimiter['allow']> } });
+    const res = await handleLookup(linkRequest(SHOP_LINK), deps);
+    expect(res.headers.get('retry-after')).toBeNull();
+    expect(await read(res)).toEqual({ status: 429, body: { error: 'rate_limited' } });
+    expect(loggedLine(log)).toEqual({ event: 'room_planner_lookup', shop: 'ikea', outcome: 'rate_limited' });
+  });
+
   it('keys the limiter by the first x-forwarded-for entry, at the injected time', async () => {
     const { deps, allow } = fakeDeps({ now: () => 4242 });
     await handleLookup(linkRequest(SHOP_LINK, { 'x-forwarded-for': ' 203.0.113.9 , 10.0.0.1', 'x-real-ip': '198.51.100.1' }), deps);
@@ -483,11 +499,12 @@ describe('handleLookup: order of checks', () => {
 });
 
 describe('route', () => {
-  it('exports POST, runtime nodejs and dynamic force-dynamic only', async () => {
+  it('exports POST as its only method, with runtime nodejs, dynamic force-dynamic and maxDuration 20', async () => {
     const route = await import('../../app/api/room-planner/lookup/route');
-    expect(Object.keys(route).sort()).toEqual(['POST', 'dynamic', 'runtime']);
+    expect(Object.keys(route).sort()).toEqual(['POST', 'dynamic', 'maxDuration', 'runtime']);
     expect(route.runtime).toBe('nodejs');
     expect(route.dynamic).toBe('force-dynamic');
+    expect(route.maxDuration).toBe(20);
   });
 
   it('POST hands the request to the handler', async () => {

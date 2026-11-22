@@ -2,6 +2,7 @@ import { type JSX, useRef } from 'react';
 import { STORAGE_NOTICE } from '../../hooks/usePlanPersistence';
 import type { PlanStore } from '../../services/planStorage';
 import { clearShareFragment } from '../../services/shareLocation';
+import { dismissLookup } from '../../state/actions';
 import { clearHistory } from '../../state/historyStore';
 import { usePlanStore } from '../../state/planStore';
 import { useUiStore } from '../../state/uiStore';
@@ -15,7 +16,9 @@ import './sidebar.css';
  * and the `#plan=` fragment removed, so the reset below is saved like any other. The plan store is
  * reset next; that
  * changes the document, so the autosave writes the starting plan back after its debounce; the undo
- * history is cleared right after it, so the reset cannot be undone. The UI store is reset last,
+ * history is cleared right after it, so the reset cannot be undone. Any product lookup still
+ * running is dismissed before the UI store is reset, so it cannot post its preview afterwards.
+ * The UI store is reset last,
  * which clears any notice and lifts `saveBlocked` (so a session that found a plan from a newer
  * planner saves again: the visitor has confirmed erasing it). If clearing failed, the storage
  * notice is set after the UI reset so the reset does not wipe it. What the browser can do is kept:
@@ -36,6 +39,7 @@ async function resetPlan(planStore: PlanStore): Promise<void> {
   usePlanStore.getState().reset();
   clearHistory();
   const webglAvailable = useUiStore.getState().webglAvailable;
+  dismissLookup();
   useUiStore.getState().reset();
   if (!webglAvailable) useUiStore.getState().markWebglUnavailable();
   if (!cleared) useUiStore.getState().setNotice(STORAGE_NOTICE);
