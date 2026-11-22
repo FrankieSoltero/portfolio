@@ -284,8 +284,12 @@ MDX content, not user input.
   measure CPU time, room photos are coloured from their centre, and the route and fetch were hardened
   (`maxDuration`, IPv4 preference, reset dismisses a running lookup, anonymous photo request,
   `Retry-After` only when valid).
+- Live-check fixes (2026-11-22, `7e32dc3`, `44cc518`, `f16c16d`, `748d9ba`): the preview photo loads as a
+  plain image and the colour sampler fetches its own uncached copy, Amazon's current price markup is
+  read, a mislabelled width and depth is swapped with a note, `N-person` sofas set seats, and the
+  timing tests' growth check is steadier.
 
 ### Lessons
 - A size cap is not a time cap: the HTML parser needed its own limit and its own timed tests.
 - A security gate validates its own input; two layers that check the same value must agree.
-- Fourteen build mistakes are in `docs/room-planner/mistakes-and-fixes.md`.
+- Fifteen build mistakes are in `docs/room-planner/mistakes-and-fixes.md`.

@@ -351,7 +351,9 @@ in a furniture recipe, and the generator draws the piece. This is the site's fir
 The spec is [`specs/2026-11-18-product-lookup-design.md`](specs/2026-11-18-product-lookup-design.md)
 and the plan is [`plans/2026-11-20-product-lookup.md`](plans/2026-11-20-product-lookup.md)
 (Amendments 1 to 3). The plan stays at `schemaVersion` 4 and `Item` has no new field. The photo
-address is never saved, so a share link never makes a viewer's browser contact a shop.
+address is never saved, so a share link never makes a viewer's browser contact a shop. While the
+preview is open the visitor's browser requests the photo from the shop twice: once by the page, to
+show it, and once by the colour sampler, without cookies, referrer or the browser's cache.
 
 ### The request path
 
@@ -369,16 +371,22 @@ address is never saved, so a share link never makes a viewer's browser contact a
    `unsupported_shop`, `blocked`, `not_a_product`, `unavailable` or `rate_limited`.
 6. In the browser, `room-planner/domain/furniture/fromProduct.ts` turns the name and description
    into a recipe by word rules. The main colour is a colour word in the name, or else the photo.
-   `room-planner/services/photoSampler.ts` draws the photo small on a hidden canvas and
-   `room-planner/domain/furniture/photoColours.ts` picks the colours from its pixels. A product on a
+   `room-planner/services/photoSampler.ts` fetches its own copy of the photo (`mode: 'cors'`, no
+   cookies, no referrer, no redirects, `cache: 'no-store'`, at most 8 MiB), decodes it at 64 × 64
+   with `createImageBitmap`, reads the pixels from a hidden canvas, and
+   `room-planner/domain/furniture/photoColours.ts` picks the colours from them. A product on a
    backdrop has the backdrop removed first. A styled room photo (its four corner pixels differ by
    more than 24 in some channel) has no backdrop removed; only the central half of its width and of
    its height is counted, without transparent and near-white pixels. If the photo cannot be read,
    the type's default colours are used.
+   Before the sizes are clamped, a piece that is normally wider than deep (sofa, dresser, TV stand,
+   desk, shelf) whose page gave a depth more than 1.5 times its width has the two swapped, with the
+   note "Check these sizes: width and depth looked swapped on the page."
 7. `ProductPreviewCard.tsx` shows the photo, name, price and the piece, with Type and the three
-   sizes editable. The photo is requested with `crossOrigin="anonymous"`, as the sampler requests
-   it, so no shop cookie is sent with it. Add to room places it like any other piece, selected, with its link and price.
-   After that it is an ordinary piece and one undo removes it.
+   sizes editable. The photo is a plain image with no referrer (never `crossOrigin`: a CORS request
+   answered from a copy the browser cached without CORS is blocked). Add to room places it like any
+   other piece, selected, with its link and price. After that it is an ordinary piece and one undo
+   removes it.
 
 ### File map
 
@@ -476,11 +484,17 @@ nothing in the code adds it.
   `<a>`, which is almost all parsing). Every reader step is linear: blocks are found by id in one
   walk, nothing inside them is found with a selector, ancestor walks stop at 16 levels, and text is
   read up to a bound.
-- Timing tests assert growth, not an absolute time: each hostile shape is read at 256 KiB and at
-  2 MiB, and the CPU time (`process.cpuUsage()`) may grow at most 24 times (linear is about 8). The
-  worst shapes per reader also get a near-4 MiB hang guard of 15 s. They retry twice. An absolute
-  bound failed under load because CPU time depends on the core the test lands on; see entry 14 in
-  `mistakes-and-fixes.md`.
+- Timing tests assert growth, not an absolute time: each hostile shape is read at 256 KiB (once
+  untimed, then the median of three measurements) and at 2 MiB, and the CPU time
+  (`process.cpuUsage()`) may grow at most 24 times (linear is about 8). The worst shapes per reader
+  also get a near-4 MiB hang guard of 8 s. They retry twice. An absolute bound failed under load
+  because CPU time depends on the core the test lands on; see entry 14 in `mistakes-and-fixes.md`.
+  A mildly quadratic step is not reliably caught: a sibling rescan on every 4th `<dt>` measured
+  ratios of 24.5 to 34 and 8.1 to 8.6 s, and passed on one run because a retry came in under the
+  bounds.
+- A page that gives a sofa, dresser, TV stand, desk or shelf a depth more than 1.5 times its width
+  has the two swapped, with a note. A piece that really is that deep (a deep shelf) is swapped too;
+  the visitor can change the sizes in the preview.
 - A 422 or other refusal from the route shows as a "Failed to load resource" line in the browser
   console, which the browser writes itself.
 - `dns.lookup` cannot be cancelled, and Node adds `Connection: close` to the outgoing request.
