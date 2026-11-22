@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { recipeColours, styleFromText } from '../domain/furniture/fromProduct';
 import type { PhotoColours } from '../domain/furniture/photoColours';
 import { defaultColours, TYPICAL_SIZE } from '../domain/furniture/recipe';
-import { LOOKUP_ERROR_CODES, LOOKUP_PATH, SIZE_NOTE_UNLABELLED, type LookupErrorCode, type ProductFields } from '../lookup/contract';
+import {
+  LOOKUP_ERROR_CODES,
+  LOOKUP_PATH,
+  SIZE_NOTE_SWAPPED,
+  SIZE_NOTE_UNLABELLED,
+  type LookupErrorCode,
+  type ProductFields,
+} from '../lookup/contract';
 import { capProductText, LookupError } from './productLookup';
 import { createRemoteProductLookup, remoteProductLookup, type RemoteLookupDeps } from './remoteProductLookup';
 
@@ -322,6 +329,79 @@ describe('remoteProductLookup: sizes', () => {
     const preview = await lookup.lookup(LINK);
     expect({ w: preview.w, d: preview.d, h: preview.h }).toEqual(expected);
     expect(preview.sizesFound).toBe(false);
+  });
+});
+
+describe('remoteProductLookup: width and depth a page swapped', () => {
+  /** The preview for a product named `name` with the given sizes and size note. */
+  async function previewOf(name: string, sizes: Partial<ProductFields>) {
+    const { lookup } = setUp(() => jsonResponse(200, fields({ name, h: 30, ...sizes })));
+    return lookup.lookup(LINK);
+  }
+
+  it('swaps a sofa page that says 84" deep and 32.5" wide, with a note', async () => {
+    const preview = await previewOf(SOFA_NAME, { w: 32.5, d: 84 });
+    expect(preview.kind).toBe('sofa');
+    expect({ w: preview.w, d: preview.d }).toEqual({ w: 84, d: 32.5 });
+    expect(preview.sizeNote).toBe(SIZE_NOTE_SWAPPED);
+    expect(SIZE_NOTE_SWAPPED).toBe('Check these sizes: width and depth looked swapped on the page.');
+  });
+
+  it.each([
+    ['sofa', SOFA_NAME],
+    ['dresser', '6-Drawer Dresser'],
+    ['tvstand', 'Oak TV Stand'],
+    ['desk', 'Oak Writing Desk'],
+    ['shelf', 'Oak Bookshelf'],
+  ])('swaps a %s whose depth is more than 1.5 times its width', async (kind, name) => {
+    const preview = await previewOf(name, { w: 15, d: 47 });
+    expect(preview.kind).toBe(kind);
+    expect({ w: preview.w, d: preview.d }).toEqual({ w: 47, d: 15 });
+    expect(preview.sizeNote).toBe(SIZE_NOTE_SWAPPED);
+  });
+
+  it('leaves a sofa alone when depth is at most 1.5 times width', async () => {
+    const preview = await previewOf(SOFA_NAME, { w: 36, d: 40 });
+    expect({ w: preview.w, d: preview.d }).toEqual({ w: 36, d: 40 });
+    expect(preview.sizeNote).toBeNull();
+    const edge = await previewOf(SOFA_NAME, { w: 40, d: 60 });
+    expect({ w: edge.w, d: edge.d, sizeNote: edge.sizeNote }).toEqual({ w: 40, d: 60, sizeNote: null });
+  });
+
+  it.each([
+    ['bed', 'Queen Platform Bed Frame', { w: 64, d: 85 }],
+    ['table', 'Oak Dining Table', { w: 20, d: 80 }],
+    ['chair', 'Velvet Accent Chair', { w: 20, d: 80 }],
+    ['rug', 'Wool Area Rug', { w: 20, d: 80 }],
+  ])('never swaps a %s', async (kind, name, sizes) => {
+    const preview = await previewOf(name, sizes);
+    expect(preview.kind).toBe(kind);
+    expect({ w: preview.w, d: preview.d }).toEqual(sizes);
+    expect(preview.sizeNote).toBeNull();
+  });
+
+  it('does not swap when the page gave only one of width and depth', async () => {
+    const preview = await previewOf(SOFA_NAME, { w: null, d: 84 });
+    expect({ w: preview.w, d: preview.d }).toEqual({ w: TYPICAL_SIZE.sofa.w, d: 84 });
+    expect(preview.sizeNote).toBeNull();
+  });
+
+  it('keeps the page note and adds the swap sentence', async () => {
+    const preview = await previewOf(SOFA_NAME, { w: 32.5, d: 84, sizeNote: SIZE_NOTE_UNLABELLED });
+    expect(preview.sizeNote).toBe(`${SIZE_NOTE_UNLABELLED} ${SIZE_NOTE_SWAPPED}`);
+  });
+
+  it('keeps the combined note within 200 characters, the page note first', async () => {
+    const long = 'n'.repeat(190);
+    const preview = await previewOf(SOFA_NAME, { w: 32.5, d: 84, sizeNote: long });
+    expect(preview.sizeNote?.length).toBeLessThanOrEqual(200);
+    expect(preview.sizeNote?.startsWith(long)).toBe(true);
+  });
+
+  it('swaps before clamping and before the style reads the width', async () => {
+    const preview = await previewOf('6-Drawer Dresser', { w: 15, d: 300, h: 32 });
+    expect({ w: preview.w, d: preview.d }).toEqual({ w: 240, d: 15 });
+    expect(preview.style).toEqual(styleFromText('dresser', '6-Drawer Dresser ', { w: 240, h: 32 }));
   });
 });
 

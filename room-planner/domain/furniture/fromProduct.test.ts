@@ -422,6 +422,23 @@ describe('Amendment 1: common spellings, plurals and hyphen forms', () => {
       expect(styleFromText('sofa', '3 seats')).toEqual({ ...defaultStyle('sofa'), seats: '3' });
     });
 
+    it.each([
+      ['Winfree 78" 2-Person Sofa', '2'],
+      ['2-Person Sofa', '2'],
+      ['3 person sofa', '3'],
+      ['Three-Person Couch', '3'],
+      ['four person sofa', '4'],
+      ['5-Person Sofa', '5'],
+    ])('"%s" → seats %s (the N-person form)', (text, seats) => {
+      expect(styleFromText('sofa', text)).toEqual({ ...defaultStyle('sofa'), seats });
+    });
+
+    it('a person count outside 2–5, or a word that only starts with "person", changes nothing', () => {
+      for (const text of ['1 person', '6-person', 'six person', '2 personal']) {
+        expect(styleFromText('sofa', text)).toEqual(defaultStyle('sofa'));
+      }
+    });
+
     it('"loveseat" still means 2; numbers outside 2–5 change nothing', () => {
       expect(styleFromText('sofa', 'Loveseat')).toEqual({ ...defaultStyle('sofa'), seats: '2' });
       for (const text of ['1 seat', '6-seater', 'six seater', '12 seats', '3 seatbelt']) {

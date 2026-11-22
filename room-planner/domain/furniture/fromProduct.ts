@@ -87,8 +87,11 @@ const SHELF_COUNT = /\b(\d)[ -](?:shelf|shelves|tiers?)\b/;
 /** "N tier", "N-tier", "N tiers" or "N-tiers", N a single digit (captured). */
 const TIER_COUNT = /\b(\d)[ -]tiers?\b/;
 
-/** "N seat", "N-seater", "N seats", "N-seaters" and the like, N `2`–`5` or `two`–`five` (captured). */
-const SEAT_COUNT = /\b([2-5]|two|three|four|five)[ -]seat(?:er)?s?\b/;
+/**
+ * "N seat", "N-seater", "N seats", "N-seaters" and the like, and "N person" or "N-person", N `2`–`5`
+ * or `two`–`five` (captured).
+ */
+const SEAT_COUNT = /\b([2-5]|two|three|four|five)[ -](?:seat(?:er)?s?|person)\b/;
 
 /** The number words a count may be written as. A Map, so text such as `__proto__` is just missing. */
 const NUMBER_WORDS: ReadonlyMap<string, number> = new Map([['two', 2], ['three', 3], ['four', 4], ['five', 5]]);

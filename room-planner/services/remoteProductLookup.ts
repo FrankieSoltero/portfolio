@@ -9,7 +9,14 @@ import {
 import type { PhotoColours } from '../domain/furniture/photoColours';
 import { TYPICAL_SIZE } from '../domain/furniture/recipe';
 import type { ProductPreview } from '../domain/types';
-import { isLookupErrorCode, LOOKUP_PATH, parseProductFields, type ProductFields } from '../lookup/contract';
+import {
+  isLookupErrorCode,
+  LOOKUP_PATH,
+  parseProductFields,
+  type ProductFields,
+  SIZE_NOTE_MAX,
+  SIZE_NOTE_SWAPPED,
+} from '../lookup/contract';
 import { shopForHost } from '../lookup/shops';
 import { samplePhotoColours } from './photoSampler';
 import { capProductText, LookupError, parseProductUrl, type ProductLookup } from './productLookup';
@@ -33,6 +40,25 @@ const globalFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
 /** `value` limited to the sizes a piece may have, in inches. */
 function clampDim(value: number): number {
   return Math.min(CONFIG.itemDimMax, Math.max(CONFIG.itemDimMin, value));
+}
+
+/** The kinds that are normally wider than deep, so a page giving them a much larger depth mislabelled the two. */
+const WIDER_THAN_DEEP: ReadonlySet<ProductPreview['kind']> = new Set(['sofa', 'dresser', 'tvstand', 'desk', 'shelf']);
+
+/** A depth more than this many times the width, on a kind in `WIDER_THAN_DEEP`, counts as swapped. */
+const SWAPPED_RATIO = 1.5;
+
+/**
+ * The page's width, depth and size note, with width and depth swapped when the page evidently
+ * mislabelled them: the kind is normally wider than deep (`WIDER_THAN_DEEP`), the page gave both,
+ * and the depth is more than 1.5 times the width. A swap adds `SIZE_NOTE_SWAPPED` after any note
+ * the page had, cut to `SIZE_NOTE_MAX` characters. Other kinds are never swapped.
+ */
+function unswapped(kind: ProductPreview['kind'], fields: ProductFields): Pick<ProductFields, 'w' | 'd' | 'sizeNote'> {
+  const { w, d, sizeNote } = fields;
+  if (!WIDER_THAN_DEEP.has(kind) || w === null || d === null || !(d > SWAPPED_RATIO * w)) return { w, d, sizeNote };
+  const note = sizeNote === null ? SIZE_NOTE_SWAPPED : `${sizeNote} ${SIZE_NOTE_SWAPPED}`.slice(0, SIZE_NOTE_MAX);
+  return { w: d, d: w, sizeNote: note };
 }
 
 /** The parsed JSON body of `response`, or undefined when it is not JSON. Rejects only on an abort. */
@@ -151,8 +177,11 @@ export function createRemoteProductLookup(deps?: Partial<RemoteLookupDeps>): Pro
       const foundKind = kindFromName(fields.name);
       const kind = foundKind ?? 'box';
       const typical = TYPICAL_SIZE[kind];
-      const w = fields.w === null ? typical.w : clampDim(fields.w);
-      const d = fields.d === null ? typical.d : clampDim(fields.d);
+      // A page that mislabelled width and depth is corrected before the sizes are clamped and
+      // before the style reads the width.
+      const sizes = unswapped(kind, fields);
+      const w = sizes.w === null ? typical.w : clampDim(sizes.w);
+      const d = sizes.d === null ? typical.d : clampDim(sizes.d);
       const h = fields.h === null ? typical.h : clampDim(fields.h);
 
       return {
@@ -166,7 +195,7 @@ export function createRemoteProductLookup(deps?: Partial<RemoteLookupDeps>): Pro
         h,
         kindFound: foundKind !== null,
         sizesFound: fields.w !== null && fields.d !== null && fields.h !== null,
-        sizeNote: fields.sizeNote,
+        sizeNote: sizes.sizeNote,
         imageUrl: fields.imageUrl,
         style: styleFromText(kind, `${fields.name} ${fields.description}`, { w, h }),
         colours: await pieceColours(fields, kind, samplePhoto, signal),

@@ -39,6 +39,12 @@ export const LOOKUP_LIMITS = {
 export const SIZE_NOTE_UNLABELLED = 'Check these sizes: the page did not say which is which.';
 
 /**
+ * The note shown when the planner swapped a page's width and depth, because the page gave a piece
+ * that is normally wider than deep a depth more than 1.5 times its width.
+ */
+export const SIZE_NOTE_SWAPPED = 'Check these sizes: width and depth looked swapped on the page.';
+
+/**
  * The longest size note accepted, in characters (a project bound, not one the spec names). The
  * page readers cut a longer note to it rather than failing the whole product here.
  */
