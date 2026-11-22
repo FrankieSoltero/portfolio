@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { LOOKUP_LIMITS, parseProductFields, SIZE_NOTE_UNLABELLED } from '../../lookup/contract';
+import { cpuMs, growth, GROWTH_MAX, growthMessage, HANG_GUARD_MS, HANG_TIMEOUT_MS } from '../../test/cpuTiming';
 import { readAmazon } from './amazon';
 import { readIkea } from './ikea';
 import { readProduct } from './index';
@@ -10,17 +11,6 @@ import { readWayfair } from './wayfair';
 /** A saved shop page from `fixtures/`. */
 function fixture(name: string): string {
   return readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
-}
-
-/**
- * The CPU time `run` takes, user plus system, in milliseconds. CPU time rather than wall-clock
- * time, so a machine busy with other work does not push a linear read over its bound.
- */
-function cpuMs(run: () => void): number {
-  const start = process.cpuUsage();
-  run();
-  const used = process.cpuUsage(start);
-  return (used.user + used.system) / 1000;
 }
 
 /** A minimal Wayfair product page: a `/pdp/` canonical link and the given body. */
@@ -298,10 +288,11 @@ describe('Wayfair and Amazon readers on hostile and huge input', { retry: 2 }, (
   it.each([
     ['readWayfair', readWayfair],
     ['readAmazon', readAmazon],
-  ])('%s returns null for 5 MB of text in under 500 ms of CPU time', (_name, reader) => {
+  ])('%s returns null for 5 MB of text', (_name, reader) => {
     const huge = 'a'.repeat(5 * 1024 * 1024);
     const elapsed = cpuMs(() => expect(reader(huge)).toBeNull());
-    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(500);
+    // A hang guard only (see `test/cpuTiming.ts`); the page is refused for its size before parsing.
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(HANG_GUARD_MS);
   });
 
   it.each([
@@ -313,9 +304,13 @@ describe('Wayfair and Amazon readers on hostile and huge input', { retry: 2 }, (
   });
 });
 
-describe('Wayfair and Amazon readers on hostile pages just under the size limit', { retry: 2 }, () => {
-  /** The CPU time a hostile page may take, with headroom for a slower machine. */
-  const BOUND_MS = 2000;
+describe('Wayfair and Amazon readers on hostile pages', { retry: 2 }, () => {
+  /**
+   * The sizes of the growth check (see `test/cpuTiming.ts`): a page of `SMALL` characters and one
+   * 8 times larger, read back to back. Large enough to measure, small enough to keep the suite quick.
+   */
+  const SMALL = 256 * 1024;
+  const LARGE = 8 * SMALL;
 
   /** A page both readers take as a product named `Sofa`: a `/pdp/` canonical, the Wayfair heading and `#productTitle`. */
   const HEAD =
@@ -359,33 +354,52 @@ describe('Wayfair and Amazon readers on hostile pages just under the size limit'
 
   const cases = shapes.flatMap(([shape, build]) => readers.map(([name, reader]) => [name, shape, build, reader] as const));
 
-  it.each(cases)('%s reads a page of %s within the bound', (_name, _shape, build, reader) => {
-    const html = build(LOOKUP_LIMITS.pageMax);
-    expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
-    expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 128);
-    let name: string | undefined;
-    const elapsed = cpuMs(() => {
-      name = reader(html)?.name;
-    });
-    expect(name).toBe('Sofa');
-    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
+  it.each(cases)('%s reads a page of %s in time growing in step with its size', (_name, _shape, build, reader) => {
+    const result = growth((html) => expect(reader(html)?.name).toBe('Sofa'), build(SMALL), build(LARGE));
+    expect(result.ratio, growthMessage(result)).toBeLessThan(GROWTH_MAX);
   });
+
+  /**
+   * The shapes that also get a near-4 MiB hang guard, per reader: the slowest measured for that
+   * reader on 2026-11-22 (0.5 to 0.9 s alone; every other shape took 0.1 to 0.55 s). Nested `<i>`
+   * then `<li>`, inside and outside the bullets, builds the most elements; `<li>` nested in `<div>`
+   * walks the bullets block; `<dt>` nested in `<span>` makes Wayfair read many labels; deep
+   * nesting above a price makes Amazon walk a long chain. The growth check covers every shape.
+   */
+  const GUARDED: Record<(typeof readers)[number][0], ReadonlySet<string>> = {
+    readWayfair: new Set([
+      '<i> then <li> inside #feature-bullets',
+      '<i> then <li> outside #feature-bullets',
+      '<dt> nested in unclosed <span>',
+      '<li> nested in unclosed <div> inside #feature-bullets',
+    ]),
+    readAmazon: new Set([
+      '<i> then <li> inside #feature-bullets',
+      '<i> then <li> outside #feature-bullets',
+      '<li> nested in unclosed <div> inside #feature-bullets',
+      'deep unclosed nesting above a price',
+    ]),
+  };
+
+  it.each(cases.filter(([name, shape]) => GUARDED[name].has(shape)))(
+    '%s reads a near-4 MiB page of %s without hanging',
+    (_name, _shape, build, reader) => {
+      const html = build(LOOKUP_LIMITS.pageMax);
+      expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
+      expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 128);
+      let name: string | undefined;
+      const elapsed = cpuMs(() => {
+        name = reader(html)?.name;
+      });
+      expect(name).toBe('Sofa');
+      // A hang guard only: it fails if the minutes-long behaviour comes back, not on a slow core.
+      expect(elapsed, `took ${elapsed} ms`).toBeLessThan(HANG_GUARD_MS);
+    },
+    HANG_TIMEOUT_MS,
+  );
 
   it('still reads the price under a flood of prices and under deep nesting', () => {
-    expect(readAmazon(flood(LOOKUP_LIMITS.pageMax, '<div id="corePrice_desktop">', PRICE))?.price).toBe(1);
-    expect(readAmazon(flood(LOOKUP_LIMITS.pageMax, '<div id="corePrice_desktop">', '<span>', '', PRICE))?.price).toBe(1);
-  });
-
-  it('takes time growing in step with the page, not with its square', () => {
-    // The slowest shape measured. A linear read of a page 8 times larger takes about 8 times as
-    // long, a quadratic one about 64 times; 20 leaves room for noise.
-    const build = (max: number) => flood(max, '', '<i>', '<li>');
-    const small = build(LOOKUP_LIMITS.pageMax / 8);
-    const full = build(LOOKUP_LIMITS.pageMax);
-    const smallMs = cpuMs(() => readAmazon(small));
-    const fullMs = cpuMs(() => readAmazon(full));
-    // A run this short is mostly noise; dividing by it would say nothing.
-    if (smallMs < 5) return;
-    expect(fullMs / smallMs, `${smallMs} ms at 1/8 size, ${fullMs} ms at full size`).toBeLessThan(20);
+    expect(readAmazon(flood(LARGE, '<div id="corePrice_desktop">', PRICE))?.price).toBe(1);
+    expect(readAmazon(flood(LARGE, '<div id="corePrice_desktop">', '<span>', '', PRICE))?.price).toBe(1);
   });
 });

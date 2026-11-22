@@ -1,16 +1,18 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
+import { cpuPerRun, GROWTH_MAX, growthMessage, HANG_GUARD_MS } from '../test/cpuTiming';
 import { parseDimensionLine, parseLength } from './sizes';
 
 /**
- * The CPU time `run` takes, user plus system, in milliseconds. CPU time rather than wall-clock
- * time, so a machine busy with other work does not push a linear parse over its bound.
+ * How much more CPU time `parse` takes on its hostile input built at 8 times the size than at the
+ * base size (see `test/cpuTiming.ts`). Both inputs are built before either is timed.
  */
-function cpuMs(run: () => void): number {
-  const start = process.cpuUsage();
-  run();
-  const used = process.cpuUsage(start);
-  return (used.user + used.system) / 1000;
+function growthOf<T>(build: (factor: number) => T, parse: (input: T) => void): { ratio: number; smallMs: number; largeMs: number } {
+  const small = build(1);
+  const large = build(8);
+  const smallMs = cpuPerRun(() => parse(small));
+  const largeMs = cpuPerRun(() => parse(large));
+  return { ratio: largeMs / smallMs, smallMs, largeMs };
 }
 
 describe('parseLength', { retry: 2 }, () => {
@@ -36,12 +38,15 @@ describe('parseLength', { retry: 2 }, () => {
     expect(parseLength(text)).toBeNull();
   });
 
-  it('stays fast and never throws on long hostile text', () => {
-    const hostile = ['1'.repeat(50_000) + ' 1/', ' '.repeat(50_000) + 'x', '1.1.1.1'.repeat(10_000)];
-    const elapsed = cpuMs(() => {
-      for (const text of hostile) expect(parseLength(text)).toBeNull();
-    });
-    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(500);
+  it.each<[string, (factor: number) => string]>([
+    ['digits then a bare slash', (f) => '1'.repeat(50_000 * f) + ' 1/'],
+    ['spaces then a letter', (f) => ' '.repeat(50_000 * f) + 'x'],
+    ['repeated dots', (f) => '1.1.1.1'.repeat(10_000 * f)],
+  ])('refuses long hostile text (%s) in time growing in step with its length', (_case, build) => {
+    const result = growthOf(build, (text) => expect(parseLength(text)).toBeNull());
+    expect(result.ratio, growthMessage(result)).toBeLessThan(GROWTH_MAX);
+    // A hang guard only: it fails if the parse stops ending, not on a slow core.
+    expect(result.largeMs).toBeLessThan(HANG_GUARD_MS);
   });
 });
 
@@ -90,11 +95,18 @@ describe('parseDimensionLine', { retry: 2 }, () => {
     expect(parseDimensionLine('0 x 9 x 3 inches')).toEqual({ d: null, w: 9, h: 3, labelled: false });
   });
 
-  it('stays fast and never throws on long hostile text', () => {
-    const hostile = ['1 x '.repeat(20_000), 'x'.repeat(100_000), '1"' + ' '.repeat(50_000) + 'H x 2'];
-    const elapsed = cpuMs(() => {
-      for (const text of hostile) expect(() => parseDimensionLine(text, 'L x '.repeat(10_000))).not.toThrow();
-    });
-    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(500);
+  it.each<[string, (factor: number) => string]>([
+    ['repeated "1 x "', (f) => '1 x '.repeat(20_000 * f)],
+    ['one long word', (f) => 'x'.repeat(100_000 * f)],
+    ['a label far after its number', (f) => '1"' + ' '.repeat(50_000 * f) + 'H x 2'],
+  ])('never throws on long hostile text (%s) with a long hint, in time growing in step with its length', (_case, build) => {
+    // The order hint grows with the text, so work that multiplied the two would show as about 64.
+    const result = growthOf(
+      (f) => ({ text: build(f), hint: 'L x '.repeat(10_000 * f) }),
+      ({ text, hint }) => expect(() => parseDimensionLine(text, hint)).not.toThrow(),
+    );
+    expect(result.ratio, growthMessage(result)).toBeLessThan(GROWTH_MAX);
+    // A hang guard only: it fails if the parse stops ending, not on a slow core.
+    expect(result.largeMs).toBeLessThan(HANG_GUARD_MS);
   });
 });

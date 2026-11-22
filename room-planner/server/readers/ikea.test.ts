@@ -2,23 +2,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { LOOKUP_LIMITS, parseProductFields } from '../../lookup/contract';
+import { cpuMs, growth, GROWTH_MAX, growthMessage, HANG_GUARD_MS, HANG_TIMEOUT_MS } from '../../test/cpuTiming';
 import { readIkea } from './ikea';
 import { canonicalUrl, finishFields, metaContent, parsePage } from './shared';
 
 /** A saved shop page from `fixtures/`. */
 function fixture(name: string): string {
   return readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
-}
-
-/**
- * The CPU time `run` takes, user plus system, in milliseconds. CPU time rather than wall-clock
- * time, so a machine busy with other work does not push a linear read over its bound.
- */
-function cpuMs(run: () => void): number {
-  const start = process.cpuUsage();
-  run();
-  const used = process.cpuUsage(start);
-  return (used.user + used.system) / 1000;
 }
 
 /** A page whose head holds the given JSON-LD blocks, each a value or raw text. */
@@ -178,12 +168,13 @@ describe('readIkea on untrusted pages', { retry: 2 }, () => {
     expect(parsePage('')).toBeNull();
   });
 
-  it('returns null for 5 MB of text in under 500 ms of CPU time', () => {
+  it('returns null for 5 MB of text, refused for its size before it is parsed', () => {
     const huge = 'a'.repeat(5 * 1024 * 1024);
     const elapsed = cpuMs(() => expect(readIkea(huge)).toBeNull());
-    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(500);
     // The page is refused for its size before it is parsed, not merely found to hold no product.
     expect(parsePage(huge)).toBeNull();
+    // A hang guard only (see `test/cpuTiming.ts`); the refusal above is the real assertion.
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(HANG_GUARD_MS);
   });
 
   it('never throws on input that is not a page', () => {
@@ -225,49 +216,71 @@ describe('metaContent and canonicalUrl', () => {
   });
 });
 
-describe('parsePage on hostile pages just under the size limit', { retry: 2 }, () => {
-  /** The CPU time a hostile page may take, with headroom for a slower machine. */
-  const BOUND_MS = 2000;
+describe('parsePage on hostile pages', { retry: 2 }, () => {
   const head = page(product());
 
-  /** Room left for the hostile part of a page just under `LOOKUP_LIMITS.pageMax`. */
-  const room = LOOKUP_LIMITS.pageMax - head.length - 16;
+  /**
+   * The sizes of the growth check (see `test/cpuTiming.ts`): a page of `SMALL` characters and one
+   * 8 times larger, read back to back. Large enough to measure, small enough to keep the suite quick.
+   */
+  const SMALL = 256 * 1024;
+  const LARGE = 8 * SMALL;
 
-  /** A Product page followed by `unit` repeated up to just under the size limit. */
-  function repeated(unit: string): string {
-    return head + unit.repeat(Math.floor(room / unit.length));
+  /** A Product page followed by `unit` repeated, to just under `max` characters. */
+  function repeated(unit: string, max: number): string {
+    return head + unit.repeat(Math.floor((max - head.length - 16) / unit.length));
   }
 
-  /** A Product page followed by `<div>` nested as deep as fits, every one of them closed. */
-  function closedNesting(): string {
-    const depth = Math.floor(room / '<div></div>'.length);
+  /** A Product page followed by `<div>` nested as deep as fits in `max` characters, every one of them closed. */
+  function closedNesting(max: number): string {
+    const depth = Math.floor((max - head.length - 16) / '<div></div>'.length);
     return head + '<div>'.repeat(depth) + '</div>'.repeat(depth);
   }
 
-  const shapes: [string, () => string][] = [
-    ['unclosed <div>', () => repeated('<div>')],
-    ['<div></span> pairs', () => repeated('<div></span>')],
-    ['<!-- openers', () => repeated('<!--')],
-    ['<![CDATA[ openers', () => repeated('<![CDATA[')],
-    ['<dl><dt>x', () => repeated('<dl><dt>x')],
-    ['<table><tr><th>a<td>b', () => repeated('<table><tr><th>a<td>b')],
-    ['<ul><li>x', () => repeated('<ul><li>x')],
+  const shapes: [string, (max: number) => string][] = [
+    ['unclosed <div>', (max) => repeated('<div>', max)],
+    ['<div></span> pairs', (max) => repeated('<div></span>', max)],
+    ['<!-- openers', (max) => repeated('<!--', max)],
+    ['<![CDATA[ openers', (max) => repeated('<![CDATA[', max)],
+    ['<dl><dt>x', (max) => repeated('<dl><dt>x', max)],
+    ['<table><tr><th>a<td>b', (max) => repeated('<table><tr><th>a<td>b', max)],
+    ['<ul><li>x', (max) => repeated('<ul><li>x', max)],
     ['closed nested <div>', closedNesting],
+    ['unclosed <a>', (max) => repeated('<a>', max)],
   ];
 
-  it.each(shapes)('parses a page of %s quickly', (_case, build) => {
-    const html = build();
-    expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
-    expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 64);
-    const elapsed = cpuMs(() => expect(parsePage(html)).not.toBeNull());
-    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
+  /**
+   * The shapes that also get a near-4 MiB hang guard: the slowest measured for this reader on
+   * 2026-11-22 (`<a>` is the slowest page to parse of all; `<ul><li>`, `<dl><dt>` and `<table>`
+   * rows took 0.4 to 0.6 s alone, the rest 0.2 s or less). The growth check covers every shape.
+   */
+  const GUARDED = new Set(['unclosed <a>', '<ul><li>x', '<dl><dt>x', '<table><tr><th>a<td>b']);
+
+  it.each(shapes)('parses a page of %s in time growing in step with its size', (_case, build) => {
+    const result = growth((html) => expect(parsePage(html)).not.toBeNull(), build(SMALL), build(LARGE));
+    expect(result.ratio, growthMessage(result)).toBeLessThan(GROWTH_MAX);
   });
 
-  it.each(shapes)('reads the Product before a page of %s quickly', (_case, build) => {
-    const html = build();
-    const elapsed = cpuMs(() => expect(readIkea(html)?.name).toBe('KIVIK Sofa'));
-    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
+  it.each(shapes)('reads the Product before a page of %s in time growing in step with its size', (_case, build) => {
+    const result = growth((html) => expect(readIkea(html)?.name).toBe('KIVIK Sofa'), build(SMALL), build(LARGE));
+    expect(result.ratio, growthMessage(result)).toBeLessThan(GROWTH_MAX);
   });
+
+  it.each(shapes.filter(([name]) => GUARDED.has(name)))(
+    'parses and reads a near-4 MiB page of %s without hanging',
+    (_case, build) => {
+      const html = build(LOOKUP_LIMITS.pageMax);
+      expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
+      expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 64);
+      const elapsed = cpuMs(() => {
+        expect(parsePage(html)).not.toBeNull();
+        expect(readIkea(html)?.name).toBe('KIVIK Sofa');
+      });
+      // A hang guard only: it fails if the minutes-long behaviour comes back, not on a slow core.
+      expect(elapsed, `took ${elapsed} ms`).toBeLessThan(HANG_GUARD_MS);
+    },
+    HANG_TIMEOUT_MS,
+  );
 
   /** A Product page with `before` placed at the start of its head, and no `-->` or `]]>` anywhere. */
   function withBefore(before: string): string {
@@ -300,16 +313,25 @@ describe('parsePage on hostile pages just under the size limit', { retry: 2 }, (
     expect(readIkea(`${page(product())}${'<!--'.repeat(17)}`)?.name).toBe('KIVIK Sofa');
   });
 
-  it('parses a near-4 MiB page with exactly 16 unterminated <!-- spread through it quickly', () => {
-    const gap = 'a'.repeat(Math.floor((room - 16 * 4) / 16));
-    const html = head + `${gap}<!--`.repeat(16);
-    expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 64);
-    expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
-    const elapsed = cpuMs(() => {
+  /** A Product page with exactly 16 unterminated `<!--` spread evenly through `max` characters. */
+  function spreadOpeners(max: number): string {
+    const gap = 'a'.repeat(Math.floor((max - head.length - 16 - 16 * 4) / 16));
+    return head + `${gap}<!--`.repeat(16);
+  }
+
+  it('reads a page with exactly 16 unterminated <!-- spread through it in time growing in step with its size', () => {
+    const read = (html: string): void => {
       expect(parsePage(html)).not.toBeNull();
       expect(readIkea(html)?.name).toBe('KIVIK Sofa');
-    });
-    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(BOUND_MS);
+    };
+    const result = growth(read, spreadOpeners(SMALL), spreadOpeners(LARGE));
+    expect(result.ratio, growthMessage(result)).toBeLessThan(GROWTH_MAX);
+    // The near-4 MiB page still reads, well inside the hang guard.
+    const html = spreadOpeners(LOOKUP_LIMITS.pageMax);
+    expect(html.length).toBeGreaterThan(LOOKUP_LIMITS.pageMax - 64);
+    expect(html.length).toBeLessThanOrEqual(LOOKUP_LIMITS.pageMax);
+    const elapsed = cpuMs(() => read(html));
+    expect(elapsed, `took ${elapsed} ms`).toBeLessThan(HANG_GUARD_MS);
   });
 });
 
