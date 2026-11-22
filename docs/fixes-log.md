@@ -279,8 +279,13 @@ MDX content, not user input.
 - The privacy note under "Plan" no longer says nothing is sent anywhere: a pasted product link is sent
   to this site to read the page, and the product photo loads from the shop. The root `README.md` says
   the same.
+- Final fix wave (2026-11-22, `4ae70fd`, `6513398`, `7a9afae`, `b5e7644`): the link box uses the
+  planner's own link check, the Wayfair and Amazon readers stay linear on hostile pages, timing tests
+  measure CPU time, room photos are coloured from their centre, and the route and fetch were hardened
+  (`maxDuration`, IPv4 preference, reset dismisses a running lookup, anonymous photo request,
+  `Retry-After` only when valid).
 
 ### Lessons
 - A size cap is not a time cap: the HTML parser needed its own limit and its own timed tests.
 - A security gate validates its own input; two layers that check the same value must agree.
-- Eleven build mistakes are in `docs/room-planner/mistakes-and-fixes.md`.
+- Fourteen build mistakes are in `docs/room-planner/mistakes-and-fixes.md`.

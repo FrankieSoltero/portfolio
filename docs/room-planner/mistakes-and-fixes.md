@@ -948,7 +948,7 @@ Eight entries. Entry 1 was found by the Task 6 implementer, entries 2, 3, 4, 6 a
 
 ## 2026-11-20 — Product lookup
 
-Eleven entries, taken from the build ledger and the review reports. Entry 1 was found by the plan review, entries 2 to 10 by the per-task reviews, and entry 11 was noticed by the controller. Items left as they are are listed under "Known limits of the lookup" in `docs/room-planner/README.md`.
+Fourteen entries, taken from the build ledger and the review reports. Entry 1 was found by the plan review, entries 2 to 10 by the per-task reviews, entry 11 was noticed by the controller, entries 12 and 13 were found by the whole-branch review (entry 12 also by the browser check), and entry 14 by the full check. Items left as they are are listed under "Known limits of the lookup" in `docs/room-planner/README.md`.
 
 ### The plan was too coarse and the review had no pass condition (plan review round 1)
 - **Date:** 2026-11-20
@@ -1026,3 +1026,24 @@ Eleven entries, taken from the build ledger and the review reports. Entry 1 was 
 - **Root cause:** Each implementer followed its own session's attribution rule over the constraints file.
 - **Fix:** Left as written, since each trailer names the model that wrote that commit.
 - **How to avoid:** Do not put a fixed model name in shared constraints. Let each session attribute itself.
+
+### The browser's own link check blocked the planner's (whole-branch review, browser check)
+- **Date:** 2026-11-22
+- **What happened:** Typing `not a link` and pressing Enter showed the browser's native validation bubble instead of the planner's message, and a link pasted without `https://` (`www.ikea.com/us/en/p/...`), which the planner's link check accepts, was never looked up.
+- **Root cause:** The link box is a `<form>` holding a `type="url"` input with no `noValidate`, so the browser checked the field first and refused to submit. The tests only ever typed full `https://` links, which pass both checks.
+- **Fix:** Commit `4ae70fd`: the form is `noValidate`; tests type `not a link` and a scheme-less link, by Enter and by the button.
+- **How to avoid:** When an input has a browser-checked type inside a form, decide which check wins and test the inputs only one of them accepts.
+
+### The Wayfair and Amazon readers were quadratic on hostile pages after the parser fix
+- **Date:** 2026-11-22
+- **What happened:** A page of repeated `<dt>Overall</dt>` with a `/pdp/` canonical took 24 s of CPU through the Wayfair reader at near 4 MiB. A page of nested `<i>` then `<li>` inside `#feature-bullets` took 11 s at 256 KiB through the Amazon reader, and 50 s at 512 KiB.
+- **Root cause:** The parser fix was timed only through the IKEA reader. Wayfair called `nextElementSibling` on every `<dt>`, which rescans the parent's children from the first each time. Amazon used selectors with a descendant step and ran selectors on an element below the root; either way the selector engine walks the ancestors of every candidate. The parser's own `text` reads everything inside an element again for each nested element, and the struck-price ancestor walk had no bound.
+- **Fix:** Commit `6513398`: blocks are found by id in one walk; what is inside them is found by one more walk testing one tag or class; text is read up to a bound; the next sibling is found by index once; ancestor walks stop at 16 levels. 28 hostile cases at near 4 MiB run through both readers, plus a growth check (1/8 size against full size, ratio under 20). The worst of 25 shapes measured is 1.8 s of CPU, a flood of `<a>` that is almost all parsing.
+- **How to avoid:** Time every consumer of a hostile input, not just the first one, and test growth (a page 8 times larger) as well as one size.
+
+### The parser timing tests failed the full check under load
+- **Date:** 2026-11-22
+- **What happened:** During the full check two hostile-page tests failed at 2084 ms and 2242 ms against their 2000 ms bound, although the code had not changed.
+- **Root cause:** They measured wall-clock time, which grows when the machine is busy with other test files.
+- **Fix:** Commit `6513398`: every timing test measures CPU time (`process.cpuUsage()`, user plus system) with the same bounds, and the timed `describe` blocks retry twice. **Not enough on its own:** this machine (Apple M5) has performance and efficiency cores, and CPU time spent on an efficiency core is several times longer for the same work. The heaviest new case (`<i>` then `<li>` inside `#feature-bullets`) takes 0.5 to 0.9 s alone, 2.0 to 2.4 s in the full suite (one case failed in each of two full runs on 2026-11-22), and 4.6 to 6.6 s pinned to efficiency cores. Still open.
+- **How to avoid:** Bound CPU time, not wall-clock time, in tests that run alongside other work, and give them a retry. On a machine with mixed core types, also keep heavy timing tests out of the parallel run (their own sequential test project) or compare against a reference workload measured in the same process.

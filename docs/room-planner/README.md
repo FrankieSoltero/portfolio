@@ -350,7 +350,7 @@ A visitor can paste a link to an IKEA, Amazon or Wayfair product. The site reads
 in a furniture recipe, and the generator draws the piece. This is the site's first server route.
 The spec is [`specs/2026-11-18-product-lookup-design.md`](specs/2026-11-18-product-lookup-design.md)
 and the plan is [`plans/2026-11-20-product-lookup.md`](plans/2026-11-20-product-lookup.md)
-(Amendments 1 and 2). The plan stays at `schemaVersion` 4 and `Item` has no new field. The photo
+(Amendments 1 to 3). The plan stays at `schemaVersion` 4 and `Item` has no new field. The photo
 address is never saved, so a share link never makes a viewer's browser contact a shop.
 
 ### The request path
@@ -370,10 +370,14 @@ address is never saved, so a share link never makes a viewer's browser contact a
 6. In the browser, `room-planner/domain/furniture/fromProduct.ts` turns the name and description
    into a recipe by word rules. The main colour is a colour word in the name, or else the photo.
    `room-planner/services/photoSampler.ts` draws the photo small on a hidden canvas and
-   `room-planner/domain/furniture/photoColours.ts` picks the colours from its pixels. If the photo
-   cannot be read, the type's default colours are used.
+   `room-planner/domain/furniture/photoColours.ts` picks the colours from its pixels. A product on a
+   backdrop has the backdrop removed first. A styled room photo (its four corner pixels differ by
+   more than 24 in some channel) has no backdrop removed; only the central half of its width and of
+   its height is counted, without transparent and near-white pixels. If the photo cannot be read,
+   the type's default colours are used.
 7. `ProductPreviewCard.tsx` shows the photo, name, price and the piece, with Type and the three
-   sizes editable. Add to room places it like any other piece, selected, with its link and price.
+   sizes editable. The photo is requested with `crossOrigin="anonymous"`, as the sampler requests
+   it, so no shop cookie is sent with it. Add to room places it like any other piece, selected, with its link and price.
    After that it is an ordinary piece and one undo removes it.
 
 ### File map
@@ -383,7 +387,8 @@ address is never saved, so a share link never makes a viewer's browser contact a
 - `room-planner/server/` — server-only code, imported only by the route and by server tests:
   `lookupHandler.ts`, `safeFetch.ts`, `rateLimit.ts`, `sizes.ts` and `readers/` (one reader per
   shop, `shared.ts`, and saved real pages in `readers/fixtures/`).
-- `app/api/room-planner/lookup/route.ts` — binds the handler to `POST`. Node runtime, never cached.
+- `app/api/room-planner/lookup/route.ts` — binds the handler to `POST`. Node runtime, never cached,
+  `maxDuration = 20` seconds on the platform (the lookup itself gives up after 8 s).
 - `room-planner/domain/furniture/fromProduct.ts` and `photoColours.ts` — name to recipe, photo to
   colours.
 - `room-planner/services/remoteProductLookup.ts` and `photoSampler.ts` — the browser's call to the
@@ -406,8 +411,9 @@ fetch can go.
   Anything else is `unsupported_shop` with no outgoing request.
 - **Address check.** The host name is resolved first. If any address is private, loopback,
   link-local or otherwise not public, the fetch is refused (`blocked`).
-- **Pinned address.** The connection is made to the address that was checked, so the name cannot
-  change its answer between the check and the connection.
+- **Pinned address.** The connection is made to an address that was checked, so the name cannot
+  change its answer between the check and the connection. Every address must pass; of those, the
+  first IPv4 address is used when there is one, else the first address.
 - **Redirects.** Followed by hand, at most 3. Each hop is checked again against the shop list and
   the address rules.
 - **Limits.** `https` only, port 443 only. Request body 4096 bytes. Link 2048 characters. Page 4 MiB,
@@ -419,7 +425,8 @@ fetch can go.
 - **Origin check.** The `Origin` header must be present and its host must equal the request's
   `Host` header. A missing or foreign `Origin` is answered 403.
 - **Rate limit.** 20 lookups per 600,000 ms (10 minutes) per address, kept in memory. Over the limit
-  is 429 with `Retry-After`. Only a request that reaches the fetch is counted.
+  is 429 with `Retry-After` (sent only when the wait is a whole number of seconds of at least 1).
+  Only a request that reaches the fetch is counted.
 - **Reader name.** The request says `RoomPlannerLinkPreview/1.0`, sends no cookie and no referer,
   does not retry, does not rotate addresses and does not solve challenges. A refusal is `blocked`.
 - **Logging.** One line per request: `{ "event": "room_planner_lookup", "shop": ..., "outcome": ... }`,
@@ -463,8 +470,17 @@ nothing in the code adds it.
   becomes hand entry only.
 - The rate limit is in memory, per server instance. It slows abuse and does not stop a determined
   caller. The hard limit is the Vercel firewall rule the owner adds.
-- A hostile page can still cost up to about 1.4 s of server time in the parser.
-- The parser timing tests use a wall-clock bound and can fail on a heavily loaded machine. Re-run them alone before treating a failure as real.
+- A hostile page just under 4 MiB can still cost up to about 1.8 s of CPU time on the development
+  machine (measured 2026-11-22 on 25 shapes through all three readers; the slowest is a flood of
+  `<a>`, which is almost all parsing). Every reader step is linear: blocks are found by id in one
+  walk, nothing inside them is found with a selector, ancestor walks stop at 16 levels, and text is
+  read up to a bound.
+- Timing tests measure CPU time (`process.cpuUsage()`) and retry twice. On a machine with
+  efficiency cores the heaviest hostile case can still exceed its 2 s bound in the full parallel run
+  (CPU time on an efficiency core is several times longer); see entry 14 in
+  `mistakes-and-fixes.md`.
+- A 422 or other refusal from the route shows as a "Failed to load resource" line in the browser
+  console, which the browser writes itself.
 - `dns.lookup` cannot be cancelled, and Node adds `Connection: close` to the outgoing request.
 - The Origin check compares hosts, not schemes, and does not stop non-browser callers. They are
   bounded by the rate limit and can only make the server read a shop page.
@@ -472,8 +488,9 @@ nothing in the code adds it.
   the product does not have (`office`, `round`, `open`). `no drawer pulls` reads as no drawers.
   Accessories named after furniture (`bed sheet set`, `bedside lamp`) are read as that furniture.
   The preview lets the visitor change type and sizes, and the editor every option.
-- Colour from the photo is a guess: styled room photos, shadows and transparent backgrounds can
-  throw it off. A colour word in the name wins.
+- Colour from the photo is a guess: shadows and transparent backgrounds can throw it off, and a
+  styled room photo is read from its centre, which may not be the product. A colour word in the
+  name wins.
 - Amazon sizes without labels are filled in as depth, width, height, with a note to check them.
 - The product photo is shown only in the preview and is never saved.
 - Plain colours only, as in the generator.
