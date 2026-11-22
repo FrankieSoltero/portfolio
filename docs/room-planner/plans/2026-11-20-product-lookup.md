@@ -105,6 +105,25 @@ widened as follows; everything else in Task 8 stands.
    fragment.
 4. Task 4: the unlabelled-size note applies to Wayfair as well as Amazon.
 
+**Amendment 3 (2026-11-20, after the whole-branch review and the first browser check).**
+
+1. Link box: the form is `noValidate`, so the planner's own link check decides, not the
+   browser's URL field check (which blocked `not a link` and links pasted without `https://`).
+2. Wayfair and Amazon readers must also stay linear on hostile pages: no sibling walks that
+   rescan the parent, no descendant selectors over the whole page (find the block by id, then
+   select inside it), ancestor walks capped at 16 levels. The hostile timing suite covers both
+   readers.
+3. Timing tests measure CPU time (`process.cpuUsage()`), keep their bounds, and retry twice.
+4. Photo colours, room photos: when the four corner pixels do not agree (the largest channel
+   difference between any two corners is above 24) the photo is a room scene, not a product on
+   a backdrop. Then no backdrop is removed; only the pixels in the central half of the width
+   and the central half of the height are counted; pixels with every channel at least 240 or
+   alpha below 128 are dropped; main and accent are chosen from the buckets as before.
+5. The route exports `maxDuration = 20`. The fetch prefers an IPv4 address when the host has
+   both families (every address is still checked). Resetting the plan dismisses a running
+   lookup. A link kept after a failure is stored in its `https` form. The preview photo is
+   requested with `crossOrigin="anonymous"`, so no shop cookie is sent with it.
+
 ## Task Dependency Table
 
 | Task | Files touched | Depends on | Risk tier |
