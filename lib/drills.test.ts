@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { parseExercise } from "drillbox/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeDrillsDir, writeDrill } from "@/drills/testing/fixtures/loader/drillFixture";
 import {
@@ -193,5 +194,39 @@ describe("toExercise", () => {
       options: { react: true },
     });
     expect("readOnly" in toExercise(drill).files["App.tsx"]).toBe(false);
+  });
+
+  describe("against the real drills", () => {
+    const drills = getAllDrills();
+
+    it("passes Drillbox parseExercise for every drill", () => {
+      expect(drills).toHaveLength(10);
+      for (const drill of drills) {
+        const result = parseExercise(toExercise(drill));
+        if (!result.ok) {
+          throw new Error(`${drill.meta.slug}: ${JSON.stringify(result.issues)}`);
+        }
+        expect(result.ok).toBe(true);
+      }
+    });
+
+    it("marks api.ts read-only and leaves App.tsx without the key in profile-switcher", () => {
+      const drill = drills.find((d) => d.meta.slug === "profile-switcher");
+      if (!drill) throw new Error("profile-switcher drill not found");
+      const { files } = toExercise(drill);
+      expect(files["api.ts"].readOnly).toBe(true);
+      expect("readOnly" in files["App.tsx"]).toBe(false);
+    });
+
+    it("has at least one check per drill and no check path equal to a file path", () => {
+      for (const drill of drills) {
+        const ex = toExercise(drill);
+        const checkKeys = Object.keys(ex.checks);
+        expect(checkKeys.length, drill.meta.slug).toBeGreaterThan(0);
+        for (const key of checkKeys) {
+          expect(Object.keys(ex.files), `${drill.meta.slug}: ${key}`).not.toContain(key);
+        }
+      }
+    });
   });
 });

@@ -14,6 +14,7 @@
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
+import type { Exercise } from "drillbox/schema";
 
 export interface DrillMeta {
   slug: string;            // folder name
@@ -34,14 +35,7 @@ export interface Drill {
   solutionFiles: DrillFile[];    // solution/ only (files that differ from starter)
   checks: Record<string, string>; // checks/ path -> source
 }
-export interface Exercise {       // Drillbox exercise format, runner spec "Exercise format"
-  id: string;
-  language: "js";
-  files: Record<string, { code: string; readOnly?: boolean }>;
-  entry: "App.tsx";
-  checks: Record<string, string>;
-  options: { react: true };
-}
+export type { Exercise };
 
 export const DRILLS_DIR: string = path.join(process.cwd(), "content", "drills");
 
