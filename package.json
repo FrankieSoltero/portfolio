@@ -17,6 +17,7 @@
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",
     "@fontsource/barlow-condensed": "^5.3.0",
+    "drillbox": "file:vendor/drillbox-0.0.0-40f9b05.tgz",
     "feed": "^5.1.0",
     "gray-matter": "^4.0.3",
     "katex": "^0.16.22",
