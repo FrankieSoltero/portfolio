@@ -5,10 +5,10 @@ program (the starter) with a brief, hints, a solution and an explanation. Each d
 has an in-browser workspace: the visitor edits the code, watches a live preview and runs
 the drill's checks, and the drill is marked done when every check passes. The workspace is
 the Drillbox package (described below). The page also renders the starter code read-only
-on the server; that copy is the fallback, shown until the workspace has loaded, when
-JavaScript is off, and next to a `RETRY` button when the workspace fails to start. Nothing
-here is released yet: the section lives on the unmerged branch `drills-content` (see "Not
-released" at the end).
+on the server; that copy is the fallback, shown until the workspace has loaded and read
+the visitor's saved code, when JavaScript is off, and next to a `RETRY` button when the
+workspace fails to start. Nothing here is released yet: the section lives on the unmerged
+branch `drills-content` (see "Not released" at the end).
 
 Specs and plans:
 
@@ -97,12 +97,12 @@ drill page itself is a server component, rendered to static HTML when the site i
 |-------|-------|--------------|
 | Drill page | `app/drills/[slug]/page.tsx` | Renders the header, the brief, the workspace section, the hints (followed by the note "The drill is marked done on its own when every check passes."), the fix behind a reveal button, and the links to the neighbouring drills. It turns the drill into Drillbox's exercise format with `toExercise` (`lib/drills.ts`, typed with Drillbox's `Exercise` type) and passes the server-rendered `STARTER CODE` section to `DrillWorkspace` as its fallback. |
 | Header | `drills/components/ProgressBadges.tsx` | The drill page header holds the title and meta line (`div.drills-drill-heading`) and, to their right, the badges `STREAK: <n> DAYS` and `<done> / 10 DONE`. The `/drills` index shows the same badges, and `DrillEntryStatus` adds `DONE`, `DONE WITH HELP` or `TODAY` to each index entry. Both stay empty until stored progress has been read, so the server HTML and the first browser render match. |
-| `DrillWorkspace` | `drills/components/DrillWorkspace.tsx` | Client component that renders `section.drills-section.drills-workspace`. It loads `WorkspaceHost` with `next/dynamic` and `ssr: false`, so the workspace code is fetched only by drill pages and runs only in the browser. While it loads, and in the server HTML, the section shows the fallback. An error boundary catches a failed load or a crash and shows the alert "The workspace could not start. The starter code is below; your saved code is kept.", a `RETRY` button and the fallback. `RETRY` starts a fresh import, because a rejected dynamic import otherwise stays rejected. |
-| `WorkspaceHost` | `drills/components/WorkspaceHost.tsx` | Client component that renders Drillbox's `Workspace` and imports `drillbox/workspace.css`. After mount it reads the saved draft (in a promise callback, which the lint rule `react-hooks/set-state-in-effect` accepts) and renders nothing until it has it; then it mounts the workspace, keyed by the drill's id, with the draft as the starting code and `frameUrl` set to `/drillbox/frame.html`. Every edit is saved through the draft store. When a checks run ends with status `completed`, at least one check, and every check passing, it records the drill as completed. |
+| `DrillWorkspace` | `drills/components/DrillWorkspace.tsx` | Client component that renders `section.drills-section.drills-workspace`. It loads `WorkspaceHost` with `next/dynamic` and `ssr: false`, so the workspace code is fetched only by drill pages and runs only in the browser. While it loads, and in the server HTML, the section shows the fallback. An error boundary catches a failed load or a crash and shows the alert "The workspace could not start. The starter code is below; your saved code is kept.", a `RETRY` button and the fallback. `RETRY` starts a fresh import, because a rejected dynamic import otherwise stays rejected; it also gives the section `tabindex="-1"` and moves the keyboard focus to it, since the button that had the focus is gone. The section has no `tabindex` before a retry, so the server HTML is unchanged. Once loaded, `WorkspaceHost` receives the fallback as a prop, so the section never empties between the import and the draft being read. |
+| `WorkspaceHost` | `drills/components/WorkspaceHost.tsx` | Client component that renders Drillbox's `Workspace` and imports `drillbox/workspace.css`. After mount it reads the saved draft (in a promise callback, which the lint rule `react-hooks/set-state-in-effect` accepts); until it has it, it shows the `fallback` prop that `DrillWorkspace` passes (the same STARTER CODE markup), or nothing when rendered without one. The fallback is a prop rather than `DrillWorkspace`'s context so that this lazily loaded module does not import the module that loads it. Then it mounts the workspace, keyed by the drill's id, with the draft as the starting code and `frameUrl` set to `/drillbox/frame.html`. Every edit is saved through the draft store. When a checks run ends with status `completed`, at least one check, and every check passing, it records the drill as completed. |
 | Draft store | `drills/draft.ts` | Reads, validates, saves and clears the visitor's code for one drill (see "Storage"). |
-| Progress store | `drills/progress.ts`, `drills/useProgress.ts` | `progress.ts` holds pure functions: the stored schema, "completed" and "revealed" records, the streak, today's drill and each drill's status. `useProgress.ts` is one store shared by every component on the page: `WorkspaceHost` records completion, `SolutionReveal` records that the fix was revealed, and the badges read both. Each change is applied to what storage holds at that moment, and changes made in other tabs arrive through the browser's `storage` event. |
+| Progress store | `drills/progress.ts`, `drills/useProgress.ts` | `progress.ts` holds pure functions: the stored schema, "completed" and "revealed" records, the streak, today's drill and each drill's status. `useProgress.ts` is one store shared by every component on the page: `WorkspaceHost` records completion, `SolutionReveal` records that the fix was revealed, and the badges read both. Each change is applied to what storage holds at that moment. Changes made in other tabs arrive through the browser's `storage` event for the progress key and replace what this tab shows. When another tab clears all of the site's storage (an event with no key), this tab keeps showing its current progress until its next completion or reveal, which re-reads storage. Once a read or write of storage has failed, the store keeps progress in memory: later changes build on that copy without re-reading storage, so a record another tab saved is not merged in by this tab's writes (a `storage` event for the key still replaces the copy). Storage is read again only when the store is next loaded, for example after a reload. |
 | Frame page | `scripts/build-drill-frame.mts`, `drills/frame.ts`, `next.config.ts` | `npm run frame` builds Drillbox's frame page with its JavaScript/TypeScript adapter and React support and writes it to `public/drillbox/frame.html` (about 1.2 MB, git-ignored). It runs automatically before `npm run build` and `npm run dev` (the `prebuild` and `predev` scripts). `next.config.ts` serves the file with a sandboxing header (see "Security"). Everything the frame needs is inside that one file, served from this site; nothing is loaded from another site. |
-| Skin | `app/drills/workspace-theme.css`, `app/drills/drills.css` | The hybrid 8-bit look, set through Drillbox's `--dbx-*` custom properties, plus rules that keep `drills.css`'s element styles out of the workspace. Drill pages use a 1160 px column (`.drills:has(.drills-drill)` in `drills.css`), so the editor and the preview sit side by side on a desktop screen and stack on a narrow one. |
+| Skin | `app/drills/workspace-theme.css`, `app/drills/drills.css` | The hybrid 8-bit look, set through Drillbox's `--dbx-*` custom properties, plus rules that keep `drills.css`'s element styles out of the workspace. Drill pages use a column with 1160 px of content, the mockup's (`max-width: 1208px` including 24 px side padding, because the column is border-box; `.drills:has(.drills-drill)` in `drills.css`), so the editor and the preview sit side by side on a desktop screen and stack on a narrow one. |
 
 The checks do not run when a drill page opens; the visitor presses `RUN CHECKS` (see
 "Differences from the spec"). The live preview starts by itself.
@@ -115,15 +115,16 @@ code makes no network request, and the values are only read back by this site's 
 | Key | Stored value | Written | Removed |
 |-----|--------------|---------|---------|
 | `drills:progress:v1` | `{"version":1,"drills":{"<slug>":{"completedOn":"2026-11-23","revealed":false}}}`. `completedOn` is the local calendar date the drill was first completed, or `null`. `revealed` is `true` when the fix was revealed before the drill was completed; such a drill shows `DONE WITH HELP`. | When a drill is completed or its fix is revealed. | Never by the site; only by clearing the browser's site data. |
-| `drills:code:v1:<slug>` | `{"version":1,"files":{"App.tsx":"<code>"}}`: only the drill's editable files (a read-only file such as `api.ts` is never stored), each at most 200,000 characters. | Whenever the workspace reports a change to the code. | When the code equals the starter again, for example after `RESET CODE` (it asks for a second click). |
+| `drills:code:v1:<slug>` | `{"version":1,"files":{"App.tsx":"<code>"}}`: only the drill's editable files (a read-only file such as `api.ts` is never stored), each at most 200,000 characters. | Whenever the workspace reports a change to the code. An edit that makes any file longer than 200,000 characters is not saved, and the previously saved draft is left as it is; nothing tells the visitor. | When the code equals the starter again, for example after `RESET CODE` (it asks for a second click). |
 
 - Stored values are untrusted. Every read validates them with zod. Progress that does not
   match the schema is treated as empty progress, and the next completion or reveal replaces
   it. A draft that breaks any rule (not JSON, a wrong `version`, an unknown top-level key,
   a file that is not a string or is too long) is discarded whole, and stored paths that
   are not editable files of that drill are dropped.
-- Storage may be blocked or full. Every access is wrapped, nothing throws, and the
-  workspace and progress keep working in memory for the rest of the visit.
+- Storage may be blocked or full. Every access is wrapped and nothing throws. The
+  workspace keeps the code in the editor, and progress is kept in memory as described for
+  the progress store above.
 - The stored data is the code the visitor typed and the dates they completed drills.
   Neither is logged. There is no expiry; a visitor can remove both by clearing the site's
   data in their browser.
@@ -163,7 +164,8 @@ What was tested, and by which test:
 | `next.config.ts` serves exactly that one header on the frame page and keeps the site-wide headers | `drills/frame.test.ts` |
 | The built frame page's policy starts with `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'`, and no `src` or `href` points to an `http://` or `https://` address | `drills/frame.test.ts`, "Built file" (it skips when the page has not been built yet) |
 | Cookies and the parent page's DOM are out of reach; `fetch`, an image, a WebSocket, a beacon, a stylesheet and a script requested from the frame are all blocked; an unsandboxed embedding does not start | Drillbox's own browser tests (`e2e/isolation.spec.ts` in the Drillbox repository) in Chromium, Firefox and WebKit. They are not re-run in this repository. Other channels, such as WebRTC, were not tested |
-| Corrupt or unreadable storage is discarded without an error | `drills/draft.test.ts`, `drills/progress.test.ts`, `drills/useProgress.test.tsx`; `e2e/drills.spec.ts`, "Corrupt storage" |
+| With a corrupt draft (`{not json`) and corrupt progress (`[]`) stored, the drill page falls back to the starter code and to empty progress (`0 / 10 DONE`) | `e2e/drills.spec.ts`, "Corrupt storage" (Chromium, Firefox, WebKit) |
+| The parsers return no draft or empty progress for each malformed value the tests list, without throwing, and the stores do not throw when storage itself throws | `drills/draft.test.ts`, `drills/progress.test.ts`, `drills/useProgress.test.tsx` |
 
 What is visible on purpose:
 
@@ -300,9 +302,6 @@ known differences that remain, all awaiting the owner's ruling:
   swapped, and the footer text is 16.8 px (the mockup's is 20 px).
 - **Hints and the fix** are two titled sections stacked one under the other; the mockup has
   their two buttons and the auto-done note on one row under the checks.
-- **The content row is 1112 px wide**, against the mockup's 1160 px. Both set
-  `max-width: 1160px` with 24 px side padding, but the mockup's box excludes the padding and
-  this page's includes it.
 
 ## Not released
 
