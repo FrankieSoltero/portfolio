@@ -24,6 +24,13 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         ],
       },
+      {
+        // The Drillbox sandbox frame page (written by `npm run frame`): the browser sandboxes
+        // it even when opened directly, and only this site may embed it. Must equal
+        // FRAME_CSP_HEADER in drills/frame.ts; drills/frame.test.ts checks that.
+        source: "/drillbox/frame.html",
+        headers: [{ key: "Content-Security-Policy", value: "sandbox allow-scripts; frame-ancestors 'self'" }],
+      },
     ];
   },
 };

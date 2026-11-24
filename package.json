@@ -4,7 +4,9 @@
   "private": true,
   "description": "Francisco Soltero's portfolio: build-free 8-bit character sheet at /, Next.js-rendered /papers section.",
   "scripts": {
+    "predev": "npm run frame",
     "dev": "next dev",
+    "prebuild": "npm run frame",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.drills.json",
@@ -12,7 +14,8 @@
     "test": "vitest run --passWithNoTests",
     "test:drills": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/drills-fairness.mts",
     "test:drills-pages": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/drills-pages-check.mts",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run test:drills && npm run build && npm run test:drills-pages"
+    "check": "npm run typecheck && npm run lint && npm run test && npm run test:drills && npm run build && npm run test:drills-pages",
+    "frame": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/build-drill-frame.mts"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",
