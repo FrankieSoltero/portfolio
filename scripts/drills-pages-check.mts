@@ -65,7 +65,9 @@ function elementTexts(html: string, tag: string): string[] {
 /**
  * `html` without its `<script …>…</script>` elements. The workspace's exercise (checks
  * included) travels to the browser inside the React Server Components payload, which
- * lives in script elements; only the visible markup must not show the checks.
+ * lives in script elements; only the visible markup must not show the checks. Apply it
+ * to the raw file, before unescapeHtml: visible text `&lt;script&gt;` would otherwise
+ * turn into a tag and the visible markup up to the next real `</script>` would be lost.
  */
 function withoutScripts(html: string): string {
   return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
@@ -89,7 +91,8 @@ function checkIndex(html: string, drills: Drill[]): string[] {
   return missing
 }
 
-function checkDrillPage(html: string, drill: Drill, drills: Drill[], index: number): string[] {
+/** `html` is the whole page unescaped; `visible` is the page without scripts, unescaped. */
+function checkDrillPage(html: string, visible: string, drill: Drill, drills: Drill[], index: number): string[] {
   const { meta } = drill
   const missing: string[] = []
   const has = (s: string) => html.includes(s)
@@ -118,7 +121,6 @@ function checkDrillPage(html: string, drill: Drill, drills: Drill[], index: numb
     if (j !== index + 1 && has(nextLink)) missing.push(`no link ${nextLink} (not the next drill)`)
   })
 
-  const visible = withoutScripts(html)
   for (const [file, source] of Object.entries(drill.checks)) {
     if (visible.includes(file)) missing.push(`no check file name ${file}`)
     for (const name of checkNames(source)) {
@@ -147,13 +149,13 @@ function main(): number {
   }
 
   const failures: Failure[] = []
-  const read = (file: string) => unescapeHtml(fs.readFileSync(file, 'utf-8'))
+  const readRaw = (file: string) => fs.readFileSync(file, 'utf-8')
 
   if (!fs.existsSync(FRAME_FILE) || fs.statSync(FRAME_FILE).size === 0) {
     failures.push({ page: '/drillbox/frame.html', what: 'frame page missing; run npm run frame' })
   }
 
-  for (const what of checkIndex(read(INDEX_HTML), drills)) failures.push({ page: '/drills', what })
+  for (const what of checkIndex(unescapeHtml(readRaw(INDEX_HTML)), drills)) failures.push({ page: '/drills', what })
 
   drills.forEach((drill, i) => {
     const page = `/drills/${drill.meta.slug}`
@@ -162,7 +164,10 @@ function main(): number {
       failures.push({ page, what: `page file ${path.relative(ROOT, file)}` })
       return
     }
-    for (const what of checkDrillPage(read(file), drill, drills, i)) failures.push({ page, what })
+    const raw = readRaw(file)
+    const html = unescapeHtml(raw)
+    const visible = unescapeHtml(withoutScripts(raw))
+    for (const what of checkDrillPage(html, visible, drill, drills, i)) failures.push({ page, what })
   })
 
   const slugs = new Set(drills.map((d) => d.meta.slug))

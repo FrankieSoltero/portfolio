@@ -44,12 +44,16 @@ export function WorkspaceHost({ exercise }: { exercise: Exercise }): React.JSX.E
   const [draft, setDraft] = useState<LoadedDraft | null>(null);
 
   useEffect(() => {
-    // Storage is read like any external source, asynchronously after mount. An answer for a
-    // drill that is no longer shown is harmless: the render below ignores it.
+    // Storage is read like any external source, asynchronously after mount. A read that
+    // arrives after unmount or after the drill changed does nothing.
+    let active = true;
     const id = exercise.id;
     void Promise.resolve().then(() => {
-      setDraft({ id, files: loadDraft(id, Object.keys(starter)) ?? undefined });
+      if (active) setDraft({ id, files: loadDraft(id, Object.keys(starter)) ?? undefined });
     });
+    return () => {
+      active = false;
+    };
   }, [exercise.id, starter]);
 
   // Storage not read yet for this drill: render nothing rather than another drill's code.
