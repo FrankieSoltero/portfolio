@@ -2,8 +2,10 @@
 // Browser tests for the hybrid 8-bit skin of the workspace on /drills/<slug>
 // (app/drills/workspace-theme.css): computed colours, fonts and sizes of the workspace's
 // parts after a checks run, the site's own element rules kept out of it, the four fonts
-// loaded, the focus ring, the stacked narrow layout, and two screenshots for the visual
-// review (docs/drills/workspace-visual-review.md).
+// loaded, the focus ring, the wide drill page (a 1160 px column with editor and preview
+// side by side, badges beside the title, prose kept to 760 px; the index keeps its 704 px
+// column), the stacked narrow layout, and the screenshots for the visual review
+// (docs/drills/workspace-visual-review.md).
 //
 // Fonts come from next/font, whose generated family names differ per build, so a family is
 // checked by comparing an element's computed `font-family` with that of a probe element
@@ -38,6 +40,20 @@ type FontName = keyof typeof FONTS;
 /** Where the screenshots are written (gitignored; Playwright clears it at each run). */
 const SCREENSHOT_1280 = "test-results/drill-1280.png";
 const SCREENSHOT_390 = "test-results/drill-390.png";
+const SCREENSHOT_INDEX_1280 = "test-results/drills-index-1280.png";
+
+/** The shell's three column boxes: header links, page body and footer line. */
+const COLUMNS = [".drills-header nav", ".drills-page", ".drills-footer p"] as const;
+
+/** Drill pages: the mockup's column and side padding. */
+const DRILL_COLUMN = { maxWidth: "1160px", paddingLeft: "24px", paddingRight: "24px" };
+/** The index keeps the section's 44rem reading column and 1.25rem padding. */
+const INDEX_COLUMN = { maxWidth: "704px", paddingLeft: "20px", paddingRight: "20px" };
+
+/** Prose on the drill page is kept to a readable measure inside the wide column. */
+const PROSE_WIDTH = "760px";
+
+interface Box { top: number; bottom: number; left: number; right: number }
 
 test.use({ viewport: { width: 1280, height: 900 } });
 
@@ -242,6 +258,107 @@ test("Narrow", async ({ page }) => {
   expect(checksPanel.top).toBeGreaterThan(previewPanel.top);
   expect(previewPanel.left).toBe(editorPanel.left);
   expect(checksPanel.left).toBe(editorPanel.left);
+});
+
+/** The border box of the one element `selector` matches. */
+async function box(page: Page, selector: string): Promise<Box> {
+  const locator = page.locator(selector);
+  await expect(locator).toHaveCount(1);
+  return locator.evaluate((element) => {
+    const { top, bottom, left, right } = element.getBoundingClientRect();
+    return { top, bottom, left, right };
+  });
+}
+
+/** The content box (border box minus side padding) of `.drills-page`: the page column. */
+async function pageColumn(page: Page): Promise<{ left: number; right: number; width: number }> {
+  const { left, right } = await box(page, ".drills-page");
+  const { paddingLeft, paddingRight } = await computed(page.locator(".drills-page"), [
+    "paddingLeft",
+    "paddingRight",
+  ]);
+  const inner = { left: left + parseFloat(paddingLeft), right: right - parseFloat(paddingRight) };
+  return { ...inner, width: inner.right - inner.left };
+}
+
+test("Wide column on drill pages only", async ({ page }) => {
+  await openDrill(page, SLUG);
+  for (const selector of COLUMNS) {
+    expect(
+      await computed(page.locator(selector), ["maxWidth", "paddingLeft", "paddingRight"]),
+      selector,
+    ).toEqual(DRILL_COLUMN);
+  }
+
+  await page.goto("/drills");
+  for (const selector of COLUMNS) {
+    expect(
+      await computed(page.locator(selector), ["maxWidth", "paddingLeft", "paddingRight"]),
+      selector,
+    ).toEqual(INDEX_COLUMN);
+  }
+});
+
+test("Editor and preview side by side at 1280", async ({ page }) => {
+  await openDrill(page, SLUG);
+  const editorPanel = await box(page, ".dbx-editor-panel");
+  const previewPanel = await box(page, ".dbx-preview-panel");
+  const checksPanel = await box(page, ".dbx-checks-panel");
+
+  expect(Math.abs(previewPanel.top - editorPanel.top)).toBeLessThanOrEqual(1);
+  expect(editorPanel.right).toBeLessThanOrEqual(previewPanel.left);
+  expect(editorPanel.right - editorPanel.left).toBeGreaterThan(previewPanel.right - previewPanel.left);
+
+  expect(checksPanel.top).toBeGreaterThanOrEqual(Math.max(editorPanel.bottom, previewPanel.bottom));
+  expect(Math.abs(checksPanel.left - editorPanel.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(checksPanel.right - previewPanel.right)).toBeLessThanOrEqual(1);
+});
+
+test("Badges beside the title at 1280", async ({ page }) => {
+  await openDrill(page, SLUG);
+  await expect(page.locator(".drills-badge")).toHaveCount(2);
+  const column = await pageColumn(page);
+  const badges = await box(page, ".drills-drill-header .drills-badges");
+  const meta = await box(page, ".drills-drill-meta");
+
+  expect(Math.abs(badges.right - column.right)).toBeLessThanOrEqual(1);
+  expect(Math.abs(badges.bottom - meta.bottom)).toBeLessThanOrEqual(8);
+  expect(badges.top).toBeLessThan(meta.bottom);
+});
+
+test("Readable prose at 760px", async ({ page }) => {
+  await openDrill(page, SLUG);
+  for (const selector of [
+    ".drills-brief .drills-prose",
+    ".drills-hints",
+    ".drills-fix-lead",
+    ".drills-auto-done",
+    ".drills-explanation",
+  ]) {
+    expect((await computed(page.locator(selector), ["maxWidth"])).maxWidth, selector).toBe(PROSE_WIDTH);
+  }
+  // Revealed solution code may use the whole column.
+  expect((await computed(page.locator(".drills-solution-body .drills-files"), ["maxWidth"])).maxWidth).toBe(
+    "none",
+  );
+});
+
+test("Mid width", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await openDrill(page, SLUG);
+  const viewport = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport);
+  const column = await pageColumn(page);
+  expect(Math.abs(column.width - (viewport - 48))).toBeLessThanOrEqual(1);
+});
+
+test("Index untouched at 1280", async ({ page, browserName }) => {
+  await page.goto("/drills");
+  expect((await computed(page.locator(".drills-page"), ["maxWidth"])).maxWidth).toBe("704px");
+  if (browserName === "chromium") {
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: SCREENSHOT_INDEX_1280, fullPage: true });
+  }
 });
 
 /**
