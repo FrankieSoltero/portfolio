@@ -552,6 +552,25 @@
   color: var(--gold);
 }
 
+/* ---- drill page with the workspace: layout only (the workspace skin is separate) ----
+   The header puts the title and meta line on the left and the progress badges on the
+   right; the badges wrap below the title when there is no room. The header's margin rule
+   above still applies. The auto-done note closes the hints section. */
+
+.drills .drills-drill-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px 24px;
+}
+
+.drills .drills-auto-done {
+  font-family: var(--font-mono), monospace;
+  font-size: 20px;
+  color: var(--mist);
+}
+
 /* ---- buttons ---- */
 
 .drills .drills-button {

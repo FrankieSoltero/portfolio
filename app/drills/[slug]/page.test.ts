@@ -1,14 +1,31 @@
 import fs from "fs";
+import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { WorkspaceProps } from "drillbox/workspace";
 import {
   getAdjacentDrills,
   getAllDrills,
   getDrillBySlug,
+  toExercise,
   type Drill,
   type DrillMeta,
 } from "@/lib/drills";
 import DrillPage, { dynamicParams, generateMetadata, generateStaticParams } from "./page";
+
+// Next aliases `next/dynamic` to its App Router implementation for app/ code; outside Next
+// the bare specifier is the Pages Router one. Use what the site runs.
+vi.mock("next/dynamic", () => import("next/dist/api/app-dynamic"));
+
+// The real Workspace starts CodeMirror and sandboxed iframes (covered by the browser
+// tests); this stand-in shows which exercise the page handed over.
+const workspace = vi.hoisted(() => ({ props: null as WorkspaceProps | null }));
+vi.mock("drillbox/workspace", () => ({
+  Workspace(props: WorkspaceProps) {
+    workspace.props = props;
+    return createElement("div", { "data-testid": "workspace" }, createElement("h2", null, "WORKSPACE"));
+  },
+}));
 
 // The real loader over content/drills, with two seams so a test can give the page a
 // read-only file or neighbours on both sides.
@@ -93,6 +110,19 @@ describe("drill page: content", () => {
     ).toBeInTheDocument();
   });
 
+  it("groups the title and meta line, then shows the badges for every drill", async () => {
+    const { container } = await renderPage();
+    const header = container.querySelector("header.drills-drill-header");
+    expect(header).not.toBeNull();
+    const [heading, badges] = [...header!.children];
+    expect(heading).toHaveClass("drills-drill-heading");
+    expect(heading.tagName).toBe("DIV");
+    expect([...heading.children].map((el) => el.className)).toEqual(["drills-drill-title", "drills-drill-meta"]);
+    expect(badges).toHaveClass("drills-badges");
+    expect(badges).toHaveTextContent(`0 / ${getAllDrills().length} DONE`);
+    expect(header!.children).toHaveLength(2);
+  });
+
   it("puts the sections in order", async () => {
     await renderPage();
     const sections = ["THE PULL REQUEST", "STARTER CODE", "HINTS", "THE FIX"];
@@ -121,6 +151,31 @@ describe("drill page: content", () => {
     expect(pre).not.toBeNull();
     expect(pre).toHaveTextContent("likedIds.push(postId);");
     expect(pre?.querySelector("span[style]")).not.toBeNull();
+  });
+
+  it("shows the starter code inside the workspace section until the workspace loads", async () => {
+    await renderPage();
+    const starter = section("STARTER CODE");
+    expect(starter).toHaveClass("drills-section", "drills-workspace");
+    expect(starter.className).toBe("drills-section drills-workspace");
+    expect(within(starter).getAllByRole("heading").map((h) => h.textContent)).toEqual(["STARTER CODE"]);
+  });
+
+  it("hands the drill's exercise to the workspace, which replaces the starter code", async () => {
+    await renderPage();
+    const wrapper = section("STARTER CODE");
+    expect(await within(wrapper).findByTestId("workspace")).toBeInTheDocument();
+    expect(workspace.props?.exercise).toEqual(toExercise(likeButton()));
+    expect(wrapper).not.toHaveTextContent("STARTER CODE");
+  });
+
+  it("says the drill is marked done on its own, after the hints", async () => {
+    await renderPage();
+    const hints = section("HINTS");
+    const note = hints.querySelector("p.drills-auto-done");
+    expect(note).toHaveTextContent(/^The drill is marked done on its own when every check passes\.$/);
+    expect(hints.lastElementChild).toBe(note);
+    expect(note?.previousElementSibling).toHaveClass("drills-hints");
   });
 
   it("labels a read-only file READ-ONLY", async () => {

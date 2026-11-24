@@ -1,9 +1,10 @@
 // scripts/drills-pages-check.mts — `npm run test:drills-pages`
 // Checks the HTML that `next build` wrote for the /drills section: the index page and
-// one page per drill on disk, nothing more. Reads files only. The expected strings are
-// compared against the HTML after unescaping entities, so `<`, `>` and `&` match
-// literally. Prints `drills pages: <n> OK` (n = drills + 1) and exits 0, or one
-// `drills pages: FAILED <page> — <what is missing>` line per problem and exits 1.
+// one page per drill on disk, nothing more, plus the sandbox frame page the workspace
+// loads (public/drillbox/frame.html, written by `npm run frame`). Reads files only. The
+// expected strings are compared against the HTML after unescaping entities, so `<`, `>`
+// and `&` match literally. Prints `drills pages: <n> OK` (n = drills + 1) and exits 0, or
+// one `drills pages: FAILED <page> — <what is missing>` line per problem and exits 1.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -15,12 +16,15 @@ const DRILLS_DIR = path.join(ROOT, 'content', 'drills')
 const APP_DIR = path.join(ROOT, '.next', 'server', 'app')
 const INDEX_HTML = path.join(APP_DIR, 'drills.html')
 const PAGES_DIR = path.join(APP_DIR, 'drills')
+const FRAME_FILE = path.join(ROOT, 'public', 'drillbox', 'frame.html')
 
 // Must match DRILLS_INTRO in drills/components/DrillList.tsx (a .tsx module node cannot load).
 const INTRO =
   "Each drill is a pull request that runs but isn't ready to merge. Read the brief, find what's wrong, fix it."
 // Must match the footer line in drills/components/DrillsShell.tsx.
 const FOOTER = 'react review drills · find the bugs, fix the PR'
+// Must match AUTO_DONE in app/drills/[slug]/page.tsx.
+const AUTO_DONE = 'The drill is marked done on its own when every check passes.'
 const TITLE_SUFFIX = ' · Drills · Francisco Soltero'
 const PAGE_STRINGS = [
   'THE PULL REQUEST',
@@ -31,6 +35,7 @@ const PAGE_STRINGS = [
   'ALL DRILLS',
   '◀ FRANCISCO SOLTERO',
   FOOTER,
+  AUTO_DONE,
 ]
 
 interface Failure {
@@ -55,6 +60,15 @@ function unescapeHtml(html: string): string {
 function elementTexts(html: string, tag: string): string[] {
   const re = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, 'g')
   return [...html.matchAll(re)].map((m) => m[1].replace(/<[^>]*>/g, '').trim())
+}
+
+/**
+ * `html` without its `<script …>…</script>` elements. The workspace's exercise (checks
+ * included) travels to the browser inside the React Server Components payload, which
+ * lives in script elements; only the visible markup must not show the checks.
+ */
+function withoutScripts(html: string): string {
+  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
 }
 
 /** The `it("…")` names in a check file's source. */
@@ -104,9 +118,12 @@ function checkDrillPage(html: string, drill: Drill, drills: Drill[], index: numb
     if (j !== index + 1 && has(nextLink)) missing.push(`no link ${nextLink} (not the next drill)`)
   })
 
+  const visible = withoutScripts(html)
   for (const [file, source] of Object.entries(drill.checks)) {
-    if (has(file)) missing.push(`no check file name ${file}`)
-    for (const name of checkNames(source)) if (has(name)) missing.push(`no check name "${name}"`)
+    if (visible.includes(file)) missing.push(`no check file name ${file}`)
+    for (const name of checkNames(source)) {
+      if (visible.includes(name)) missing.push(`no check name "${name}"`)
+    }
   }
   if (/mark as done/i.test(html)) missing.push('no "mark as done" control')
 
@@ -131,6 +148,10 @@ function main(): number {
 
   const failures: Failure[] = []
   const read = (file: string) => unescapeHtml(fs.readFileSync(file, 'utf-8'))
+
+  if (!fs.existsSync(FRAME_FILE) || fs.statSync(FRAME_FILE).size === 0) {
+    failures.push({ page: '/drillbox/frame.html', what: 'frame page missing; run npm run frame' })
+  }
 
   for (const what of checkIndex(read(INDEX_HTML), drills)) failures.push({ page: '/drills', what })
 
