@@ -1,7 +1,8 @@
 // scripts/drills-pages-check.mts — `npm run test:drills-pages`
 // Checks the HTML that `next build` wrote for the /drills section: the index page and
 // one page per drill on disk, nothing more, plus the sandbox frame page the workspace
-// loads (public/drillbox/frame.html, written by `npm run frame`). Reads files only. The
+// loads (public/drillbox/frame.html, written by `npm run frame`) and the built sitemap
+// (/drills and every drill URL listed exactly once). Reads files only. The
 // expected strings are compared against the HTML after unescaping entities, so `<`, `>`
 // and `&` match literally. Prints `drills pages: <n> OK` (n = drills + 1) and exits 0, or
 // one `drills pages: FAILED <page> — <what is missing>` line per problem and exits 1.
@@ -17,6 +18,7 @@ const APP_DIR = path.join(ROOT, '.next', 'server', 'app')
 const INDEX_HTML = path.join(APP_DIR, 'drills.html')
 const PAGES_DIR = path.join(APP_DIR, 'drills')
 const FRAME_FILE = path.join(ROOT, 'public', 'drillbox', 'frame.html')
+const SITEMAP_FILE = path.join(APP_DIR, 'sitemap.xml.body')
 
 // Must match DRILLS_INTRO in drills/components/DrillList.tsx (a .tsx module node cannot load).
 const INTRO =
@@ -76,6 +78,31 @@ function withoutScripts(html: string): string {
 /** The `it("…")` names in a check file's source. */
 function checkNames(source: string): string[] {
   return [...source.matchAll(/\bit\(\s*(["'`])((?:\\.|(?!\1).)*)\1/g)].map((m) => m[2])
+}
+
+/**
+ * Problems with the drills entries of the built sitemap: `/drills` and `/drills/<slug>`
+ * for every drill must each appear in exactly one `<loc>`. URLs are compared by path, so
+ * the origin the build used (NEXT_PUBLIC_SITE_URL, VERCEL_URL or localhost) does not matter.
+ */
+function checkSitemap(xml: string, drills: Drill[]): string[] {
+  const counts = new Map<string, number>()
+  for (const m of xml.matchAll(/<loc>([\s\S]*?)<\/loc>/g)) {
+    let pathname: string
+    try {
+      pathname = new URL(unescapeHtml(m[1].trim())).pathname
+    } catch {
+      continue
+    }
+    counts.set(pathname, (counts.get(pathname) ?? 0) + 1)
+  }
+  const problems: string[] = []
+  for (const p of ['/drills', ...drills.map((d) => `/drills/${d.meta.slug}`)]) {
+    const n = counts.get(p) ?? 0
+    if (n === 0) problems.push(`URL ${p} missing`)
+    if (n > 1) problems.push(`URL ${p} listed ${n} times`)
+  }
+  return problems
 }
 
 function checkIndex(html: string, drills: Drill[]): string[] {
@@ -153,6 +180,12 @@ function main(): number {
 
   if (!fs.existsSync(FRAME_FILE) || fs.statSync(FRAME_FILE).size === 0) {
     failures.push({ page: '/drillbox/frame.html', what: 'frame page missing; run npm run frame' })
+  }
+
+  if (!fs.existsSync(SITEMAP_FILE)) {
+    failures.push({ page: '/sitemap.xml', what: `built sitemap ${path.relative(ROOT, SITEMAP_FILE)} missing` })
+  } else {
+    for (const what of checkSitemap(readRaw(SITEMAP_FILE), drills)) failures.push({ page: '/sitemap.xml', what })
   }
 
   for (const what of checkIndex(unescapeHtml(readRaw(INDEX_HTML)), drills)) failures.push({ page: '/drills', what })

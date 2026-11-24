@@ -367,6 +367,7 @@ class Component extends DCLogic {
     const quests = [
       { title: 'Multiplayer AI', rarity: 'EPIC', color: '#ffcd75', status: 'OPEN SOURCE', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●●', blurb: "A self-hosted team hub for agent-assisted engineering — teammates watch each other's live coding-agent sessions, take the wheel mid-task, and answer permission gates across machines. Hub, relay, and web client in TypeScript.", tags: ['TypeScript', 'WebSockets', 'Claude Agent SDK'], reward: 'hand off a live agent mid-run', href: 'https://github.com/FrankieSoltero/multiplayer_ai', sprite: 'sprites/multiplayer-ai.png', spriteBg: '#406dbd' },
       { title: 'Room Planner', rarity: 'RARE', color: '#73eff7', status: 'LIVE', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●○', blurb: "Draw a room to scale with doors and windows, drop in furniture, and check the fit in 3D. Pieces stop at the walls, overlaps are flagged, and every edit can be undone. Share a plan as a link, with no server behind it, or save it as a picture.", tags: ['React', 'three.js', 'TypeScript'], reward: 'playable and shareable in your browser', href: 'https://github.com/FrankieSoltero/portfolio/tree/main/room-planner', play: '/room-planner' },
+      { title: 'React Review Drills', rarity: 'RARE', color: '#a7f070', status: 'LIVE', statusColor: '#a7f070', diff: 'DIFFICULTY ●●○○', blurb: "Ten pull requests that run but are not ready to merge. Read the brief, fix the component in an editor in your browser, and watch the checks turn green. One a day, with a streak kept on your device.", tags: ['React', 'TypeScript'], reward: 'ten drills, playable in your browser', href: 'https://github.com/FrankieSoltero/portfolio/tree/main/content/drills', play: '/drills' },
       { title: 'Internal Finance Tool', rarity: 'EPIC', color: '#ef7d57', status: 'DEPLOYED', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●●', blurb: 'Full-stack finance tool serving a 60-person client team — Fastify + TypeScript backend, Vite + React frontend, deployed on Google Cloud.', tags: ['Fastify', 'React', 'GCP'], reward: '60-person team in prod' },
       { title: 'E-Commerce Platform', rarity: 'EPIC', color: '#41a6f6', status: 'SHIPPED', statusColor: '#a7f070', diff: 'DIFFICULTY ●●●○', blurb: 'TypeScript / Next.js storefront with live Authorize.net payments, rate limiting, and Sentry monitoring. Increased company revenue 20%.', tags: ['Next.js', 'Authorize.net', 'PostgreSQL'], reward: '+20% revenue' },
       { title: 'Salesforce Migration', rarity: 'BOSS', color: '#b13e53', status: 'CLEARED', statusColor: '#94b0c2', diff: 'DIFFICULTY ●●●●', blurb: "Re-architected a billion-dollar mineral company's infrastructure, data, and workflows into a freshly provisioned Salesforce org.", tags: ['Salesforce', 'Data', 'Architecture'], reward: '$1B+ client' },
@@ -394,7 +395,8 @@ class Component extends DCLogic {
       { label: 'ABOUT', href: '#about' },
       { label: 'CONTACT', href: '#contact' },
       { label: 'PAPERS', href: '/papers' },
-      { label: 'PLANNER', href: '/room-planner' }
+      { label: 'PLANNER', href: '/room-planner' },
+      { label: 'DRILLS', href: '/drills' }
     ];
 
     return {
