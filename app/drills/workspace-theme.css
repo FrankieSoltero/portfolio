@@ -1,0 +1,324 @@
+/* app/drills/workspace-theme.css
+   Hybrid 8-bit skin for the Drillbox workspace on /drills/<slug>: the workspace's --dbx-*
+   theme variables, resets that keep drills.css's element rules out of the workspace, and
+   the overrides no variable covers. Adapted from the Drillbox demo's worked theme
+   (drillbox/demo/theme-8bit.css, its "Workspace variables" and "Workspace overrides"
+   blocks), with `.theme-8bit` replaced by `.drills` and font names by the next/font
+   variables app/drills/layout.tsx sets.
+
+   Imported by app/drills/layout.tsx after drills.css. drillbox/workspace.css comes in later
+   (it is part of the lazily loaded workspace chunk), so every rule here wins by
+   specificity, never by load order: `.drills .dbx-…` (two classes) beats the workspace's
+   single-class rules and drills.css's `.drills <element>` rules (one class, one element).
+   Every selector starts with `.drills`; square corners and hard-edged frames only. */
+
+/* ── Workspace variables ──────────────────────────────────────────────── */
+
+/* The defaults are declared on .dbx-workspace itself, so these need the extra class. */
+.drills .dbx-workspace {
+  --dbx-bg: var(--night);
+  --dbx-panel: var(--panel);
+  --dbx-panel-raised: var(--deep);
+  --dbx-text: var(--white);
+  --dbx-text-dim: var(--mist);
+  --dbx-rule: #000;
+  --dbx-rule-width: 4px;
+  --dbx-list-rule: var(--dim);
+  --dbx-accent: var(--cyan);
+  --dbx-preview-bg: var(--white);
+
+  --dbx-pass: var(--slime);
+  --dbx-fail: #b13e53;
+  --dbx-fail-text: var(--white);
+  --dbx-warn: var(--gold);
+
+  --dbx-primary-bg: var(--slime);
+  --dbx-primary-text: var(--night);
+  --dbx-secondary-bg: var(--dim);
+  --dbx-secondary-text: var(--white);
+  --dbx-focus: var(--gold);
+
+  --dbx-frame: 0 -4px #000, 0 4px #000, -4px 0 #000, 4px 0 #000;
+  --dbx-radius: 0;
+
+  --dbx-font-title: var(--font-pixel), monospace;
+  --dbx-font-label: var(--font-mono), monospace;
+  --dbx-font-body: var(--font-sans), system-ui, sans-serif;
+  --dbx-font-code: var(--font-code), monospace;
+  --dbx-title-size: 13px;
+  --dbx-label-size: 20px;
+  --dbx-body-size: 16px;
+  --dbx-button-size: 11px;
+  --dbx-badge-size: 10px;
+  --dbx-code-size: 14px;
+  --dbx-detail-size: 13px;
+  --dbx-weight-strong: 400;
+  --dbx-weight-medium: 400;
+
+  --dbx-transition: 0s;
+
+  --dbx-editor-gutter-bg: var(--panel);
+  --dbx-editor-gutter-text: var(--mist);
+  --dbx-editor-active-line: rgba(41, 54, 111, 0.45);
+  --dbx-editor-selection: var(--deep);
+  --dbx-editor-caret: var(--gold);
+  --dbx-editor-bracket: var(--steel);
+
+  --dbx-syn-keyword: var(--ember);
+  --dbx-syn-string: var(--slime);
+  --dbx-syn-comment: var(--mist);
+  --dbx-syn-number: var(--gold);
+  --dbx-syn-type: var(--cyan);
+  --dbx-syn-function: var(--cyan);
+  --dbx-syn-tag: var(--ember);
+  --dbx-syn-attribute: var(--gold);
+  --dbx-syn-punctuation: var(--mist);
+}
+
+/* ── Site rules kept out of the workspace ─────────────────────────────── */
+
+/* drills.css styles bare elements under .drills (one class and one element, which beats
+   the workspace's one-class rules). These resets undo them inside the workspace; :where()
+   keeps each at two classes. Where a reset also undoes one of the workspace's own values,
+   the rule after it restores that value. */
+
+/* Undoes `.drills h1, .drills h2, .drills h3`, `.drills h2` and `.drills h3` (drills.css,
+   "base type"): pixel face, weight, colour, size, line height, margins, balanced wrap. */
+.drills .dbx-workspace :where(h2, h3) {
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+  text-wrap: wrap;
+}
+
+/* Restores the workspace title's own values (workspace.css `.dbx-title`) over that reset. */
+.drills .dbx-title {
+  font-family: var(--dbx-font-title);
+  font-size: var(--dbx-title-size);
+  font-weight: var(--dbx-weight-strong);
+  line-height: 1.4;
+  color: var(--dbx-accent);
+}
+
+/* Restores the panel bars' own values (workspace.css `.dbx-panel-bar`) over that reset. */
+.drills .dbx-panel-bar {
+  font-family: var(--dbx-font-label);
+  font-size: var(--dbx-label-size);
+  font-weight: var(--dbx-weight-strong);
+  line-height: 1.3;
+  color: var(--dbx-text-dim);
+}
+
+/* Undoes `.drills p` (drills.css, "base type"): bottom margin and 62ch measure. */
+.drills .dbx-workspace :where(p) {
+  margin: 0;
+  max-width: none;
+}
+
+/* Restores the hidden status line's -1px margin (workspace.css
+   `.dbx-status:not([data-state="compile-error"])`), which the reset above ties with. */
+.drills .dbx-status:not([data-state="compile-error"]) {
+  margin: -1px;
+}
+
+/* Undoes `.drills ul, .drills ol` (drills.css, "base type"): left padding and bottom
+   margin; every list in the workspace is unbulleted. */
+.drills .dbx-workspace :where(ul, ol) {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+/* Restores the problems list's own padding (workspace.css `.dbx-problems`). */
+.drills .dbx-problems {
+  padding: 6px;
+}
+
+/* Undoes `.drills li` (drills.css, "base type"): bottom margin. */
+.drills .dbx-workspace :where(li) {
+  margin: 0;
+}
+
+/* Undoes `.drills a` and `.drills a:hover` (drills.css, "links & focus"): the workspace
+   draws links in its accent colour with a plain underline. */
+.drills .dbx-workspace :where(a),
+.drills .dbx-workspace :where(a):hover {
+  color: var(--dbx-accent);
+  text-decoration-thickness: auto;
+  text-underline-offset: auto;
+}
+
+/* Undoes `.drills code, .drills pre` (drills.css, "base type"): preformatted text in the
+   workspace uses the workspace's code face. */
+.drills .dbx-workspace :where(pre) {
+  font-family: var(--dbx-font-code);
+}
+
+/* Undoes `.drills :focus-visible` (drills.css, "links & focus"): the workspace's focus
+   outline (2px, --dbx-focus) instead of the site's 3px cyan one. */
+.drills .dbx-workspace :focus-visible {
+  outline: 2px solid var(--dbx-focus);
+  outline-offset: 2px;
+}
+
+/* Restores the console's inset outline (workspace.css `.dbx-console:focus-visible`). */
+.drills .dbx-console:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Undoes `.drills :focus-visible` on CodeMirror's content element, which draws no outline
+   of its own: the editor's focus border (`.dbx-editor::after`, below) is its indicator. */
+.drills .dbx-editor .cm-content:focus-visible {
+  outline: none;
+}
+
+/* Undoes `.drills ::selection` (drills.css, top): selected text in the workspace is light
+   text on the editor's selection colour, not dark text on yellow. */
+.drills .dbx-workspace ::selection {
+  background-color: var(--dbx-editor-selection);
+  color: var(--dbx-text);
+}
+
+/* ── Workspace overrides (no variable covers these) ───────────────────── */
+
+/* The workspace sits on the page itself, aligned with the title. */
+.drills .dbx-workspace {
+  padding: 0;
+  line-height: 1.6;
+}
+
+/* Pixel faces are drawn on their own grid: no extra tracking anywhere. */
+.drills .dbx-title,
+.drills .dbx-button,
+.drills .dbx-status,
+.drills .dbx-panel-bar,
+.drills .dbx-checks-summary,
+.drills .dbx-tab-readonly,
+.drills .dbx-badge {
+  letter-spacing: 0;
+}
+
+.drills .dbx-actions {
+  gap: 16px;
+}
+
+.drills .dbx-button {
+  padding: 12px 16px;
+  line-height: 1.6;
+}
+
+.drills .dbx-main {
+  gap: 24px;
+}
+
+/* Panel bars, the checks summary and the tabs share one height (the mockup's 10 px + 1.6 line). */
+.drills .dbx-panel-bar,
+.drills .dbx-checks-summary {
+  min-height: 52px;
+  padding: 0 16px;
+  line-height: 1.6;
+}
+
+/* Tabs fill the bar edge to edge, like the mockup; the focus ring is drawn inside the tab. */
+.drills .dbx-tabs {
+  gap: 0;
+  padding: 0;
+}
+
+.drills .dbx-tab {
+  min-height: 52px;
+  padding: 0 16px;
+}
+
+.drills .dbx-tab[aria-selected="true"] {
+  box-shadow: none;
+}
+
+.drills .dbx-tab:focus-visible {
+  outline-offset: -4px;
+}
+
+.drills .dbx-tab-readonly {
+  font-size: 1em;
+}
+
+.drills .dbx-checks-summary {
+  color: var(--dbx-warn);
+}
+
+.drills .dbx-checks {
+  padding: 8px 16px;
+}
+
+.drills .dbx-check {
+  gap: 4px 16px;
+  padding: 10px 0;
+}
+
+.drills .dbx-badge {
+  min-width: 48px;
+  padding: 4px;
+  line-height: 1;
+}
+
+.drills .dbx-badge-pass {
+  box-shadow: none;
+}
+
+/* The compile-error status line (the stylesheet hides it in every other state): tighter. */
+.drills .dbx-status[data-state="compile-error"] {
+  line-height: 1.2;
+}
+
+/*
+ * The editor's focus indicator is a border drawn by .dbx-editor::after over the whole editor,
+ * above CodeMirror's sticky gutters (z-index 200) and below its panels (300) and tooltips
+ * (500), so all four sides show at any scroll position. It never takes clicks. The outline
+ * the stylesheet puts on .cm-editor is turned off, so there is exactly one indicator.
+ */
+.drills .dbx-editor {
+  position: relative;
+}
+
+.drills .dbx-editor .cm-editor:has(.cm-content:focus-visible) {
+  outline: none;
+}
+
+.drills .dbx-editor:has(.cm-content:focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 250;
+  border: 2px solid var(--dbx-focus);
+  pointer-events: none;
+}
+
+@supports not selector(:has(*)) {
+  .drills .dbx-editor .cm-editor.cm-focused {
+    outline: none;
+  }
+
+  .drills .dbx-editor:focus-within::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 250;
+    border: 2px solid var(--dbx-focus);
+    pointer-events: none;
+  }
+}
+
+/* Narrow screens: the stacked editor and preview are as far apart as the preview and checks. */
+@media (max-width: 699.98px) {
+  .drills .dbx-main {
+    gap: 16px;
+  }
+}
+
+/* Code line height (the stylesheet fixes 1.6 on the scroller; no variable covers it). */
+.drills .dbx-editor .cm-editor .cm-scroller {
+  line-height: 1.7;
+}

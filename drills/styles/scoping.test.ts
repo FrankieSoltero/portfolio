@@ -1,7 +1,8 @@
-// Keeps app/drills/drills.css inside its section: every selector starts with the
+// Keeps the drills stylesheets (app/drills/drills.css and the workspace skin,
+// app/drills/workspace-theme.css) inside their section: every selector starts with the
 // `.drills` root class, every @keyframes name starts with `drills-`, and the skin's
 // banned styles (rounded corners, blurred shadows) never appear. CSS processing is off
-// under vitest, so the file is parsed as text.
+// under vitest, so the files are parsed as text.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -83,7 +84,11 @@ function scopeViolations(source: string): { violations: string[]; checked: numbe
   return { violations, checked };
 }
 
-const DRILLS_CSS = fs.readFileSync(path.join(process.cwd(), "app", "drills", "drills.css"), "utf-8");
+/** The drills stylesheets, by file name. */
+const STYLESHEETS = ["drills.css", "workspace-theme.css"].map((name) => ({
+  name,
+  css: fs.readFileSync(path.join(process.cwd(), "app", "drills", name), "utf-8"),
+}));
 
 describe("drills.css scoping", () => {
   it("flags selectors and keyframes outside the .drills scope", () => {
@@ -103,14 +108,19 @@ describe("drills.css scoping", () => {
     ]);
   });
 
-  it("starts every selector with .drills and every @keyframes name with drills-", () => {
-    const { violations, checked } = scopeViolations(DRILLS_CSS);
-    expect(checked).toBeGreaterThan(0);
-    expect(violations).toEqual([]);
-  });
+  it.each(STYLESHEETS)(
+    "$name starts every selector with .drills and every @keyframes name with drills-",
+    ({ css }) => {
+      const { violations, checked } = scopeViolations(css);
+      expect(checked).toBeGreaterThan(0);
+      expect(violations).toEqual([]);
+    },
+  );
 
-  it("uses no border-radius and no blur()", () => {
-    expect(DRILLS_CSS).not.toMatch(/border-radius/);
-    expect(DRILLS_CSS).not.toMatch(/blur\(/);
+  // `--dbx-radius: 0` (the workspace's corner-radius variable) is allowed: the pattern
+  // matches only the `border-radius` property itself.
+  it.each(STYLESHEETS)("$name uses no border-radius and no blur()", ({ css }) => {
+    expect(css).not.toMatch(/border-radius/);
+    expect(css).not.toMatch(/blur\(/);
   });
 });

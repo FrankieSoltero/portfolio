@@ -3,10 +3,12 @@
 // `next start` on 127.0.0.1:4310 (never port 3000, where an unrelated server may run).
 //
 // Parallelism: tests in one file run in order in one worker (fullyParallel is off), and
-// each browser project is its own unit, so with three workers each browser has one page
-// open at a time. In Firefox and WebKit the sandbox frame shares the page's thread, so a
-// checks run stalls that page for seconds; several such pages at once on one laptop, next
-// to the server, risk timeouts that say nothing about the site.
+// each browser project is limited to one worker (`workers: 1` on the project), so the
+// spec files of one browser run one after another and each browser has one page open at
+// a time, while the three browsers run side by side. In Firefox and WebKit the sandbox
+// frame shares the page's thread, so a checks run stalls that page for seconds; several
+// such pages at once on one laptop, next to the server, risk timeouts that say nothing
+// about the site.
 
 import { defineConfig } from "@playwright/test";
 
@@ -28,8 +30,8 @@ export default defineConfig({
     timeout: 240_000,
   },
   projects: [
-    { name: "chromium", use: { browserName: "chromium" } },
-    { name: "firefox", use: { browserName: "firefox" } },
-    { name: "webkit", use: { browserName: "webkit" } },
+    { name: "chromium", use: { browserName: "chromium" }, workers: 1 },
+    { name: "firefox", use: { browserName: "firefox" }, workers: 1 },
+    { name: "webkit", use: { browserName: "webkit" }, workers: 1 },
   ],
 });

@@ -13,6 +13,7 @@ import { DrillsShell } from "@/drills/components/DrillsShell";
 import { drillsMetadata } from "@/drills/metadata";
 import "../hybrid-skin.css";
 import "./drills.css";
+import "./workspace-theme.css";
 
 const plexSans = IBM_Plex_Sans({
   subsets: ["latin"],
