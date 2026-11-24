@@ -206,6 +206,7 @@
   grid-template-columns: 56px minmax(0, 1fr);
   grid-template-areas:
     "num title"
+    "num status"
     "num summary"
     "num meta";
   column-gap: 24px;
@@ -285,6 +286,57 @@
 
 .drills .drills-pip-empty {
   color: var(--steel);
+}
+
+/* ---- progress: index badges and per-entry status (empty until progress is read) ---- */
+
+.drills .drills-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-family: var(--font-mono), monospace;
+  font-size: 22px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+/* an empty badges paragraph (before progress is read) takes no space below the intro */
+.drills .drills-badges:not(:empty) {
+  margin-top: 1.25rem;
+}
+
+.drills .drills-badge {
+  background: var(--panel);
+  box-shadow: 0 -3px #000, 0 3px #000, -3px 0 #000, 3px 0 #000;
+  padding: 6px 14px;
+}
+
+.drills .drills-badge-streak {
+  color: var(--slime);
+}
+
+.drills .drills-badge-done {
+  color: var(--gold);
+}
+
+.drills .drills-entry-status {
+  grid-area: status;
+  justify-self: start;
+  font-family: var(--font-pixel), monospace;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.drills .drills-status-done {
+  color: var(--slime);
+}
+
+.drills .drills-status-helped {
+  color: var(--gold);
+}
+
+.drills .drills-status-today {
+  color: var(--cyan);
 }
 
 /* ---- drill page ---- */
@@ -582,6 +634,7 @@
     grid-template-areas:
       "num"
       "title"
+      "status"
       "summary"
       "meta";
   }

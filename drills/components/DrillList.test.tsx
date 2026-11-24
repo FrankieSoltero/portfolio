@@ -1,5 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { renderToString } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PROGRESS_KEY, type DrillProgress, type DrillRecord } from "@/drills/progress";
 import type { DrillMeta } from "@/lib/drills";
 import { DrillList } from "./DrillList";
 
@@ -21,6 +23,35 @@ function meta(order: number, overrides: Partial<DrillMeta> = {}): DrillMeta {
 }
 
 const TEN: DrillMeta[] = Array.from({ length: 10 }, (_, i) => meta(i + 1));
+
+function seed(drills: Record<string, DrillRecord>): void {
+  const progress: DrillProgress = { version: 1, drills };
+  window.localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+}
+
+/** Status text of each entry, in list order. */
+function statuses(): string[] {
+  return within(screen.getByRole("list"))
+    .getAllByRole("listitem")
+    .map((item) => item.querySelector(".drills-entry-status")?.textContent ?? "missing");
+}
+
+function badgeTexts(container: HTMLElement): string[] {
+  return [...container.querySelectorAll(".drills-index-header .drills-badge")].map(
+    (b) => b.textContent ?? "",
+  );
+}
+
+beforeEach(() => {
+  window.localStorage.clear();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 10, 19, 9, 30));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  window.localStorage.clear();
+});
 
 describe("DrillList", () => {
   it("shows the heading and intro", () => {
@@ -70,10 +101,49 @@ describe("DrillList", () => {
     expect(pips.querySelectorAll(".drills-pip-empty")).toHaveLength(3 - n);
   });
 
-  it("shows no progress UI", () => {
+  it("renders the progress elements empty before storage is read, like the server", () => {
+    seed({ "drill-1": { completedOn: "2026-11-19", revealed: false } });
+    const html = renderToString(<DrillList drills={TEN} />);
+    expect(html).toContain('<p class="drills-badges"></p>');
+    expect(html.match(/<span class="drills-entry-status"><\/span>/g)).toHaveLength(10);
+    expect(html).not.toMatch(/STREAK|DONE|TODAY/);
+  });
+
+  it("places the badges after the intro and each status after the entry title", () => {
     const { container } = render(<DrillList drills={TEN} />);
-    expect(container).not.toHaveTextContent(/streak|done|today|solved|complete/i);
-    expect(container.querySelector("[class*='status'], [class*='badge']")).toBeNull();
+    const intro = container.querySelector("header.drills-index-header > p.drills-intro");
+    expect(intro?.nextElementSibling).toHaveClass("drills-badges");
+    for (const item of container.querySelectorAll("li.drills-entry")) {
+      const title = item.querySelector(":scope > h2.drills-entry-title");
+      expect(title?.nextElementSibling).toHaveClass("drills-entry-status");
+    }
+  });
+
+  it("with nothing done: first drill is TODAY, streak 0, 0 / 10 done", () => {
+    const { container } = render(<DrillList drills={TEN} />);
+    expect(statuses()).toEqual(["TODAY", "", "", "", "", "", "", "", "", ""]);
+    expect(badgeTexts(container)).toEqual(["STREAK: 0 DAYS", "0 / 10 DONE"]);
+  });
+
+  it("with some done: done drills are marked and the first not done is TODAY", () => {
+    seed({
+      "drill-1": { completedOn: "2026-11-18", revealed: false },
+      "drill-2": { completedOn: "2026-11-19", revealed: true },
+      "drill-4": { completedOn: "2026-11-19", revealed: false },
+    });
+    const { container } = render(<DrillList drills={TEN} />);
+    expect(statuses()).toEqual(["DONE", "DONE WITH HELP", "TODAY", "DONE", "", "", "", "", "", ""]);
+    expect(badgeTexts(container)).toEqual(["STREAK: 2 DAYS", "3 / 10 DONE"]);
+  });
+
+  it("with all done: no entry is TODAY and the count is 10 / 10", () => {
+    const drills: Record<string, DrillRecord> = {};
+    for (const d of TEN) drills[d.slug] = { completedOn: "2026-11-19", revealed: false };
+    seed(drills);
+    const { container } = render(<DrillList drills={TEN} />);
+    expect(statuses()).toEqual(Array.from({ length: 10 }, () => "DONE"));
+    expect(container).not.toHaveTextContent("TODAY");
+    expect(badgeTexts(container)).toEqual(["STREAK: 1 DAY", "10 / 10 DONE"]);
   });
 
   it("shows an empty state when there are no drills", () => {
