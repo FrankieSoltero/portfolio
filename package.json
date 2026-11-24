@@ -10,8 +10,9 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.drills.json",
-    "lint": "eslint --no-error-on-unmatched-pattern room-planner app/room-planner drills app/drills lib/drills.ts scripts content/drills/*/solution",
+    "lint": "eslint --no-error-on-unmatched-pattern room-planner app/room-planner drills app/drills lib/drills.ts scripts content/drills/*/solution e2e playwright.config.ts",
     "test": "vitest run --passWithNoTests",
+    "test:e2e": "playwright test",
     "test:drills": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/drills-fairness.mts",
     "test:drills-pages": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/drills-pages-check.mts",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:drills && npm run build && npm run test:drills-pages",
@@ -40,6 +41,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.65.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.10",
