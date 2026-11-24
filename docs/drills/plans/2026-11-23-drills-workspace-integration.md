@@ -156,7 +156,8 @@ Every task inherits these.
 | 8. Browser tests: behaviour | `package.json`, `package-lock.json`, `playwright.config.ts`, `e2e/drills.spec.ts`, `e2e/helpers.ts`, `.gitignore` | 7 | judgment |
 | 9. Workspace skin | `app/drills/workspace-theme.css`, `app/drills/layout.tsx`, `drills/styles/scoping.test.ts`, `e2e/drills-theme.spec.ts`, `docs/drills/workspace-visual-review.md` | 8 | judgment |
 | 10. Navigation, quest card, sitemap | `public/index.html`, `app/sitemap.ts`, `scripts/drills-pages-check.mts` | 7 | standard |
-| 11. Docs | `docs/drills/README.md`, `docs/drills/mistakes-and-fixes.md` | 9, 10 | standard |
+| 11. Docs | `docs/drills/README.md`, `docs/drills/mistakes-and-fixes.md` | 9, 10, 12 | standard |
+| 12. Wide drill page (amendment) | `app/drills/drills.css`, `e2e/drills-theme.spec.ts`, `docs/drills/workspace-visual-review.md`, `drills/styles/tokens.test.ts` | 9 | judgment |
 
 Shared writes outside the Files column: every task runs `npm run check`, which writes
 `.next/` and `public/drillbox/` (after Task 2). Tasks 1, 2 and 8 write `package.json` (1 and
@@ -532,6 +533,51 @@ at; the verdict on the look is the owner's and does not gate the plan.
 **Verify:** `caffeinate -dimsu npm run test:e2e` → 0 failed; `grep -c "^|" docs/drills/workspace-visual-review.md` → 13 (header, separator, eleven rows, in the order listed above); `npm run check` → exit 0.
 **Commit:** `feat(drills): hybrid 8-bit skin for the workspace`
 
+## Task 12: Wide drill page (amendment, added 2026-11-23 during execution)
+
+**Why this was added:** Task 9's screenshots showed that the drill page sits in the
+section's 44rem (704 px) reading column, so at 1280 px wide the editor and the live
+preview stack and the badges drop under the title. The mockup the owner approved has a
+1160 px column with the editor and preview side by side, and the owner's standing direction
+is that this page matches that mockup. The controller added this task; it was not part of
+the plan the review council passed (the task review and the whole-branch review cover it).
+It runs before Task 11.
+
+**Traces to:** spec "Drill page" (editor left, live preview right, checks below) and the
+approved mockup.
+
+**Files**
+- Modify: `app/drills/drills.css`
+- Modify: `e2e/drills-theme.spec.ts`
+- Modify: `docs/drills/workspace-visual-review.md`
+- Modify: `drills/styles/tokens.test.ts`
+
+**Interfaces**
+- Consumes: the page structure of Task 7 (`article.drills-drill`, `header.drills-drill-header`,
+  `section.drills-brief`, `section.drills-workspace`); the shell (`.drills-header nav`,
+  `.drills-page`, `.drills-footer p`); the workspace's own layout (it places editor and
+  preview side by side when its container is wide enough and stacks them under 700 px of
+  viewport width).
+
+**Behavior**
+
+| Case | Input / state | Expected |
+|------|---------------|----------|
+| Wide column on drill pages only | a page that contains `article.drills-drill` | `.drills-header nav`, `.drills-page` and `.drills-footer p` have `max-width: 1160px` and side padding 24px (selector built on `.drills:has(.drills-drill)`); on `/drills` (the index) all three keep `max-width: 44rem` exactly as now |
+| Side by side | `/drills/like-button` at 1280 × 900 | the editor panel and the preview panel have the same `top` (within 1 px); the editor is left of the preview; the editor is wider than the preview; the checks panel starts below both and spans the full column width (its left edge equals the editor's, its right edge equals the preview's, within 1 px) |
+| Badges beside the title | same page, 1280 wide | the badges' right edge is within 1 px of the column's right edge and their bottom edge is level with the meta line's bottom edge (within 8 px); they are not below the meta line |
+| Readable prose | the brief, the hints, the fix lead, the explanation (`.drills-prose`, `.drills-hints`, `.drills-fix-lead`, `.drills-auto-done`) | each has `max-width: 760px`; revealed solution code (`.drills-files`) may use the full column |
+| Still stacks when narrow | 390 × 844 | unchanged from Task 9: no sideways page scroll; editor, preview and checks stack with equal left edges |
+| Mid width | 900 × 900 | no sideways page scroll; the page column is the viewport minus the padding |
+| Header and footer text | — | sizes and colours are NOT changed here (they follow the `/papers` chrome); only the column width and side padding change on drill pages |
+| Index untouched | `/drills` at 1280 | `.drills-page` computed `max-width` is 704px; a screenshot `test-results/drills-index-1280.png` is written (chromium) |
+| Screenshots | chromium | `test-results/drill-1280.png` and `drill-390.png` are re-taken by the same spec |
+| Visual review | `docs/drills/workspace-visual-review.md` | the rows for page header, title/meta/badges, the pull request, editor, live preview, checks, neighbour links and footer, and narrow layout are rewritten from the new screenshots; the remaining differences from the mockup stay listed honestly; still eleven rows in the same order |
+| Token test | `drills/styles/tokens.test.ts` | changed only if it pins a value this task changes; otherwise untouched (say which in the report) |
+
+**Verify:** `caffeinate -dimsu npm run test:e2e` → 0 failed in three browsers (Task 8 and Task 9 tests included); `grep -c "^|" docs/drills/workspace-visual-review.md` → 13; `npm run check` → exit 0 with `drills pages: 11 OK`.
+**Commit:** `feat(drills): wide drill page with editor and preview side by side`
+
 ## Task 10: Navigation, quest card, sitemap
 
 **Files**
@@ -581,7 +627,7 @@ fixes; spec "How code runs in the browser" (what the sandbox protects).
 
 ## Plan done when
 
-- Tasks 1 to 11 are each one commit on `drills-content`, and each task's Verify line passed.
+- Tasks 1 to 12 are each one commit on `drills-content`, and each task's Verify line passed.
 - On the final commit: `npm run check` exits 0 with `drills pages: 11 OK`, and
   `caffeinate -dimsu npm run test:e2e` reports 0 failed in Chromium, Firefox and WebKit.
 - Nothing listens on port 4310; `git status --short` prints nothing.
