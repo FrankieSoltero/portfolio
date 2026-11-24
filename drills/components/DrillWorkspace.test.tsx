@@ -50,11 +50,11 @@ function mockHostImport(): void {
 // The real Workspace starts CodeMirror and two sandboxed iframes; the browser tests cover
 // it. This stand-in records each mount and can throw while rendering.
 vi.mock("drillbox/workspace", async () => {
-  const { useEffect, useState } = await import("react");
+  const { useLayoutEffect, useState } = await import("react");
   function Workspace(props: WorkspaceProps): React.JSX.Element {
     if (control.throwOnRender) throw new Error("workspace crashed");
     const [mounted] = useState(() => ({ id: props.exercise.id, initialFiles: props.initialFiles }));
-    useEffect(() => {
+    useLayoutEffect(() => {
       control.mounts.push(mounted);
     }, [mounted]);
     return (

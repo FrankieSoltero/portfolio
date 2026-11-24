@@ -21,13 +21,13 @@ const fake = vi.hoisted(() => ({
 }));
 
 vi.mock("drillbox/workspace", async () => {
-  const { useEffect, useState } = await import("react");
+  const { useLayoutEffect, useState } = await import("react");
   function Workspace(props: WorkspaceProps): React.JSX.Element {
     fake.props = props;
     // What the props were when this instance mounted: the real workspace reads
     // initialFiles only then, so each remount is recorded once.
     const [mounted] = useState(() => ({ id: props.exercise.id, initialFiles: props.initialFiles }));
-    useEffect(() => {
+    useLayoutEffect(() => {
       fake.mounts.push(mounted);
     }, [mounted]);
     return (
