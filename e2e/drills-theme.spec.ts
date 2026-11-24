@@ -45,8 +45,15 @@ const SCREENSHOT_INDEX_1280 = "test-results/drills-index-1280.png";
 /** The shell's three column boxes: header links, page body and footer line. */
 const COLUMNS = [".drills-header nav", ".drills-page", ".drills-footer p"] as const;
 
-/** Drill pages: the mockup's column and side padding. */
-const DRILL_COLUMN = { maxWidth: "1160px", paddingLeft: "24px", paddingRight: "24px" };
+/**
+ * Drill pages: the mockup's column and side padding. The mockup's `max-width: 1160px` is a
+ * content width (it has no border-box reset); this column is border-box, so 1160 + 2 × 24.
+ */
+const DRILL_COLUMN = { maxWidth: "1208px", paddingLeft: "24px", paddingRight: "24px" };
+
+/** The mockup's measured editor and preview panel widths at 1280 wide. */
+const MOCKUP_EDITOR_WIDTH = 698;
+const MOCKUP_PREVIEW_WIDTH = 438;
 /** The index keeps the section's 44rem reading column and 1.25rem padding. */
 const INDEX_COLUMN = { maxWidth: "704px", paddingLeft: "20px", paddingRight: "20px" };
 
@@ -308,6 +315,8 @@ test("Editor and preview side by side at 1280", async ({ page }) => {
   expect(Math.abs(previewPanel.top - editorPanel.top)).toBeLessThanOrEqual(1);
   expect(editorPanel.right).toBeLessThanOrEqual(previewPanel.left);
   expect(editorPanel.right - editorPanel.left).toBeGreaterThan(previewPanel.right - previewPanel.left);
+  expect(Math.abs(editorPanel.right - editorPanel.left - MOCKUP_EDITOR_WIDTH)).toBeLessThanOrEqual(1);
+  expect(Math.abs(previewPanel.right - previewPanel.left - MOCKUP_PREVIEW_WIDTH)).toBeLessThanOrEqual(1);
 
   expect(checksPanel.top).toBeGreaterThanOrEqual(Math.max(editorPanel.bottom, previewPanel.bottom));
   expect(Math.abs(checksPanel.left - editorPanel.left)).toBeLessThanOrEqual(1);
@@ -337,6 +346,10 @@ test("Readable prose at 760px", async ({ page }) => {
   ]) {
     expect((await computed(page.locator(selector), ["maxWidth"])).maxWidth, selector).toBe(PROSE_WIDTH);
   }
+  // Brief paragraphs fill the 760 px measure, not the section-wide 62ch `p` limit; the
+  // second paragraph of like-button's brief is long enough to wrap at that width.
+  const paragraph = await box(page, ".drills-brief .drills-prose > p:nth-of-type(2)");
+  expect(Math.abs(paragraph.right - paragraph.left - parseFloat(PROSE_WIDTH))).toBeLessThanOrEqual(1);
   // Revealed solution code may use the whole column.
   expect((await computed(page.locator(".drills-solution-body .drills-files"), ["maxWidth"])).maxWidth).toBe(
     "none",

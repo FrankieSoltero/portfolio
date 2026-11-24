@@ -575,16 +575,17 @@
 
 /* ---- wide drill page ----
    Pages that hold a drill (the only ones with article.drills-drill) use the approved
-   mockup's 1160 px column with 24 px side padding, so the workspace has room to put the
-   editor and the live preview side by side and the badges fit beside the title. The index
-   keeps the 44rem reading column above; header and footer text are unchanged. Prose stays
-   at a readable 760 px inside the wide column; code (the workspace, revealed solution
-   files) uses all of it. */
+   mockup's 1160 px content column with 24 px side padding (1208 px here: the mockup's
+   1160 px excludes its padding, these boxes are border-box), so the workspace has room to
+   put the editor and the live preview side by side and the badges fit beside the title.
+   The index keeps the 44rem reading column above; header and footer text are unchanged.
+   Prose stays at a readable 760 px inside the wide column; code (the workspace, revealed
+   solution files) uses all of it. */
 
 .drills:has(.drills-drill) .drills-header nav,
 .drills:has(.drills-drill) .drills-page,
 .drills:has(.drills-drill) .drills-footer p {
-  max-width: 1160px;
+  max-width: 1208px;
   padding-left: 24px;
   padding-right: 24px;
 }
