@@ -11,15 +11,29 @@
 // The fallback is server markup (a ReactNode from the page), while next/dynamic's
 // `loading` component takes no props; it reads the fallback from a context instead.
 // Server HTML and the first client render are therefore the same: the section with the
-// fallback in it.
+// fallback in it. Once loaded, WorkspaceHost gets the fallback as a prop and keeps showing
+// it until it has read the draft, so the section never empties in between.
+//
+// RETRY unmounts its own button, so focus would fall to <body>: after a retry the section
+// becomes focusable (tabIndex -1, set only then, so the server HTML is unchanged) and takes
+// the focus.
 
 import dynamic from "next/dynamic";
-import { Component, createContext, useContext, useState, type ComponentType, type ReactNode } from "react";
+import {
+  Component,
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import type { Exercise } from "drillbox/schema";
 
 const ERROR_MESSAGE = "The workspace could not start. The starter code is below; your saved code is kept.";
 
-type HostProps = { exercise: Exercise };
+type HostProps = { exercise: Exercise; fallback?: ReactNode };
 
 const FallbackContext = createContext<ReactNode>(null);
 
@@ -81,13 +95,19 @@ export function DrillWorkspace({
   const [attempt, setAttempt] = useState<Attempt>(() => ({ key: 0, Host: loadHost() }));
   const retry = (): void => setAttempt((a) => ({ key: a.key + 1, Host: loadHost() }));
   const { Host } = attempt;
+  const section = useRef<HTMLElement>(null);
+  const retried = attempt.key > 0;
+
+  useEffect(() => {
+    if (retried) section.current?.focus();
+  }, [attempt.key, retried]);
 
   return (
-    <section className="drills-section drills-workspace">
+    <section ref={section} className="drills-section drills-workspace" tabIndex={retried ? -1 : undefined}>
       <FallbackContext.Provider value={fallback}>
         {/* A new key remounts the boundary and the workspace; the draft is re-read from storage. */}
         <WorkspaceErrorBoundary key={attempt.key} fallback={fallback} onRetry={retry}>
-          <Host exercise={exercise} />
+          <Host exercise={exercise} fallback={fallback} />
         </WorkspaceErrorBoundary>
       </FallbackContext.Provider>
     </section>

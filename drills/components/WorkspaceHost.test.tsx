@@ -132,6 +132,23 @@ describe("WorkspaceHost", () => {
     getItem.mockRestore();
   });
 
+  it("shows the fallback it is given until the draft is read, then the workspace", async () => {
+    render(<WorkspaceHost exercise={A} fallback={<h2>STARTER CODE</h2>} />);
+    expect(screen.getByRole("heading", { name: "STARTER CODE" })).toBeInTheDocument();
+    expect(loadDraft).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("workspace")).toBeNull();
+
+    await screen.findByTestId("workspace");
+    expect(loadDraft).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("heading", { name: "STARTER CODE" })).toBeNull();
+  });
+
+  it("renders nothing until the draft is read when it has no fallback", async () => {
+    const { container } = render(<WorkspaceHost exercise={A} />);
+    expect(container).toBeEmptyDOMElement();
+    await screen.findByTestId("workspace");
+  });
+
   it("reads the draft in an effect for the editable files only", async () => {
     await mount(A);
     expect(loadDraft).toHaveBeenCalledTimes(1);

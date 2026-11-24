@@ -6,10 +6,14 @@
 //
 // The workspace reads `initialFiles` only when it mounts, and storage only exists in the
 // browser, so the draft is read in an effect and the workspace is rendered only after
-// that (the first render is empty). Loaded on the client only, through DrillWorkspace.
+// that. Until then it renders `fallback` (DrillWorkspace passes the page's STARTER CODE
+// markup, the same one its loading state shows), or nothing when it has none. Loaded on
+// the client only, through DrillWorkspace. The fallback comes in as a prop, not from
+// DrillWorkspace's context: importing that module here would make the lazily loaded host
+// import the module that loads it.
 
 import "drillbox/workspace.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Exercise } from "drillbox/schema";
 import { Workspace, type WorkspaceProps } from "drillbox/workspace";
 import { loadDraft, saveDraft, type DraftFiles } from "@/drills/draft";
@@ -38,7 +42,14 @@ function allChecksPassed({ status, passed, failed, total }: RunSummary): boolean
   return status === "completed" && total > 0 && failed === 0 && passed === total;
 }
 
-export function WorkspaceHost({ exercise }: { exercise: Exercise }): React.JSX.Element | null {
+export function WorkspaceHost({
+  exercise,
+  fallback,
+}: {
+  exercise: Exercise;
+  /** Shown until the draft has been read; nothing when absent. */
+  fallback?: ReactNode;
+}): ReactNode {
   const { complete } = useProgress();
   const starter = useMemo(() => editableStarter(exercise), [exercise]);
   const [draft, setDraft] = useState<LoadedDraft | null>(null);
@@ -56,8 +67,8 @@ export function WorkspaceHost({ exercise }: { exercise: Exercise }): React.JSX.E
     };
   }, [exercise.id, starter]);
 
-  // Storage not read yet for this drill: render nothing rather than another drill's code.
-  if (draft?.id !== exercise.id) return null;
+  // Storage not read yet for this drill: the fallback, never another drill's code.
+  if (draft?.id !== exercise.id) return fallback ?? null;
 
   return (
     <Workspace

@@ -190,6 +190,42 @@ describe("DrillWorkspace", () => {
     expect(section).not.toHaveTextContent("STARTER CODE");
   });
 
+  it("keeps the fallback up until the workspace has read the draft", async () => {
+    control.hold();
+    const { container } = render(element());
+    const section = wrapper(container);
+    await settle();
+    // The headings in the section after every batch of DOM changes until the workspace is up.
+    const seen: string[][] = [];
+    const observer = new MutationObserver(() => seen.push(headings(section)));
+    observer.observe(section, { childList: true, subtree: true });
+
+    control.release();
+    await screen.findByTestId("workspace");
+    observer.disconnect();
+    expect(seen.length).toBeGreaterThan(0);
+    for (const batch of seen) expect(batch).not.toEqual([]);
+    expect(headings(section)).toEqual(["WORKSPACE"]);
+  });
+
+  it("moves focus to the workspace section after RETRY", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    control.failImport = true;
+    const { container } = render(element());
+    await screen.findByRole("alert");
+    const section = wrapper(container);
+    expect(section).not.toHaveAttribute("tabindex");
+
+    const retryButton = within(section).getByRole("button", { name: "RETRY" });
+    retryButton.focus();
+    control.failImport = false;
+    fireEvent.click(retryButton);
+    expect(section).toHaveAttribute("tabindex", "-1");
+    expect(section).toHaveFocus();
+    await screen.findByTestId("workspace");
+    expect(section).toHaveFocus();
+  });
+
   it("recovers from a workspace that throws while rendering, keeping the saved code", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const saved = { "App.tsx": "// my fix\n" };
