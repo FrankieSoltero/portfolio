@@ -1,0 +1,13 @@
+{
+  "title": "Notes by id",
+  "order": 3,
+  "summary": "Saving one note wipes the others.",
+  "skills": ["object state", "computed keys", "derived values"],
+  "difficulty": 1,
+  "minutes": 10,
+  "hints": [
+    "Look at what the Save and Clear buttons hand to the notes setter, and at where the Notes saved number comes from.",
+    "Saving builds a new notes object that holds only the task you just saved, so every other note is dropped. Clearing removes the note from the object React already holds and passes that same object back, so React sees nothing new. The saved count is its own number that goes up on every save, even a re-save, and never goes down.",
+    "Give the setter a new object every time: copy the old notes and set the one task's note by its id when saving, or copy them and leave that id out when clearing. Don't store the count at all; work it out from the notes object on each render."
+  ]
+}

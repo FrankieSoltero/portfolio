@@ -1,0 +1,13 @@
+{
+  "title": "Search filters",
+  "order": 9,
+  "summary": "One search turns into a flood of requests.",
+  "skills": ["effect dependencies", "object identity", "derived values"],
+  "difficulty": 2,
+  "minutes": 10,
+  "hints": [
+    "Look at the two effects: the one that runs the search and what it lists as its dependencies, and the one that sets the results count.",
+    "The search effect depends on an object that is built again on every render, so React sees a new dependency each time and runs the search again after every update, including the one caused by the search's own answer. The count is copied into its own state once, when the page first opens, while the list is still empty, and nothing copies it again.",
+    "Give the search effect the query text and the checkbox value themselves as dependencies, and build the filters object inside the effect, so the search runs only when one of them really changes. Drop the count state and its effect, and work the count out from the length of the results list while rendering."
+  ]
+}

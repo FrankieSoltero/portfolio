@@ -1,0 +1,13 @@
+{
+  "title": "Like button",
+  "order": 1,
+  "summary": "A like button that doesn't light up, and won't un-like.",
+  "skills": ["array state", "immutable updates"],
+  "difficulty": 1,
+  "minutes": 8,
+  "hints": [
+    "Look at the function the like buttons call: the branch that likes a post and the branch that un-likes one.",
+    "Liking changes the list React already holds and hands that same list back, so React sees nothing new and doesn't show the change. Un-liking keeps the clicked post and throws away every other one.",
+    "Treat state as read-only: always give React a brand-new array. To like, copy the old list with the new post added; to un-like, keep every post except the clicked one."
+  ]
+}

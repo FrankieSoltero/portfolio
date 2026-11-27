@@ -12,6 +12,7 @@ import {
   VT323,
 } from "next/font/google";
 import "katex/dist/katex.min.css";
+import "../hybrid-skin.css";
 import "./papers.css";
 
 const plexSans = IBM_Plex_Sans({

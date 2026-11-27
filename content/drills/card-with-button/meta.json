@@ -1,0 +1,13 @@
+{
+  "title": "Card with a button",
+  "order": 4,
+  "summary": "Adding to the cart keeps changing the selection.",
+  "skills": ["event bubbling", "semantic buttons"],
+  "difficulty": 1,
+  "minutes": 8,
+  "hints": [
+    "Look at the element that wraps each product card: what it listens for, and what sits inside it.",
+    "The whole card is the thing you click to select a product, and the add button is inside the card, so a click on the add button also reaches the card and selects that product. The card is also a plain box, not a button, so it can't be reached or pressed from the keyboard and isn't announced as something you can press.",
+    "Put selecting on its own real button element next to the add button, and take the click handler off the wrapper, so each click only does what its own button says. A real button can be focused with Tab and pressed with Enter or Space for free."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Posts feed",
+  "order": 10,
+  "summary": "A whole feature PR: posts, authors, likes and comment threads. It runs. It isn't ready.",
+  "skills": ["array state", "state keyed by id", "event bubbling", "list keys", "races", "error states"],
+  "difficulty": 3,
+  "minutes": 25,
+  "hints": [
+    "Look at what each post's section listens for, at the function the like button calls, at where the comments and the thread count are kept when an answer arrives, at how the list hands each post row to React, and at what happens when a comments request fails.",
+    "Any click inside a post reaches the section, which opens the comments, so liking or pinning opens them too. Liking adds to the list React already holds and hands back that same list, and nothing ever takes a post out again. All threads share one list of comments, so a slow answer for an earlier post lands under the post opened last; the count goes up once per answer, and nothing remembers a loaded thread, so reopening one asks the server again and counts it again. Rows are matched to their old selves by position, so a pin stays in its spot when the order flips and ends up on another post. A failed request is simply ignored, so the post keeps saying Loading comments… with no error.",
+    "Open the comments from the comments button alone and take the handler off the section. Give React a new array for every like change: a copy with the post added to like, a copy without it to un-like. Keep the comments in one object indexed by post id, work the count out from how many posts it holds, and skip the request when it already has that post. Identify each row by its post's id instead of its position. Handle the rejected promise: remember which post failed, show the alert under that post, and forget the failure when its button is clicked again."
+  ]
+}

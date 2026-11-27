@@ -4,17 +4,24 @@
   "private": true,
   "description": "Francisco Soltero's portfolio: build-free 8-bit character sheet at /, Next.js-rendered /papers section.",
   "scripts": {
+    "predev": "npm run frame",
     "dev": "next dev",
+    "prebuild": "npm run frame",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint --no-error-on-unmatched-pattern room-planner app/room-planner app/api/room-planner",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.drills.json",
+    "lint": "eslint --no-error-on-unmatched-pattern room-planner app/room-planner app/api/room-planner drills app/drills lib/drills.ts scripts content/drills/*/solution e2e playwright.config.ts",
     "test": "vitest run --passWithNoTests",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "test:e2e": "playwright test",
+    "test:drills": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/drills-fairness.mts",
+    "test:drills-pages": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/drills-pages-check.mts",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run test:drills && npm run build && npm run test:drills-pages",
+    "frame": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/build-drill-frame.mts"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",
     "@fontsource/barlow-condensed": "^5.3.0",
+    "drillbox": "file:vendor/drillbox-0.0.0-40f9b05.tgz",
     "feed": "^5.1.0",
     "gray-matter": "^4.0.3",
     "katex": "^0.16.22",
@@ -35,6 +42,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.65.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.10",

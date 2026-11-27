@@ -24,3 +24,10 @@ coverage/
 
 # Original scaffold drop (copied into app/, components/, content/, lib/)
 papers-scaffold/
+
+# Drillbox sandbox frame, written by npm run frame
+public/drillbox/
+
+# Playwright output, written by npm run test:e2e
+test-results/
+playwright-report/

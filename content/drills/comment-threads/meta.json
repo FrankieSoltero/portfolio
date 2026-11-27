@@ -1,0 +1,13 @@
+{
+  "title": "Comment threads",
+  "order": 8,
+  "summary": "Comments show up under the wrong post.",
+  "skills": ["state keyed by id", "event-handler races", "derived counts"],
+  "difficulty": 3,
+  "minutes": 12,
+  "hints": [
+    "Look at the click handler that opens a thread: where it puts the comments that come back, what the screen shows while they are on their way, and how it updates the count.",
+    "Every thread shares one list of comments and whichever answer arrives last fills it, so a slow answer for an earlier post lands under the post you opened last, and the previous thread stays on screen while the new one loads. The count adds one for every answer, starting from the number it saw when you clicked, and nothing remembers a thread once it has loaded, so reopening it asks the server again and bumps the count again.",
+    "Keep the comments in one object indexed by post id, so each answer can only be stored under its own post. Show the open post's entry, or Loading comments… while it has none. Work the count out from how many posts the object holds instead of keeping a separate counter, and skip the request when the object already has that post."
+  ]
+}

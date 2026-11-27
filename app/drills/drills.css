@@ -1,0 +1,712 @@
+/* app/drills/drills.css
+   Hybrid 8-bit skin for /drills: section shell, header, footer and base type.
+   Tokens (Sweetie-16 palette, pixel frames) come from app/hybrid-skin.css, imported first.
+   Every selector is scoped under the .drills root class. Square corners and hard-edged
+   shadows only; body prose and code stay in readable faces, pixel type is for chrome. */
+
+.drills {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  background: var(--night);
+  color: var(--white);
+  line-height: 1.7;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+.drills ::selection {
+  background: var(--gold);
+  color: var(--night);
+}
+
+/* ---- links & focus ---- */
+
+.drills a {
+  color: var(--cyan);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.drills a:hover {
+  color: var(--gold);
+}
+
+.drills :focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+/* ---- header / footer chrome ---- */
+
+.drills .drills-header {
+  background: var(--panel);
+  border-bottom: 4px solid #000;
+}
+
+.drills .drills-header nav,
+.drills .drills-page,
+.drills .drills-footer p {
+  box-sizing: border-box;
+  max-width: 44rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
+.drills .drills-header nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-top: 0.9rem;
+  padding-bottom: 0.9rem;
+  font-family: var(--font-pixel), monospace;
+  font-size: 9px;
+  line-height: 1.8;
+}
+
+.drills .drills-header a {
+  text-decoration: none;
+}
+
+.drills .drills-header a:hover {
+  color: var(--gold);
+  text-decoration: underline;
+}
+
+.drills .drills-header .drills-home {
+  color: var(--gold);
+}
+
+.drills .drills-header .drills-wordmark {
+  color: var(--white);
+}
+
+.drills .drills-page {
+  flex: 1;
+  width: 100%;
+  padding-top: 3rem;
+  padding-bottom: 4rem;
+}
+
+.drills .drills-footer {
+  background: var(--panel);
+  border-top: 4px solid #000;
+}
+
+.drills .drills-footer p {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0.9rem;
+  padding-bottom: 1.2rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 1.05rem;
+  color: var(--mist);
+}
+
+/* ---- base type ---- */
+
+.drills h1,
+.drills h2,
+.drills h3 {
+  font-family: var(--font-pixel), monospace;
+  font-weight: 400;
+  color: var(--white);
+  text-wrap: balance;
+}
+
+.drills h1 {
+  font-size: 15px;
+  line-height: 2;
+  margin: 0 0 0.75rem;
+}
+
+.drills h2 {
+  font-size: 11px;
+  line-height: 1.9;
+  color: var(--gold);
+  margin: 2.75rem 0 0.9rem;
+}
+
+.drills h3 {
+  font-size: 10px;
+  line-height: 1.9;
+  color: var(--mist);
+  margin: 2.25rem 0 0.7rem;
+}
+
+.drills p {
+  margin: 0 0 1.1rem;
+  max-width: 62ch;
+}
+
+.drills ul,
+.drills ol {
+  padding-left: 1.4rem;
+  margin: 0 0 1.1rem;
+}
+
+.drills li {
+  margin-bottom: 0.4rem;
+}
+
+.drills code,
+.drills pre {
+  font-family: var(--font-code), ui-monospace, monospace;
+}
+
+/* ---- index page ---- */
+
+.drills .drills-index-header {
+  margin-bottom: 2rem;
+}
+
+.drills .drills-index-header h1 {
+  font-size: 26px;
+  line-height: 1.5;
+  color: var(--gold);
+  margin: 0 0 1rem;
+  overflow-wrap: break-word;
+}
+
+.drills .drills-intro {
+  font-size: 18px;
+  max-width: 40rem;
+  margin: 0;
+}
+
+.drills .drills-empty {
+  font-family: var(--font-mono), monospace;
+  font-size: 1.375rem;
+  line-height: 1.4;
+  color: var(--mist);
+}
+
+.drills .drills-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* framed panel: number on the left, title / summary / meta stacked beside it */
+.drills .drills-entry {
+  margin: 0;
+  min-width: 0;
+  padding: 20px 24px;
+  background: var(--panel);
+  box-shadow: var(--frame4);
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-areas:
+    "num title"
+    "num status"
+    "num summary"
+    "num meta";
+  column-gap: 24px;
+  row-gap: 6px;
+  align-items: start;
+}
+
+.drills .drills-entry-number {
+  grid-area: num;
+  padding-top: 4px;
+  font-family: var(--font-pixel), monospace;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--slime);
+}
+
+.drills .drills-entry-title {
+  grid-area: title;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.drills .drills-entry-title a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+.drills .drills-entry-title a:hover {
+  color: var(--gold);
+  text-decoration: underline;
+}
+
+.drills .drills-entry-summary {
+  grid-area: summary;
+  margin: 0;
+  max-width: none;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* skills, minutes and difficulty on one wrapping line, minutes and pips trailing */
+.drills .drills-entry-meta {
+  grid-area: meta;
+  margin: 0;
+  max-width: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 1rem;
+  row-gap: 2px;
+  font-family: var(--font-mono), monospace;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.drills .drills-entry-skills {
+  flex: 1 1 16rem;
+  min-width: 0;
+  color: var(--mist);
+}
+
+.drills .drills-entry-minutes {
+  color: var(--gold);
+}
+
+/* difficulty: filled vs empty pips differ in glyph (■ / □) as well as colour */
+.drills .drills-difficulty {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.drills .drills-pip-filled {
+  color: var(--gold);
+}
+
+.drills .drills-pip-empty {
+  color: var(--steel);
+}
+
+/* ---- progress: index badges and per-entry status (empty until progress is read) ---- */
+
+.drills .drills-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-family: var(--font-mono), monospace;
+  font-size: 22px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+/* an empty badges paragraph (before progress is read) takes no space below the intro */
+.drills .drills-badges:not(:empty) {
+  margin-top: 1.25rem;
+}
+
+.drills .drills-badge {
+  background: var(--panel);
+  box-shadow: 0 -3px #000, 0 3px #000, -3px 0 #000, 3px 0 #000;
+  padding: 6px 14px;
+}
+
+.drills .drills-badge-streak {
+  color: var(--slime);
+}
+
+.drills .drills-badge-done {
+  color: var(--gold);
+}
+
+.drills .drills-entry-status {
+  grid-area: status;
+  justify-self: start;
+  font-family: var(--font-pixel), monospace;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.drills .drills-status-done {
+  color: var(--slime);
+}
+
+.drills .drills-status-helped {
+  color: var(--gold);
+}
+
+.drills .drills-status-today {
+  color: var(--cyan);
+}
+
+/* ---- drill page ---- */
+
+.drills .drills-drill-header {
+  margin-bottom: 2.5rem;
+}
+
+.drills .drills-drill-title {
+  font-size: 24px;
+  line-height: 1.5;
+  color: var(--gold);
+  margin: 0 0 0.75rem;
+  overflow-wrap: break-word;
+}
+
+.drills .drills-drill-meta {
+  margin: 0;
+  max-width: none;
+  font-family: var(--font-mono), monospace;
+  font-size: 1.375rem;
+  line-height: 1.3;
+  color: var(--mist);
+  text-transform: uppercase;
+}
+
+.drills .drills-section {
+  margin-top: 2.5rem;
+}
+
+.drills .drills-section-title {
+  margin: 0 0 0.9rem;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--cyan);
+}
+
+.drills .drills-fix-lead {
+  margin: 0 0 1.1rem;
+  font-size: 17px;
+}
+
+/* ---- rendered markdown (brief, explanation) ---- */
+
+.drills .drills-prose {
+  font-size: 17px;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+
+.drills .drills-prose > :first-child {
+  margin-top: 0;
+}
+
+.drills .drills-prose > :last-child {
+  margin-bottom: 0;
+}
+
+/* paragraphs fill the prose measure (760 px, below), not the section-wide 62ch */
+.drills .drills-prose p {
+  margin: 0 0 1rem;
+  max-width: none;
+}
+
+/* markdown headings sit below the pixel section title: readable sans, no pixel type */
+.drills .drills-prose h2,
+.drills .drills-prose h3,
+.drills .drills-prose h4 {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--white);
+  margin: 1.75rem 0 0.6rem;
+}
+
+.drills .drills-prose h3,
+.drills .drills-prose h4 {
+  font-size: 17px;
+}
+
+.drills .drills-explanation h2 {
+  margin-top: 2.25rem;
+  padding-top: 1.25rem;
+  border-top: 2px solid var(--dim);
+}
+
+.drills .drills-prose ol,
+.drills .drills-prose ul {
+  padding-left: 1.5rem;
+  margin: 0 0 1rem;
+}
+
+.drills .drills-prose li {
+  margin-bottom: 6px;
+}
+
+.drills .drills-prose li::marker {
+  color: var(--mist);
+}
+
+.drills .drills-prose strong {
+  font-weight: 600;
+}
+
+.drills .drills-prose :not(pre) > code {
+  font-size: 0.875em;
+  padding: 0.1rem 0.35rem;
+  background: var(--panel);
+  color: var(--cyan);
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.drills .drills-prose pre {
+  margin: 1.25rem 3px;
+  padding: 14px 16px;
+  background: var(--panel);
+  box-shadow: var(--frame3);
+  overflow-x: auto;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* ---- code files ---- */
+
+.drills .drills-files {
+  margin: 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.drills .drills-file {
+  margin: 0;
+  min-width: 0;
+  background: var(--panel);
+  box-shadow: var(--frame4);
+}
+
+.drills .drills-file-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding: 10px 16px;
+  border-bottom: 4px solid #000;
+  font-family: var(--font-mono), monospace;
+  font-size: 1.25rem;
+  line-height: 1.3;
+  color: var(--mist);
+}
+
+.drills .drills-file-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* a labelled badge, not just a colour, marks files the drill does not let you change */
+.drills .drills-file-readonly {
+  padding: 6px 8px;
+  font-family: var(--font-pixel), monospace;
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--night);
+  background: var(--gold);
+  box-shadow: var(--frame3);
+}
+
+/* shiki puts an inline background on pre.shiki; the panel and the pre are one surface */
+.drills .drills-code pre {
+  margin: 0;
+  padding: 16px;
+  background-color: var(--panel) !important;
+  overflow-x: auto;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.drills .drills-code pre:focus-visible {
+  outline-offset: -3px;
+}
+
+/* ---- hints ---- */
+
+.drills .drills-hint-list {
+  list-style: none;
+  counter-reset: drills-hint;
+  margin: 0 3px 1.25rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.drills .drills-hint {
+  counter-increment: drills-hint;
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--deep);
+  box-shadow: var(--frame3);
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.drills .drills-hint::before {
+  content: "HINT " counter(drills-hint) " · ";
+  font-family: var(--font-mono), monospace;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--gold);
+}
+
+/* ---- drill page with the workspace: layout only (the workspace skin is separate) ----
+   The header puts the title and meta line on the left and the progress badges on the
+   right; the badges wrap below the title when there is no room. The header's margin rule
+   above still applies. The auto-done note closes the hints section. */
+
+.drills .drills-drill-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px 24px;
+}
+
+.drills .drills-auto-done {
+  font-family: var(--font-mono), monospace;
+  font-size: 20px;
+  color: var(--mist);
+}
+
+/* ---- wide drill page ----
+   Pages that hold a drill (the only ones with article.drills-drill) use the approved
+   mockup's 1160 px content column with 24 px side padding (1208 px here: the mockup's
+   1160 px excludes its padding, these boxes are border-box), so the workspace has room to
+   put the editor and the live preview side by side and the badges fit beside the title.
+   The index keeps the 44rem reading column above; header and footer text are unchanged.
+   Prose stays at a readable 760 px inside the wide column; code (the workspace, revealed
+   solution files) uses all of it. */
+
+.drills:has(.drills-drill) .drills-header nav,
+.drills:has(.drills-drill) .drills-page,
+.drills:has(.drills-drill) .drills-footer p {
+  max-width: 1208px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.drills .drills-prose,
+.drills .drills-hints,
+.drills .drills-fix-lead,
+.drills .drills-auto-done {
+  max-width: 760px;
+}
+
+/* ---- buttons ---- */
+
+.drills .drills-button {
+  display: inline-block;
+  max-width: calc(100% - 8px);
+  min-height: 44px;
+  margin: 4px;
+  padding: 14px 18px;
+  border: 0;
+  font-family: var(--font-pixel), monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: left;
+  color: var(--night);
+  background: var(--gold);
+  box-shadow: var(--frame4);
+  cursor: pointer;
+}
+
+.drills .drills-hint-button {
+  background: var(--gold);
+}
+
+.drills .drills-reveal-button {
+  background: var(--ember);
+}
+
+/* hover and focus change shape (underline, inner bottom edge, outline), not only colour */
+.drills .drills-button:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  box-shadow: var(--frame4), inset 0 -4px var(--night);
+}
+
+.drills .drills-button:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 6px;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+.drills .drills-button:active {
+  transform: translateY(2px);
+}
+
+/* ---- the fix: the body keeps its UA display, so `hidden` keeps hiding it ---- */
+
+.drills .drills-solution-body .drills-explanation {
+  margin-top: 2.5rem;
+}
+
+/* ---- adjacent-drill navigation ---- */
+
+.drills .drills-drill-nav {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 4px solid #000;
+  font-family: var(--font-mono), monospace;
+  font-size: 1.375rem;
+  line-height: 1.3;
+}
+
+/* ---- narrow screens ---- */
+
+@media (max-width: 540px) {
+  .drills .drills-index-header h1,
+  .drills .drills-drill-title {
+    font-size: 18px;
+  }
+
+  .drills .drills-entry {
+    padding: 16px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "num"
+      "title"
+      "status"
+      "summary"
+      "meta";
+  }
+
+  .drills .drills-entry-number {
+    padding-top: 0;
+    font-size: 14px;
+  }
+
+  .drills .drills-code pre,
+  .drills .drills-prose pre {
+    font-size: 13px;
+  }
+}
+
+/* ---- reduced motion: no transitions, animations or press movement ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .drills *,
+  .drills *::before,
+  .drills *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+
+  .drills .drills-button:active {
+    transform: none;
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Profile switcher",
+  "order": 7,
+  "summary": "Switch users quickly and the wrong profile shows up.",
+  "skills": ["useEffect", "effect cleanup", "loading and error states"],
+  "difficulty": 2,
+  "minutes": 12,
+  "hints": [
+    "Look at the effect that loads a profile whenever the chosen user changes: what it sets before the request starts, what it does when the request ends, and what happens to a request that is still out when the user changes again.",
+    "Every request the effect starts still updates the screen when it finishes, even after you've moved on to another user, so a slow answer for an earlier user lands on top of the one you chose last. The loading flag is only true for the very first load, so switching keeps the old profile up. And nothing deals with a failed request, so the screen keeps whatever it showed before.",
+    "Give the effect a cleanup function that marks its request as out of date, and ignore any answer that arrives after that. At the start of every load, turn loading on and clear any earlier error. Handle the rejected promise too: show the error and turn loading off."
+  ]
+}

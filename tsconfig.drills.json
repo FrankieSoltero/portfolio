@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "files": [],
+  "include": ["content/drills/*/starter/**/*.ts", "content/drills/*/starter/**/*.tsx"],
+  "exclude": ["node_modules"]
+}
