@@ -18,6 +18,7 @@ export default defineConfig({
     include: [
       'room-planner/**/*.test.{ts,tsx}',
       'app/room-planner/**/*.test.{ts,tsx}',
+      'app/api/room-planner/**/*.test.ts',
       'drills/**/*.test.{ts,tsx}',
       'app/drills/**/*.test.{ts,tsx}',
       'lib/**/*.test.ts',

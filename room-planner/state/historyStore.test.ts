@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Corner, Door, Obstacle, ProductPreview } from '../domain/types';
+import type { Corner, Door, Obstacle } from '../domain/types';
 import {
   clearHistory,
   closeGroup,
@@ -13,19 +13,6 @@ import {
 import { furnishedDocument } from '../test/fixtures';
 import { usePlanStore } from './planStore';
 import { useUiStore } from './uiStore';
-
-const CHAIR: ProductPreview = {
-  kind: 'chair',
-  name: 'Test chair',
-  host: 'shop.example',
-  sourceUrl: 'https://shop.example/test-chair',
-  price: 100,
-  w: 20,
-  d: 20,
-  h: 30,
-  known: true,
-  model: { tier: 'box', label: 'Box', assetUrl: null },
-};
 
 const DOOR: Door = { id: 'door-1', kind: 'door', wallId: 'c1', offset: 20, width: 32, height: 80, hinge: 'start', swing: 'in' };
 
@@ -342,12 +329,12 @@ describe('undo and redo', () => {
     undo();
     expect(height()).toBe(start);
     expect(usePlanStore.getState().units).toBe('m');
-    expect(usePlanStore.getState().schemaVersion).toBe(3);
+    expect(usePlanStore.getState().schemaVersion).toBe(4);
   });
 
   it('References restored: undo puts back the very same items list', () => {
     const items = usePlanStore.getState().items;
-    usePlanStore.getState().addItem(CHAIR);
+    usePlanStore.getState().addFurniture('chair');
     expect(usePlanStore.getState().items).not.toBe(items);
     undo();
     expect(usePlanStore.getState().items).toBe(items);
@@ -460,7 +447,7 @@ describe('undo and redo', () => {
     const unsubscribe = usePlanStore.subscribe((s) => {
       if (!reacted && s.room === restoredRoom) {
         reacted = true;
-        s.addItem(CHAIR);
+        s.addFurniture('chair');
       }
     });
     try {
@@ -483,7 +470,7 @@ describe('undo and redo', () => {
 
 describe('stale selections', () => {
   it('Stale selection: item: an undo that removes the selected item clears it', () => {
-    const id = usePlanStore.getState().addItem(CHAIR);
+    const id = usePlanStore.getState().addFurniture('chair');
     useUiStore.getState().select(id);
     undo();
     expect(useUiStore.getState().selectedId).toBeNull();

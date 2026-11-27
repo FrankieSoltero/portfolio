@@ -1,12 +1,18 @@
 import { PRODUCT_TEXT_LIMITS } from '../domain/planSchema';
 import type { ProductPreview } from '../domain/types';
+import type { LookupErrorCode } from '../lookup/contract';
 
-/** Why a product lookup failed. Each code maps to user-facing copy in LOOKUP_MESSAGES. */
-export type LookupErrorCode = 'invalid_url' | 'unavailable';
+/** Why a product lookup failed: the contract's six codes. Each maps to user-facing copy in LOOKUP_MESSAGES. */
+export type { LookupErrorCode } from '../lookup/contract';
 
+/** The user-facing text for each lookup error code. */
 export const LOOKUP_MESSAGES: Record<LookupErrorCode, string> = {
   invalid_url: "That doesn't look like a link. Paste the full product URL.",
-  unavailable: "Couldn't read that page. Try again, or enter the product by hand later.",
+  unsupported_shop: "That shop isn't supported yet. Pick a type below.",
+  blocked: "The shop didn't let us read that page. Pick a type below.",
+  not_a_product: "That page isn't a single product.",
+  unavailable: "Couldn't read that page. Try again, or pick a type below.",
+  rate_limited: 'Too many lookups. Try again in a few minutes.',
 };
 
 export class LookupError extends Error {

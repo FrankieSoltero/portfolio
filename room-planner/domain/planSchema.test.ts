@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CONFIG } from '../config';
 import { furnishedDocument } from '../test/fixtures';
 import { createInitialDocument } from './catalog';
+import { defaultColours, defaultStyle } from './furniture/recipe';
 import { newObstacle } from './obstacles';
 import { openingSpan } from './openings';
 import { parsePlan, type ParseResult } from './planSchema';
@@ -11,11 +12,21 @@ type Obj = Record<string, unknown>;
 type Path = readonly (string | number)[];
 
 /**
- * The furnished plan (the room with the bed and desk the app used to start with) as a version 3
+ * The furnished plan (the room with the bed and desk the app used to start with) as a version 4
  * document after a JSON round trip, as storage would hand it back.
  */
 function seed(): Obj {
   return JSON.parse(JSON.stringify(furnishedDocument())) as Obj;
+}
+
+/** The furnished plan as a version 3 planner wrote it: no style or colours on its items. */
+function v3Seed(): Obj {
+  const v3 = set(seed(), ['schemaVersion'], 3);
+  for (const item of v3.items as Obj[]) {
+    delete item.style;
+    delete item.colours;
+  }
+  return v3;
 }
 
 /** The version 2 seeded document as slice B wrote it: the furnished plan without the two lists. */
@@ -125,11 +136,11 @@ const MARKER = 'SECRET-MARKER';
 /** Every reason is a short "<path>: <rule>" built from known field names, indices and rule names. */
 const REASON_FORMAT = /^[A-Za-z0-9.?]+: [a-z_-]+$/;
 
-const KINDS: Kind[] = ['sofa', 'chair', 'bed', 'desk', 'table', 'shelf', 'rug', 'box'];
+const KINDS: Kind[] = ['sofa', 'chair', 'bed', 'desk', 'table', 'shelf', 'dresser', 'nightstand', 'tvstand', 'rug', 'box'];
 const TIERS: ModelTier[] = ['retailer', 'generated', 'parametric', 'box'];
 
 describe('parsePlan — behaviour', () => {
-  it('accepts the furnished version 3 document after a JSON round trip, deep-equal to it', () => {
+  it('accepts the furnished version 4 document after a JSON round trip, deep-equal to it', () => {
     const input = seed();
     expect(parsePlan(input)).toEqual({ ok: true, doc: furnishedDocument() });
   });
@@ -151,9 +162,9 @@ describe('parsePlan — behaviour', () => {
     expect(doc).toEqual(furnishedDocument());
   });
 
-  it('converts a version 1 room to a rectangle outline c1…c4 with its height, at version 3', () => {
+  it('converts a version 1 room to a rectangle outline c1…c4 with its height, at version 4', () => {
     const doc = accepted(set(v1Seed(), ['items'], []));
-    expect(doc.schemaVersion).toBe(3);
+    expect(doc.schemaVersion).toBe(4);
     expect([doc.openings, doc.obstacles]).toEqual([[], []]);
     expect(doc.room).toEqual({
       outline: [{ id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 }],
@@ -188,7 +199,7 @@ describe('parsePlan — behaviour', () => {
 
   it('ignores openings and obstacles keys in a version 2 document: the lists start empty', () => {
     const doc = accepted(set(set(v2Seed(), ['openings'], [D1]), ['obstacles'], 'junk'));
-    expect([doc.schemaVersion, doc.openings, doc.obstacles]).toEqual([3, [], []]);
+    expect([doc.schemaVersion, doc.openings, doc.obstacles]).toEqual([4, [], []]);
   });
 
   it('checks every version 2 rule on a version 2 document', () => {
@@ -197,15 +208,17 @@ describe('parsePlan — behaviour', () => {
     expect(parsePlan(drop(v2Seed(), ['room']))).toEqual(refusal('room: invalid_type'));
   });
 
-  it('accepts a version 3 document with a door, a window, a box and a column, deep-equal after a JSON round trip', () => {
+  it('accepts a version 4 document with a door, a window, a box and a column, deep-equal after a JSON round trip', () => {
     expect(parsePlan(full())).toEqual({ ok: true, doc: fullDoc() });
   });
 
   it('drops unknown keys at every level, including __proto__, constructor and prototype, with plain prototypes', () => {
     const evil = '"__proto__":{"polluted":true,"schemaVersion":3},"constructor":{"prototype":{"polluted":true}},'
       + '"prototype":{"polluted":true},"extra":"x",';
-    // Every "{" in the document's JSON opens an object (no string in it has a brace), so this reaches every level.
-    const text = JSON.stringify(fullDoc()).replace(/\{/g, `{${evil}`);
+    // Every "{" in the document's JSON opens an object (no string in it has a brace), so this reaches every
+    // level except an item's style, whose keys are its options: an unknown key there refuses the plan
+    // (see "parsePlan — version 4 recipe").
+    const text = JSON.stringify(fullDoc()).replace(/(?<!"style":)\{/g, `{${evil}`);
     const input: unknown = JSON.parse(text);
     expect(Object.keys(input as Obj)).toContain('__proto__');
     expect(Object.keys((input as { openings: Obj[] }).openings[0])).toContain('__proto__');
@@ -213,7 +226,8 @@ describe('parsePlan — behaviour', () => {
     const doc = accepted(input);
     expect(doc).toEqual(fullDoc());
     const objects: object[] = [
-      doc, doc.room, ...doc.room.outline, ...doc.items, ...doc.items.map((i) => i.model), ...doc.openings, ...doc.obstacles,
+      doc, doc.room, ...doc.room.outline, ...doc.items, ...doc.items.map((i) => i.model), ...doc.items.map((i) => i.style),
+      ...doc.items.map((i) => i.colours), ...doc.openings, ...doc.obstacles,
     ];
     for (const o of objects) {
       expect(Object.getPrototypeOf(o)).toBe(Object.prototype);
@@ -232,9 +246,10 @@ describe('parsePlan — behaviour', () => {
     expect(Object.keys(doc.room)).toEqual(['outline', 'height']);
     expect(Object.keys(doc.room.outline[0])).toEqual(['id', 'x', 'y']);
     expect(Object.keys(doc.items[0])).toEqual([
-      'id', 'kind', 'name', 'host', 'sourceUrl', 'price', 'w', 'd', 'h', 'x', 'y', 'angle', 'model',
+      'id', 'kind', 'name', 'host', 'sourceUrl', 'price', 'w', 'd', 'h', 'x', 'y', 'angle', 'model', 'style', 'colours',
     ]);
     expect(Object.keys(doc.items[0].model)).toEqual(['tier', 'label', 'assetUrl']);
+    expect(Object.keys(doc.items[0].colours)).toEqual(['main', 'accent']);
     expect(({} as Obj).polluted).toBeUndefined();
   });
 
@@ -260,16 +275,16 @@ describe('parsePlan — behaviour', () => {
     expect(parsePlan(input)).toEqual(refusal('document: not-an-object'));
   });
 
-  it.each([4, 40, 1e21])('refuses schemaVersion %s as newer', (version) => {
+  it.each([5, 40, 1e21])('refuses schemaVersion %s as newer', (version) => {
     expect(parsePlan(set(seed(), ['schemaVersion'], version))).toEqual({ ok: false, newer: true, reason: 'schemaVersion: newer' });
   });
 
   it('refuses a newer version even when nothing else in it is readable', () => {
-    expect(parsePlan({ schemaVersion: 4 })).toEqual({ ok: false, newer: true, reason: 'schemaVersion: newer' });
+    expect(parsePlan({ schemaVersion: 5 })).toEqual({ ok: false, newer: true, reason: 'schemaVersion: newer' });
   });
 
   it.each([
-    ['0', 0], ['-1', -1], ['-3', -3], ['2.5', 2.5], ['3.5', 3.5], ['"2"', '2'], ['"3"', '3'], ['"4"', '4'], ['null', null],
+    ['0', 0], ['-1', -1], ['-3', -3], ['2.5', 2.5], ['3.5', 3.5], ['4.5', 4.5], ['"2"', '2'], ['"3"', '3'], ['"4"', '4'], ['null', null],
     ['true', true], ['NaN', NaN], ['Infinity', Infinity], ['an object', { v: 2 }],
   ])('refuses schemaVersion %s as unsupported, not newer', (_name, version) => {
     expect(parsePlan(set(seed(), ['schemaVersion'], version))).toEqual(refusal('schemaVersion: unsupported'));
@@ -376,6 +391,11 @@ describe('parsePlan — behaviour', () => {
       set(full(), ['openings', 0, 'kind'], MARKER),
       set(full(), ['openings', 0, 'id'], `${MARKER}!`),
       set(set(full(), ['openings', 0, 'id'], MARKER), ['obstacles', 0, 'id'], MARKER),
+      set(seed(), ['items', 0, 'style'], { [MARKER]: 'x' }),
+      set(seed(), ['items', 0, 'style'], { headboard: MARKER }),
+      set(seed(), ['items', 0, 'style'], { [MARKER.repeat(3)]: MARKER.repeat(3) }),
+      set(seed(), ['items', 0, 'colours', 'main'], MARKER),
+      set(seed(), ['items', 0, 'colours', 'accent'], `#${MARKER.slice(0, 6)}`),
     ];
     for (const input of failing) {
       const result = parsePlan(input);
@@ -412,6 +432,9 @@ describe('parsePlan — behaviour', () => {
       set(seed(), ['items'], cyclicItems),
       { ...deep, schemaVersion: 2 },
       { ...deep, schemaVersion: 3 },
+      { ...deep, schemaVersion: 4 },
+      set(seed(), ['items', 0, 'style'], hostileProxy),
+      set(seed(), ['items', 0, 'colours'], revoked),
       set(seed(), ['room'], deep),
       set(seed(), ['items', 0, 'model'], deep),
       set(full(), ['openings'], [revoked]),
@@ -440,12 +463,13 @@ describe('parsePlan — behaviour', () => {
 });
 
 describe('parsePlan — limits (last accepted, first refused)', () => {
-  it('schemaVersion: 1, 2 and 3 accepted (stored as 3); 0 refused; 4 newer', () => {
-    expect(accepted(v1Seed()).schemaVersion).toBe(3);
-    expect(accepted(v2Seed()).schemaVersion).toBe(3);
-    expect(accepted(seed()).schemaVersion).toBe(3);
+  it('schemaVersion: 1, 2, 3 and 4 accepted (stored as 4); 0 refused; 5 newer', () => {
+    expect(accepted(v1Seed()).schemaVersion).toBe(4);
+    expect(accepted(v2Seed()).schemaVersion).toBe(4);
+    expect(accepted(v3Seed()).schemaVersion).toBe(4);
+    expect(accepted(seed()).schemaVersion).toBe(4);
     expect(parsePlan(set(seed(), ['schemaVersion'], 0))).toEqual(refusal('schemaVersion: unsupported'));
-    expect(parsePlan(set(seed(), ['schemaVersion'], 4))).toEqual({ ok: false, newer: true, reason: 'schemaVersion: newer' });
+    expect(parsePlan(set(seed(), ['schemaVersion'], 5))).toEqual({ ok: false, newer: true, reason: 'schemaVersion: newer' });
   });
 
   it('units: ft and m accepted; in and FT refused', () => {
@@ -538,11 +562,13 @@ describe('parsePlan — limits (last accepted, first refused)', () => {
     expect(parsePlan(set(seed(), ['items'], { 0: manyItems(1)[0] }))).toEqual(refusal('items: invalid_type'));
   });
 
-  it.each(KINDS)('item kind %s accepted', (kind) => {
-    expect(accepted(set(seed(), ['items', 0, 'kind'], kind)).items[0].kind).toBe(kind);
+  it.each(KINDS)('item kind %s accepted, at version 4 with a style of its own and at version 3', (kind) => {
+    const item = accepted(set(set(seed(), ['items', 0, 'kind'], kind), ['items', 0, 'style'], {})).items[0];
+    expect([item.kind, item.style]).toEqual([kind, defaultStyle(kind)]);
+    expect(accepted(set(v3Seed(), ['items', 0, 'kind'], kind)).items[0].kind).toBe(kind);
   });
 
-  it('item kind outside the eight refused', () => {
+  it('item kind outside the eleven refused', () => {
     expect(parsePlan(set(seed(), ['items', 0, 'kind'], 'lamp'))).toEqual(refusal('items.0.kind: invalid_value'));
     expect(parsePlan(set(seed(), ['items', 0, 'kind'], 'Bed'))).toEqual(refusal('items.0.kind: invalid_value'));
   });
@@ -735,6 +761,18 @@ describe('parsePlan — hostile sweep', () => {
     ['__proto__ in room with a bad units', protoJson('"room":{')],
     ['__proto__ in an item with a bad units', protoJson('"items":[{')],
     ['__proto__ in a model with a bad units', protoJson('"model":{')],
+    ['__proto__ in a style with a bad units', protoJson('"style":{')],
+    ['__proto__ in colours with a bad units', protoJson('"colours":{')],
+    ['item style missing', drop(seed(), ['items', 0, 'style'])],
+    ['item style null', set(seed(), ['items', 0, 'style'], null)],
+    ['item style an array', set(seed(), ['items', 0, 'style'], ['low'])],
+    ['item style a huge object', set(seed(), ['items', 0, 'style'], Object.fromEntries(Array.from({ length: 100_000 }, (_, k) => [`k${k}`, 'x'])))],
+    ['item style value a number', set(seed(), ['items', 0, 'style', 'headboard'], 1)],
+    ['item style value huge', set(seed(), ['items', 0, 'style', 'headboard'], huge)],
+    ['item colours missing', drop(seed(), ['items', 0, 'colours'])],
+    ['item colours a string', set(seed(), ['items', 0, 'colours'], '#6f7f8c')],
+    ['item colour huge', set(seed(), ['items', 0, 'colours', 'main'], huge)],
+    ['item colour a CSS expression', set(seed(), ['items', 0, 'colours', 'accent'], 'url(x)')],
     ['a Map', new Map([['schemaVersion', 2]])],
     ['a Date', new Date(0)],
     ['a boxed number', Object(2)],
@@ -1085,10 +1123,126 @@ describe('parsePlan — new field names appear by name in a reason', () => {
     [['obstacles', 0, 'depth'], 'x', 'obstacles.0.depth: invalid_type'],
     [['obstacles', 0, 'height'], 'x', 'obstacles.0.height: invalid_type'],
     [['obstacles', 0, 'elevation'], 'x', 'obstacles.0.elevation: invalid_type'],
+    [['items', 0, 'style'], 'x', 'items.0.style: invalid_type'],
+    [['items', 0, 'style', 'headboard'], 7, 'items.0.style.headboard: invalid_type'],
+    [['items', 1, 'style', 'drawers'], 7, 'items.1.style.drawers: invalid_type'],
+    [['items', 0, 'colours'], 'x', 'items.0.colours: invalid_type'],
+    [['items', 0, 'colours', 'main'], 7, 'items.0.colours.main: invalid_type'],
+    [['items', 0, 'colours', 'accent'], 7, 'items.0.colours.accent: invalid_type'],
   ] as const)('%j', (path, value, reason) => {
     const result = parsePlan(set(full(), path, value));
     expect(result).toEqual(refusal(reason));
     expect(result.ok === false && result.reason).not.toContain('?');
+  });
+});
+
+describe('parsePlan — version 4 recipe', () => {
+  /** The seed with its first item turned into a sofa in the given style. */
+  function sofaWith(style: unknown): Obj {
+    return set(set(seed(), ['items', 0, 'kind'], 'sofa'), ['items', 0, 'style'], style);
+  }
+
+  it('upgrades the version 3 furnished plan: each item gets its kind’s default style and colours, nothing else changes', () => {
+    const doc = accepted(v3Seed());
+    expect(doc.schemaVersion).toBe(4);
+    const [bed, desk] = doc.items;
+    expect([bed.style, bed.colours]).toEqual([defaultStyle('bed'), defaultColours('bed')]);
+    expect([desk.style, desk.colours]).toEqual([defaultStyle('desk'), defaultColours('desk')]);
+    expect(doc).toEqual(furnishedDocument());
+  });
+
+  it('upgrades a version 3 plan with doors, windows and obstacles, keeping them', () => {
+    const v3 = set(full(), ['schemaVersion'], 3);
+    for (const item of v3.items as Obj[]) {
+      delete item.style;
+      delete item.colours;
+    }
+    expect(parsePlan(v3)).toEqual({ ok: true, doc: fullDoc() });
+  });
+
+  it('ignores a style or colours given in a version 3 document: the defaults are used', () => {
+    const v3 = set(set(v3Seed(), ['items', 0, 'style'], { headboard: 'tall' }), ['items', 0, 'colours'], { main: '#000000', accent: '#000000' });
+    expect(accepted(v3).items[0]).toMatchObject({ style: defaultStyle('bed'), colours: defaultColours('bed') });
+  });
+
+  it('keeps a non-default style and colours', () => {
+    const style = { headboard: 'tall', finish: 'upholstered', footboard: 'yes', base: 'storage' };
+    const colours = { main: '#2f4057', accent: '#b08d57' };
+    const item = accepted(set(set(seed(), ['items', 0, 'style'], style), ['items', 0, 'colours'], colours)).items[0];
+    expect([item.style, item.colours]).toEqual([style, colours]);
+  });
+
+  it('accepts a partial style and fills the missing options with their fallbacks', () => {
+    expect(accepted(set(seed(), ['items', 0, 'style'], {})).items[0].style).toEqual(defaultStyle('bed'));
+    expect(accepted(set(seed(), ['items', 0, 'style'], { headboard: 'tall' })).items[0].style)
+      .toEqual({ ...defaultStyle('bed'), headboard: 'tall' });
+    expect(accepted(sofaWith({ arms: 'slim' })).items[0].style).toEqual({ ...defaultStyle('sofa'), arms: 'slim' });
+  });
+
+  it.each<[string, unknown]>([
+    ['an unknown value', { arms: 'huge' }],
+    ['an unknown key', { wheels: 'yes' }],
+    ['a key of another kind', { headboard: 'low' }],
+    ['a value in the wrong case', { arms: 'Slim' }],
+    ['constructor as an own key', JSON.parse('{"constructor":"x"}')],
+  ])('refuses a sofa style with %s, not as newer', (_name, style) => {
+    expect(parsePlan(sofaWith(style))).toEqual(refusal('items.style: unknown'));
+  });
+
+  it('refuses the bed’s style once the item is a sofa', () => {
+    expect(parsePlan(set(seed(), ['items', 0, 'kind'], 'sofa'))).toEqual(refusal('items.style: unknown'));
+  });
+
+  it('drops a __proto__ key in a style, as at every other level, without touching any prototype', () => {
+    const doc = accepted(sofaWith(JSON.parse('{"__proto__":{"polluted":true},"arms":"slim"}')));
+    expect(doc.items[0].style).toEqual({ ...defaultStyle('sofa'), arms: 'slim' });
+    expect(Object.getPrototypeOf(doc.items[0].style)).toBe(Object.prototype);
+    expect(({} as Obj).polluted).toBeUndefined();
+  });
+
+  it.each<[string, unknown, string]>([
+    ['a CSS expression', 'url(x)', 'items.0.colours.main: too_small'],
+    ['seven characters that are not hex', '#6f7f8g', 'items.colours: colour'],
+    ['seven characters with no #', 'x6f7f8c', 'items.colours: colour'],
+    ['a short hex colour', '#fff', 'items.0.colours.main: too_small'],
+    ['a number', 0x6f7f8c, 'items.0.colours.main: invalid_type'],
+    ['null', null, 'items.0.colours.main: invalid_type'],
+  ])('refuses a main colour that is %s', (_name, main, reason) => {
+    expect(parsePlan(set(seed(), ['items', 0, 'colours', 'main'], main))).toEqual(refusal(reason));
+  });
+
+  it('refuses a bad accent colour', () => {
+    expect(parsePlan(set(seed(), ['items', 1, 'colours', 'accent'], 'rgb(00)'))).toEqual(refusal('items.colours: colour'));
+  });
+
+  it('accepts an upper-case colour and stores it lower case', () => {
+    const item = accepted(set(set(seed(), ['items', 0, 'colours', 'main'], '#6F7F8C'), ['items', 0, 'colours', 'accent'], '#B08d57')).items[0];
+    expect(item.colours).toEqual({ main: '#6f7f8c', accent: '#b08d57' });
+  });
+
+  it('refuses an item without style or without colours, or without a colour', () => {
+    expect(parsePlan(drop(seed(), ['items', 0, 'style']))).toEqual(refusal('items.0.style: invalid_type'));
+    expect(parsePlan(drop(seed(), ['items', 1, 'colours']))).toEqual(refusal('items.1.colours: invalid_type'));
+    expect(parsePlan(drop(seed(), ['items', 0, 'colours', 'accent']))).toEqual(refusal('items.0.colours.accent: invalid_type'));
+  });
+
+  it('style size: 12 keys are read (and refused as unknown); 13 refused as too big', () => {
+    const keys = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, k) => [`k${k}`, 'x']));
+    expect(parsePlan(set(seed(), ['items', 0, 'style'], keys(12)))).toEqual(refusal('items.style: unknown'));
+    expect(parsePlan(set(seed(), ['items', 0, 'style'], keys(13)))).toEqual(refusal('items.0.style: too_big'));
+  });
+
+  it('style text: 24 characters are read (and refused as unknown); a 25-character value or key refused', () => {
+    expect(parsePlan(set(seed(), ['items', 0, 'style', 'headboard'], 'v'.repeat(24)))).toEqual(refusal('items.style: unknown'));
+    expect(parsePlan(set(seed(), ['items', 0, 'style', 'headboard'], 'v'.repeat(25)))).toEqual(refusal('items.0.style.headboard: too_big'));
+    expect(parsePlan(set(seed(), ['items', 0, 'style'], { ['k'.repeat(24)]: 'x' }))).toEqual(refusal('items.style: unknown'));
+    expect(parsePlan(set(seed(), ['items', 0, 'style'], { ['k'.repeat(25)]: 'x' }))).toEqual(refusal('items.0.style.?: invalid_key'));
+  });
+
+  it('refuses a style that is not a plain record of strings', () => {
+    expect(parsePlan(set(seed(), ['items', 0, 'style'], ['low']))).toEqual(refusal('items.0.style: invalid_type'));
+    expect(parsePlan(set(seed(), ['items', 0, 'style'], null))).toEqual(refusal('items.0.style: invalid_type'));
+    expect(parsePlan(set(seed(), ['items', 0, 'style'], { headboard: null }))).toEqual(refusal('items.0.style.headboard: invalid_type'));
   });
 });
 

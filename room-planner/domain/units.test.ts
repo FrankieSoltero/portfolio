@@ -121,7 +121,7 @@ describe('parseFurnInput', () => {
     expect(metric).toBeCloseTo(39.37, 2);
   });
 
-  it('rejects zero and values above the preview maximum', () => {
+  it('rejects zero and values above the item size maximum', () => {
     expect(parseFurnInput('0', 'ft')).toBeNull();
     expect(parseFurnInput('241', 'ft')).toBeNull();
   });

@@ -144,7 +144,7 @@ describe('createBrowserPlanStore load', () => {
     expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE });
   });
 
-  it('loads a saved version 3 document and leaves it stored', async () => {
+  it('loads a saved version 4 document and leaves it stored', async () => {
     const doc = furnishedDocument();
     storage.setItem(KEY, serialised(doc));
     const store = createBrowserPlanStore(() => storage);
@@ -152,13 +152,13 @@ describe('createBrowserPlanStore load', () => {
     expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE, [KEY]: serialised(doc) });
   });
 
-  it('loads a saved version 3 document with a door and a box', async () => {
+  it('loads a saved version 4 document with a door and a box', async () => {
     const doc = docWithDoorAndBox();
     storage.setItem(KEY, serialised(doc));
     await expect(createBrowserPlanStore(() => storage).load()).resolves.toEqual({ status: 'loaded', doc });
   });
 
-  it('loads a saved version 2 document as version 3 with empty lists, and leaves it stored', async () => {
+  it('loads a saved version 2 document as version 4 with empty lists, and leaves it stored', async () => {
     const seed = furnishedDocument();
     const stored = JSON.stringify({ schemaVersion: 2, units: seed.units, room: seed.room, items: seed.items });
     storage.setItem(KEY, stored);
@@ -174,7 +174,7 @@ describe('createBrowserPlanStore load', () => {
     const result = await createBrowserPlanStore(() => storage).load();
     expect(result).toEqual({ status: 'loaded', doc: expected.doc });
     if (result.status !== 'loaded') throw new Error('unreachable');
-    expect(result.doc.schemaVersion).toBe(3);
+    expect(result.doc.schemaVersion).toBe(4);
     expect(result.doc.room.outline).toEqual([
       { id: 'c1', x: 0, y: 0 }, { id: 'c2', x: 144, y: 0 }, { id: 'c3', x: 144, y: 168 }, { id: 'c4', x: 0, y: 168 },
     ]);
@@ -201,7 +201,7 @@ describe('createBrowserPlanStore load', () => {
     expect(storage.entries()).toEqual({ [OTHER_KEY]: OTHER_VALUE });
   });
 
-  it.each([4, 40])('leaves a plan saved by a newer planner (schemaVersion %s) untouched', async (version) => {
+  it.each([5, 40])('leaves a plan saved by a newer planner (schemaVersion %s) untouched', async (version) => {
     const stored = JSON.stringify({ ...furnishedDocument(), schemaVersion: version });
     storage.setItem(KEY, stored);
     const setItem = vi.spyOn(storage, 'setItem');
@@ -409,7 +409,7 @@ describe('createBrowserPlanStore when storage fails', () => {
     await store.load();
     storage.setItem(KEY, JSON.stringify({ ...furnishedDocument(), units: 'cubits' }));
     await store.load();
-    storage.setItem(KEY, JSON.stringify({ ...furnishedDocument(), schemaVersion: 4 }));
+    storage.setItem(KEY, JSON.stringify({ ...furnishedDocument(), schemaVersion: 5 }));
     await store.load();
     storage.setItem(KEY, 'x'.repeat(CONFIG.maxStoredChars + 1));
     await store.load();

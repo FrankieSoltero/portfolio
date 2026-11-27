@@ -3,12 +3,11 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RoomSection } from '../components/Sidebar/RoomSection';
 import { CONFIG } from '../config';
-import { createMockProductLookup } from '../services/mockProductLookup';
 import {
   addCornerOnWall,
+  addFurnitureOfKind,
   dragCornerTo,
   nudgeSelected,
-  placePreview,
   removeSelectedCorner,
   rotateSelected,
   setWallLengthTo,
@@ -17,14 +16,15 @@ import {
 } from '../state/actions';
 import { ROOM_PROBLEM_TEXT, type RoomProblem, usePlanStore } from '../state/planStore';
 import { useUiStore } from '../state/uiStore';
-import { furnishedDocument } from '../test/fixtures';
+import { furnishedDocument, placedItem } from '../test/fixtures';
+import { defaultStyle, KIND_ORDER } from './furniture/recipe';
 import { addObstacle, newObstacle, updateObstacle } from './obstacles';
 import { addOpening, slideOpening, updateOpening } from './openings';
 import { setRectangleSize, setWallLength, wallsOf } from './outline';
 import { parsePlan } from './planSchema';
 import { interiorPoint } from './polygon';
 import { roomBounds } from './shape';
-import type { PlanDocument, Point, ProductPreview } from './types';
+import type { PlanDocument, Point } from './types';
 
 /**
  * Every kind of edit the planner offers, made through the real stores and actions from the
@@ -41,20 +41,6 @@ beforeEach(() => {
 });
 
 const NO_SNAP = { angleSnap: false, toleranceIn: 2 };
-const LONG_LINK = `https://market.example/${'p'.repeat(3000 - 23)}`;
-
-const BOX: ProductPreview = {
-  kind: 'box',
-  name: 'n'.repeat(500),
-  host: 'market.example',
-  sourceUrl: LONG_LINK,
-  price: null,
-  w: 36,
-  d: 24,
-  h: 30,
-  known: false,
-  model: { tier: 'box', label: 'No model, shown as a sized box', assetUrl: null },
-};
 
 function currentDocument(): PlanDocument {
   const s = usePlanStore.getState();
@@ -132,15 +118,8 @@ function corner(id: string): { x: number; y: number } {
   return c;
 }
 
-/** Places `preview` through the lookup flow: preview state, then Place in room. */
-function place(preview: ProductPreview): void {
-  useUiStore.getState().setLookup({ status: 'preview', product: preview });
-  placePreview();
-}
-
 describe('every edit leaves a plan that parsePlan reads back', () => {
   it('starts readable', () => {
-    expect(LONG_LINK).toHaveLength(3000);
     expectReadable('furnished plan');
     usePlanStore.getState().reset();
     expect(usePlanStore.getState().items).toEqual([]);
@@ -163,24 +142,50 @@ describe('every edit leaves a plan that parsePlan reads back', () => {
     expectReadable('set a huge negative angle');
   });
 
-  it('adding an item from a preview with a 3000-character link and a 500-character name', async () => {
-    place(BOX);
-    expectReadable('place a hand-made preview');
-    const looked = await createMockProductLookup({ delayMs: 0 }).lookup(`${LONG_LINK.slice(0, -500)}/${'n'.repeat(499)}`);
-    place(looked);
-    expectReadable('place a looked-up preview');
-    expect(usePlanStore.getState().items).toHaveLength(4);
+  it('adding one piece of every kind, then editing its name, size, kind, style and colours to the limits', () => {
+    for (const kind of KIND_ORDER) {
+      const id = addFurnitureOfKind(kind);
+      if (id === null) throw new Error(`expected a ${kind} to be added`);
+      expectReadable(`add a ${kind}`);
+      const { updateItem } = usePlanStore.getState();
+      expect(updateItem(id, { name: ` ${'n'.repeat(200)} ` })).toBe(true);
+      expectReadable(`a 200-character name on the ${kind}`);
+      expect(updateItem(id, { w: CONFIG.itemDimMin, d: CONFIG.itemDimMax, h: CONFIG.itemDimMin })).toBe(true);
+      expectReadable(`the ${kind} at the size limits`);
+      expect(updateItem(id, { colours: { main: '#ABCDEF', accent: '#000000' } })).toBe(true);
+      expectReadable(`new colours on the ${kind}`);
+    }
+    const sofa = usePlanStore.getState().items.find((i) => i.kind === 'sofa');
+    if (sofa === undefined) throw new Error('expected the sofa');
+    expect(usePlanStore.getState().updateItem(sofa.id, { kind: 'rug', style: { shape: 'round' } })).toBe(true);
+    expectReadable('the sofa turned into a round rug');
+    expect(usePlanStore.getState().items).toHaveLength(2 + KIND_ORDER.length);
+  });
+
+  it('a sofa in a non-default style and colours survives a JSON round trip unchanged, through the store too', () => {
+    const sofa = {
+      ...placedItem({ id: 'sofa-1', kind: 'sofa', name: 'Sofa', w: 84, d: 36, h: 33, cx: 72, cy: 120 }),
+      style: { ...defaultStyle('sofa'), seats: '3', arms: 'rounded', chaise: 'left' },
+      colours: { main: '#2f4057', accent: '#b08d57' },
+    };
+    const doc: PlanDocument = { ...furnishedDocument(), items: [...furnishedDocument().items, sofa] };
+    expect(parsePlan(JSON.parse(JSON.stringify(doc)))).toEqual({ ok: true, doc });
+    usePlanStore.getState().reset(doc);
+    usePlanStore.getState().moveItemTo('sofa-1', 30, 100);
+    expectReadable('move the styled sofa');
+    const result = parsePlan(JSON.parse(JSON.stringify(currentDocument())));
+    expect(result.ok && result.doc.items[2]).toMatchObject({ style: sofa.style, colours: sofa.colours });
   });
 
   it('adding items up to and past the cap', () => {
     while (usePlanStore.getState().items.length < CONFIG.maxItems) {
-      place({ ...BOX, name: 'Box', sourceUrl: 'https://market.example/box' });
+      addFurnitureOfKind('box');
       expectReadable(`add item ${usePlanStore.getState().items.length}`);
     }
-    place({ ...BOX, name: 'One too many', sourceUrl: 'https://market.example/box' });
+    addFurnitureOfKind('box');
     expectReadable('add past the cap');
-    usePlanStore.getState().addItem({ ...BOX, name: 'Box', sourceUrl: null as unknown as string });
-    expectReadable('addItem past the cap');
+    usePlanStore.getState().addFurniture('sofa');
+    expectReadable('addFurniture past the cap');
     expect(usePlanStore.getState().items).toHaveLength(CONFIG.maxItems);
   });
 

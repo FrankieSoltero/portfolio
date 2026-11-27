@@ -4,9 +4,11 @@ import type { LengthAnchor } from '../domain/outline';
 import type { CameraState, EditMode, LayoutMode, ProductPreview, RenderStyle, RoomTool, StageTab } from '../domain/types';
 import type { LookupErrorCode } from '../services/productLookup';
 
+/** Where a product lookup is: nothing running, waiting for the shop, a preview to place, or why it failed. */
+export type LookupState = { status: 'idle' } | { status: 'loading' } | { status: 'preview'; preview: ProductPreview } | { status: 'error'; code: LookupErrorCode };
+
 /**
- * Workspace view state: selection, layout, 3D view, the product-lookup flow, room editing
- * and notices. Not saved.
+ * Workspace view state: selection, layout, 3D view, room editing and notices. Not saved.
  */
 export interface UiState {
   selectedId: string | null;
@@ -38,11 +40,10 @@ export interface UiState {
   renderStyle: RenderStyle;
   camera: CameraState;
   webglAvailable: boolean;
-  lookup:
-    | { status: 'idle' }
-    | { status: 'loading'; host: string }
-    | { status: 'preview'; product: ProductPreview }
-    | { status: 'error'; code: LookupErrorCode };
+  /** The product lookup in the sidebar's link box. */
+  lookup: LookupState;
+  /** A link whose lookup failed, given to the next piece added by type. Null when there is none. */
+  pendingLink: { url: string; host: string } | null;
   /** Selects an item, or clears the selection with null. In room mode an item id is ignored. */
   select(id: string | null): void;
   setLayout(l: LayoutMode): void;
@@ -51,9 +52,6 @@ export interface UiState {
   /** Ignores 'realistic' once WebGL is known to be unavailable. */
   setRenderStyle(r: RenderStyle): void;
   setCamera(c: CameraState): void;
-  setLookup(l: UiState['lookup']): void;
-  /** Edits a dimension of the previewed product; no-op unless the lookup is in preview. */
-  updatePreviewDim(axis: 'w' | 'd' | 'h', inches: number): void;
   /** Records that WebGL failed and falls back to the blueprint render style. */
   markWebglUnavailable(): void;
   /**
@@ -77,6 +75,8 @@ export interface UiState {
   setNotice(text: string | null): void;
   setSaveBlocked(b: boolean): void;
   setSharedPreview(p: { canKeep: boolean } | null): void;
+  setLookup(next: LookupState): void;
+  setPendingLink(next: { url: string; host: string } | null): void;
   reset(): void;
 }
 
@@ -101,6 +101,7 @@ type UiData = Pick<
   | 'camera'
   | 'webglAvailable'
   | 'lookup'
+  | 'pendingLink'
 >;
 
 function initialUi(): UiData {
@@ -124,6 +125,7 @@ function initialUi(): UiData {
     camera: { ...CONFIG.camera },
     webglAvailable: true,
     lookup: { status: 'idle' },
+    pendingLink: null,
   };
 }
 
@@ -145,13 +147,6 @@ export const useUiStore = create<UiState>()((set) => ({
   setRenderStyle: (renderStyle) =>
     set((s) => (renderStyle === 'realistic' && !s.webglAvailable ? s : { renderStyle })),
   setCamera: (camera) => set({ camera }),
-  setLookup: (lookup) => set({ lookup }),
-  updatePreviewDim: (axis, inches) =>
-    set((s) =>
-      s.lookup.status === 'preview'
-        ? { lookup: { status: 'preview', product: { ...s.lookup.product, [axis]: inches } } }
-        : s,
-    ),
   markWebglUnavailable: () => set({ webglAvailable: false, renderStyle: 'blueprint' }),
   setMode: (mode) =>
     set(
@@ -173,5 +168,7 @@ export const useUiStore = create<UiState>()((set) => ({
   setNotice: (notice) => set({ notice }),
   setSaveBlocked: (saveBlocked) => set({ saveBlocked }),
   setSharedPreview: (sharedPreview) => set({ sharedPreview }),
+  setLookup: (lookup) => set({ lookup }),
+  setPendingLink: (pendingLink) => set({ pendingLink }),
   reset: () => set(initialUi()),
 }));

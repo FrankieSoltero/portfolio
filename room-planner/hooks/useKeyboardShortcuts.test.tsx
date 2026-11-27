@@ -1,6 +1,7 @@
-import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SelectionBar } from '../components/SelectionBar';
+import { ItemList } from '../components/Sidebar/ItemList';
 import { CONFIG } from '../config';
 import type { Corner, Door, Item, Obstacle } from '../domain/types';
 import { clearHistory, redo, runKeyed, undo, useHistoryStore } from '../state/historyStore';
@@ -688,6 +689,156 @@ describe('useKeyboardShortcuts with focus in the selection bar Angle field', () 
   });
 });
 
+describe('useKeyboardShortcuts with focus in the item editor', () => {
+  const ARROW_KEYS = ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'];
+
+  function Workspace() {
+    useKeyboardShortcuts();
+    return <ItemList />;
+  }
+
+  function editor(): HTMLElement {
+    const el = document.querySelector<HTMLElement>('[data-item-editor]');
+    if (el === null) throw new Error('no editor');
+    return el;
+  }
+
+  function headboardLow(): HTMLElement {
+    return within(screen.getByRole('radiogroup', { name: 'Headboard' })).getByRole('radio', { name: 'Low' });
+  }
+
+  /** Focuses `el` and presses each key on it, with and without Shift; the bed must stay put, unturned and in the plan. */
+  function expectNoItemShortcut(el: HTMLElement, keys: string[]): void {
+    el.focus();
+    for (const key of keys) {
+      press(el, key);
+      press(el, key, { shiftKey: true });
+    }
+    expect(bed()).toMatchObject({ x: 72, y: 42.5, angle: 0 });
+    expect(useUiStore.getState().selectedId).toBe(BED);
+  }
+
+  beforeEach(() => {
+    act(() => useUiStore.getState().select(BED));
+    render(<Workspace />);
+  });
+
+  it('Delete, Backspace, R and the arrows in the Name field do not remove, turn or move the item', () => {
+    expectNoItemShortcut(screen.getByRole('textbox', { name: 'Name' }), ['Delete', 'Backspace', 'r', 'R', ...ARROW_KEYS]);
+  });
+
+  it('Delete, Backspace, R and the arrows on the Type select do not act on the item', () => {
+    expectNoItemShortcut(screen.getByRole('combobox', { name: 'Type' }), ['Delete', 'Backspace', 'r', ...ARROW_KEYS]);
+  });
+
+  it('Delete, Backspace, R and the arrows on a custom colour input do not act on the item', () => {
+    expectNoItemShortcut(screen.getByLabelText('Custom main colour'), ['Delete', 'Backspace', 'r', ...ARROW_KEYS]);
+  });
+
+  it('Delete, Backspace and the arrows on a swatch button do not remove or move the item', () => {
+    const swatch = within(screen.getByRole('group', { name: 'Main colour' })).getByRole('button', { name: 'Navy' });
+    expectNoItemShortcut(swatch, ['Delete', 'Backspace', ...ARROW_KEYS]);
+  });
+
+  it('the arrows, R, Delete and Backspace on an option radio do not act on the item', () => {
+    expectNoItemShortcut(headboardLow(), [...ARROW_KEYS, 'r', 'Delete', 'Backspace']);
+  });
+
+  it('an arrow on an option radio keeps its native behaviour (no preventDefault)', () => {
+    const radio = headboardLow();
+    radio.focus();
+    expect(press(radio, 'ArrowRight').defaultPrevented).toBe(false);
+  });
+
+  it('Delete on the item row still removes the item', () => {
+    const row = screen.getByRole('button', { name: /^Low platform bed, queen/ });
+    row.focus();
+    act(() => {
+      press(row, 'Delete');
+    });
+    expect(bed()).toBeUndefined();
+  });
+
+  it('undo works from a swatch button and redo from an option radio', () => {
+    act(() => {
+      usePlanStore.getState().updateItem(BED, { name: 'Renamed' });
+    });
+    const swatch = within(editor()).getAllByRole('button')[0];
+    swatch.focus();
+    act(() => {
+      press(swatch, 'z', { ctrlKey: true });
+    });
+    expect(bed()?.name).toBe('Low platform bed, queen');
+    const radio = headboardLow();
+    radio.focus();
+    act(() => {
+      press(radio, 'z', { ctrlKey: true, shiftKey: true });
+    });
+    expect(bed()?.name).toBe('Renamed');
+  });
+
+  // Neither has a text undo of its own, so leaving the key to the browser would swallow it.
+  it.each([
+    ['the Type select', () => screen.getByRole('combobox', { name: 'Type' })],
+    ['a custom colour input', () => screen.getByLabelText('Custom main colour')],
+  ])('Ctrl+Z on %s undoes and Ctrl+Shift+Z redoes', (_name, field) => {
+    act(() => {
+      usePlanStore.getState().updateItem(BED, { name: 'Renamed' });
+    });
+    const el = field();
+    el.focus();
+    let undoEv: KeyboardEvent | undefined;
+    act(() => {
+      undoEv = press(el, 'z', { ctrlKey: true });
+    });
+    expect(undoEv?.defaultPrevented).toBe(true);
+    expect(bed()?.name).toBe('Low platform bed, queen');
+    let redoEv: KeyboardEvent | undefined;
+    act(() => {
+      redoEv = press(el, 'z', { ctrlKey: true, shiftKey: true });
+    });
+    expect(redoEv?.defaultPrevented).toBe(true);
+    expect(bed()?.name).toBe('Renamed');
+  });
+
+  it.each([
+    ['an option radio', headboardLow],
+    ['a swatch button', () => within(screen.getByRole('group', { name: 'Main colour' })).getByRole('button', { name: 'Navy' })],
+  ])('Escape on %s deselects and moves focus to the item row', (_name, target) => {
+    const el = target();
+    el.focus();
+    act(() => {
+      press(el, 'Escape');
+    });
+    expect(useUiStore.getState().selectedId).toBeNull();
+    expect(document.querySelector('[data-item-editor]')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Low platform bed, queen/ }));
+  });
+
+  it('Escape outside the editor deselects and leaves focus where it was', () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    appended.push(outside);
+    outside.focus();
+    act(() => {
+      press(outside, 'Escape');
+    });
+    expect(useUiStore.getState().selectedId).toBeNull();
+    expect(document.activeElement).toBe(outside);
+  });
+
+  it('Ctrl+Z in the Name field is left to the browser', () => {
+    act(() => {
+      usePlanStore.getState().updateItem(BED, { name: 'Renamed' });
+    });
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    name.focus();
+    const ev = press(name, 'z', { ctrlKey: true });
+    expect(ev.defaultPrevented).toBe(false);
+    expect(bed()?.name).toBe('Renamed');
+  });
+});
+
 describe('useKeyboardShortcuts lifecycle', () => {
   it('removes its listener on unmount', () => {
     const { unmount } = renderHook(() => useKeyboardShortcuts());
@@ -798,6 +949,7 @@ describe('useKeyboardShortcuts undo and redo keys', () => {
   it.each([
     ['input', 'text', { ctrlKey: true }],
     ['input', 'text', { metaKey: true, shiftKey: true }],
+    ['input', 'number', { ctrlKey: true }],
     ['textarea', undefined, { metaKey: true }],
     ['textarea', undefined, { ctrlKey: true, shiftKey: true }],
   ] as const)('In a text field: z with focus in %s %s and %o does nothing and is not prevented', (tag, type, init) => {
@@ -813,7 +965,10 @@ describe('useKeyboardShortcuts undo and redo keys', () => {
   it.each([
     ['a radio', () => focused('input', 'radio')],
     ['a button', focusedButton],
-  ] as const)('On a radio or button: Ctrl+Z with focus on %s calls undo', (_name, target) => {
+    ['a select', () => focused('select')],
+    ['a colour input', () => focused('input', 'color')],
+    ['a checkbox', () => focused('input', 'checkbox')],
+  ] as const)('On a field with no text undo: Ctrl+Z with focus on %s calls undo', (_name, target) => {
     const ev = press(target(), 'z', { ctrlKey: true });
     expect(undo).toHaveBeenCalledTimes(1);
     expect(ev.defaultPrevented).toBe(true);

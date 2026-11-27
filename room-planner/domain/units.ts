@@ -62,11 +62,11 @@ export function parseRoomInput(raw: string, units: Units): number | null {
   return v !== null && v >= CONFIG.roomMin && v <= CONFIG.roomMax ? v : null;
 }
 
-/** Parses a furniture input (inches or centimetres) to inches; null unless 0 < v <= previewDimMax. */
+/** Parses a furniture input (inches or centimetres) to inches; null unless 0 < v <= itemDimMax. */
 export function parseFurnInput(raw: string, units: Units): number | null {
   const n = parseFloat(raw);
   const v = units === 'm' ? n / CM_PER_INCH : n;
-  return Number.isFinite(v) && v > 0 && v <= CONFIG.previewDimMax ? v : null;
+  return Number.isFinite(v) && v > 0 && v <= CONFIG.itemDimMax ? v : null;
 }
 
 /** Floor area from a square-inch value: `168 sq ft` or `15.6 m²`. */

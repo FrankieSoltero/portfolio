@@ -1,12 +1,25 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { defaultColours, defaultStyle, KIND_LABELS, KIND_ORDER, TYPICAL_SIZE } from '../../domain/furniture/recipe';
 import type { ProductPreview } from '../../domain/types';
-import { SAMPLE_LINKS } from '../../services/mockProductLookup';
-import { LOOKUP_MESSAGES, LookupError, type ProductLookup } from '../../services/productLookup';
+import { LOOKUP_MESSAGES } from '../../services/productLookup';
 import { usePlanStore } from '../../state/planStore';
+import { addPreviewToRoom } from '../../state/actions';
 import { useUiStore } from '../../state/uiStore';
 import { AddFurnitureSection } from './AddFurnitureSection';
+
+// jsdom has no WebGL: the preview card's snapshot module is replaced so the tests stay quiet.
+vi.mock('../../three/previewSnapshot', () => ({
+  renderPieceSnapshot: vi.fn(() => null),
+  disposePreviewRenderer: vi.fn(),
+}));
+
+// No test here reaches the network.
+vi.mock('../../state/actions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../state/actions')>();
+  return { ...actual, lookupProduct: vi.fn(async () => {}) };
+});
 
 // Vitest globals are off, so Testing Library cannot register its own cleanup.
 afterEach(cleanup);
@@ -16,385 +29,167 @@ beforeEach(() => {
   useUiStore.getState().reset();
 });
 
-interface PendingCall {
-  url: string;
-  signal: AbortSignal | undefined;
-  resolve(p: ProductPreview): void;
-  reject(err: unknown): void;
-}
-
-/** A ProductLookup whose promises the test settles by hand. */
-function fakeLookup(): { lookup: ProductLookup; spy: ReturnType<typeof vi.fn>; calls: PendingCall[] } {
-  const calls: PendingCall[] = [];
-  const spy = vi.fn(
-    (url: string, opts?: { signal?: AbortSignal }) =>
-      new Promise<ProductPreview>((resolve, reject) => {
-        calls.push({ url, signal: opts?.signal, resolve, reject });
-      }),
-  );
-  return { lookup: { lookup: spy }, spy, calls };
-}
-
-/** Array element at `i`, failing the test if it does not exist. */
-function at<T>(list: readonly T[], i: number): T {
-  const v = list[i];
-  if (v === undefined) throw new Error(`expected an element at index ${i}`);
-  return v;
-}
-
-const SOFA: ProductPreview = {
+const PREVIEW: ProductPreview = {
   kind: 'sofa',
   name: 'Alder 3-seat sofa',
-  host: 'shop.example',
-  sourceUrl: SAMPLE_LINKS.sofa,
-  price: 1290,
-  w: 84,
-  d: 36,
-  h: 33,
-  known: true,
-  model: { tier: 'retailer', label: '3D model from retailer', assetUrl: null },
-};
-
-const UNKNOWN: ProductPreview = {
-  kind: 'box',
-  name: 'Untitled product',
-  host: 'market.example',
-  sourceUrl: SAMPLE_LINKS.unknown,
-  price: null,
-  w: 36,
-  d: 24,
+  host: 'ikea.com',
+  sourceUrl: 'https://www.ikea.com/us/en/p/alder-sofa-12345678/',
+  price: 499,
+  w: 80,
+  d: 35,
   h: 30,
-  known: false,
-  model: { tier: 'box', label: 'No model, shown as a sized box', assetUrl: null },
+  kindFound: true,
+  sizesFound: true,
+  sizeNote: null,
+  imageUrl: null,
+  style: defaultStyle('sofa'),
+  colours: defaultColours('sofa'),
 };
 
-function linkInput(): HTMLInputElement {
-  return screen.getByRole('textbox', { name: 'Product link' }) as HTMLInputElement;
-}
-
-function dimInput(label: string): HTMLInputElement {
-  return screen.getByLabelText(label) as HTMLInputElement;
-}
-
-/** Simulates the browser reporting `value` for a number input (bypasses jsdom's number sanitising). */
-function typeRaw(el: HTMLInputElement, value: string): void {
-  fireEvent.change(el, { target: { value } });
-}
-
-async function settle(fn: () => void): Promise<void> {
-  await act(async () => {
-    fn();
-    await Promise.resolve();
-  });
-}
-
-/** Renders the section, clicks the Sofa sample and resolves it with `product`. */
-async function renderPreview(product: ProductPreview = SOFA) {
-  const fake = fakeLookup();
-  const view = render(<AddFurnitureSection lookup={fake.lookup} />);
-  await userEvent.setup().click(screen.getByRole('button', { name: 'Sofa' }));
-  await settle(() => at(fake.calls, 0).resolve(product));
-  return { ...fake, ...view };
+function typeButtons(container: HTMLElement): HTMLButtonElement[] {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('.add-furniture-kinds > button'));
 }
 
 describe('AddFurnitureSection', () => {
-  it('renders a section headed 02 then Add furniture from a link', () => {
-    const { container } = render(<AddFurnitureSection lookup={fakeLookup().lookup} />);
+  it('renders a section headed 02 then Add furniture, with the line about changing a piece after it is placed', () => {
+    const { container } = render(<AddFurnitureSection />);
     expect(container.querySelector('section')).toHaveClass('sidebar-section');
     const heading = screen.getByRole('heading', { level: 6 });
-    expect(heading).toHaveClass('sidebar-heading');
     expect(heading.querySelector('.sidebar-heading-num')).toHaveTextContent('02');
-    expect(heading).toHaveTextContent(/^02Add furniture from a link$/);
+    expect(heading).toHaveTextContent(/^02Add furniture$/);
+    expect(screen.getByText('Pick a type. You can change its size, style and colours after it is placed.')).toBeInTheDocument();
   });
 
-  it('renders the link input and a blueprint Fetch button', () => {
-    render(<AddFurnitureSection lookup={fakeLookup().lookup} />);
-    const input = linkInput();
-    expect(input).toHaveClass('input');
-    expect(input).toHaveAttribute('type', 'text');
-    expect(input).toHaveAttribute('placeholder', 'Paste a product link');
-    const fetchBtn = screen.getByRole('button', { name: 'Fetch' });
-    expect(fetchBtn).toHaveClass('btn', 'btn-primary', 'blueprint');
-    expect(fetchBtn.querySelectorAll('.corner')).toHaveLength(4);
-    expect(fetchBtn).toBeEnabled();
-  });
-
-  it('shows the sample prompt and three secondary sample buttons when idle', () => {
-    render(<AddFurnitureSection lookup={fakeLookup().lookup} />);
-    expect(screen.getByText('No link handy? Try a sample:')).toBeInTheDocument();
-    for (const name of ['Sofa', 'Bookshelf', 'Page without sizes']) {
-      expect(screen.getByRole('button', { name })).toHaveClass('btn', 'btn-secondary');
+  it('shows 11 secondary buttons, one per kind in KIND_ORDER, named by KIND_LABELS', () => {
+    const { container } = render(<AddFurnitureSection />);
+    const buttons = typeButtons(container);
+    expect(buttons).toHaveLength(11);
+    expect(buttons.map((b) => b.textContent)).toEqual(KIND_ORDER.map((k) => KIND_LABELS[k]));
+    for (const b of buttons) {
+      expect(b).toHaveAttribute('type', 'button');
+      expect(b).toHaveClass('btn', 'btn-secondary');
+      expect(b).toBeEnabled();
     }
-    expect(screen.queryByRole('alert')).toBeNull();
+    // The only text field is the product link input.
+    expect(screen.getAllByRole('textbox')).toEqual([screen.getByLabelText('Paste a product link')]);
   });
 
-  it('shows the invalid-link error and does not call the provider for "nope"', async () => {
-    const fake = fakeLookup();
-    render(<AddFurnitureSection lookup={fake.lookup} />);
-    const user = userEvent.setup();
-    await user.type(linkInput(), 'nope');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
-    expect(screen.getByRole('alert')).toHaveTextContent(LOOKUP_MESSAGES.invalid_url);
-    expect(fake.spy).not.toHaveBeenCalled();
-    expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
+  it('clicking Dresser adds a dresser at its typical size and selects it', async () => {
+    render(<AddFurnitureSection />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Dresser' }));
+    const { items } = usePlanStore.getState();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: 'dresser', name: 'Dresser', ...TYPICAL_SIZE.dresser });
+    expect(useUiStore.getState().selectedId).toBe(items[0]?.id);
   });
 
-  it('removes the error line when the user types again', async () => {
-    render(<AddFurnitureSection lookup={fakeLookup().lookup} />);
-    const user = userEvent.setup();
-    await user.type(linkInput(), 'nope');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
-    expect(screen.getByRole('alert')).toBeInTheDocument();
-    await user.type(linkInput(), 'x');
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  it('starts a lookup from the Sofa sample and shows the loading card', async () => {
-    const fake = fakeLookup();
-    render(<AddFurnitureSection lookup={fake.lookup} />);
+  it('disables the 11 type buttons in room-edit mode', async () => {
+    useUiStore.getState().setMode('room');
+    const { container } = render(<AddFurnitureSection />);
+    const buttons = typeButtons(container);
+    expect(buttons).toHaveLength(11);
+    for (const b of buttons) expect(b).toBeDisabled();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Sofa' }));
-    expect(fake.spy).toHaveBeenCalledTimes(1);
-    expect(at(fake.calls, 0).url).toBe(SAMPLE_LINKS.sofa);
-    expect(at(fake.calls, 0).signal).toBeInstanceOf(AbortSignal);
-    expect(useUiStore.getState().lookup).toEqual({ status: 'loading', host: 'shop.example' });
-    const kicker = screen.getByText('shop.example');
-    expect(kicker).toHaveClass('card-kicker');
-    expect(kicker.closest('.card')).toHaveClass('blueprint');
-    expect(screen.getByText('Reading the product page for name, size and price…')).toHaveClass('card-body');
-    expect(screen.getByRole('button', { name: 'Fetch' })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Sofa' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Bookshelf' })).toBeNull();
-    expect(screen.queryByText('No link handy? Try a sample:')).toBeNull();
+    expect(usePlanStore.getState().items).toEqual([]);
   });
 
-  it('runs Fetch when Enter is pressed in the link input', async () => {
-    const fake = fakeLookup();
-    render(<AddFurnitureSection lookup={fake.lookup} />);
-    await userEvent.setup().type(linkInput(), `${SAMPLE_LINKS.sofa}{Enter}`);
-    expect(fake.spy).toHaveBeenCalledTimes(1);
-    expect(at(fake.calls, 0).url).toBe(SAMPLE_LINKS.sofa);
-    expect(screen.getByText('Reading the product page for name, size and price…')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Fetch' })).toBeDisabled();
+  it('lays out the heading, the link box, the preview card, then the note and the type grid', () => {
+    useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+    const { container } = render(<AddFurnitureSection />);
+    const order = [
+      screen.getByRole('heading', { level: 6 }),
+      container.querySelector('.product-link'),
+      container.querySelector('.product-card'),
+      screen.getByText('Pick a type. You can change its size, style and colours after it is placed.'),
+      container.querySelector('.add-furniture-kinds'),
+    ];
+    for (const el of order) expect(el).not.toBeNull();
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]?.compareDocumentPosition(order[i] as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
   });
 
-  it('shows the preview card with host, name, price, model tag, inputs and actions', async () => {
-    const { container } = await renderPreview();
-    expect(useUiStore.getState().lookup).toEqual({ status: 'preview', product: SOFA });
-    expect(screen.getByText('shop.example')).toHaveClass('card-kicker');
-    expect(screen.getByText('Alder 3-seat sofa')).toHaveClass('card-title');
-    expect(screen.getByText('$1,290')).toHaveClass('card-meta');
-    expect(screen.getByText('3D model from retailer')).toHaveClass('tag', 'tag-outline');
-    expect(dimInput('Width (in)').value).toBe('84');
-    expect(dimInput('Depth (in)').value).toBe('36');
-    expect(dimInput('Height (in)').value).toBe('33');
-    expect(dimInput('Width (in)')).toHaveAttribute('type', 'number');
-    const place = screen.getByRole('button', { name: 'Place in room' });
-    expect(place).toHaveClass('btn', 'btn-primary', 'blueprint');
-    expect(place.querySelectorAll('.corner')).toHaveLength(4);
-    expect(screen.getByRole('button', { name: 'Discard' })).toHaveClass('btn', 'btn-ghost');
-    const photo = screen.getByText('photo');
-    expect(photo).toHaveAttribute('aria-hidden', 'true');
-    expect(container.querySelector('.card.blueprint')).not.toBeNull();
-    expect(screen.queryByText(/didn't list dimensions/)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Fetch' })).toBeEnabled();
+  it('shows the preview card only while a preview is shown, and closes it after Add to room', async () => {
+    const { container } = render(<AddFurnitureSection />);
+    expect(container.querySelector('.product-card')).toBeNull();
+    act(() => useUiStore.getState().setLookup({ status: 'loading' }));
+    expect(container.querySelector('.product-card')).toBeNull();
+    act(() => useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW }));
+    expect(screen.getByText('Alder 3-seat sofa')).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Add to room' }));
+    expect(container.querySelector('.product-card')).toBeNull();
+    expect(usePlanStore.getState().items).toHaveLength(1);
   });
 
-  it('shows the missing-dimensions note and No price for an unknown product', async () => {
-    await renderPreview(UNKNOWN);
-    expect(
-      screen.getByText("This page didn't list dimensions. Enter them from the product description."),
-    ).toBeInTheDocument();
-    expect(screen.getByText('No price')).toHaveClass('card-meta');
+  it('puts the error line between the link box input and the note, and keeps the type grid enabled', () => {
+    useUiStore.getState().setLookup({ status: 'error', code: 'blocked' });
+    const { container } = render(<AddFurnitureSection />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(LOOKUP_MESSAGES.blocked);
+    expect(container.querySelector('.product-link')).toContainElement(alert);
+    const note = screen.getByText('Pick a type. You can change its size, style and colours after it is placed.');
+    expect(alert.compareDocumentPosition(note)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    for (const b of typeButtons(container)) expect(b).toBeEnabled();
   });
 
-  it('writes a valid width edit to the preview product', async () => {
-    await renderPreview();
-    typeRaw(dimInput('Width (in)'), '90');
-    const lookup = useUiStore.getState().lookup;
-    expect(lookup.status === 'preview' && lookup.product.w).toBe(90);
-    expect(dimInput('Width (in)').value).toBe('90');
+  it('in room-edit mode disables the link input, Look up and Add to room like the type grid', () => {
+    useUiStore.getState().setMode('room');
+    useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+    render(<AddFurnitureSection />);
+    expect(screen.getByLabelText('Paste a product link')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Look up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to room' })).toBeDisabled();
   });
 
-  it('keeps an invalid width in the input without changing the product', async () => {
-    await renderPreview();
-    typeRaw(dimInput('Width (in)'), '0');
-    const lookup = useUiStore.getState().lookup;
-    expect(lookup.status === 'preview' && lookup.product.w).toBe(84);
-    expect(dimInput('Width (in)').value).toBe('0');
-  });
+  describe('focus', () => {
+    function linkInput(): HTMLElement {
+      return screen.getByLabelText('Paste a product link');
+    }
 
-  it('keeps a partial entry in the input while storing its parsed value', async () => {
-    await renderPreview();
-    const el = dimInput('Width (in)');
-    // jsdom sanitises "90." on a number input to ""; Chrome reports the typed text.
-    Object.defineProperty(el, 'value', { configurable: true, writable: true, value: '90.' });
-    fireEvent.change(el);
-    const lookup = useUiStore.getState().lookup;
-    expect(lookup.status === 'preview' && lookup.product.w).toBe(90);
-    expect(el.value).toBe('90.');
-  });
-
-  it('relabels and re-seeds the inputs in centimetres when units change during preview', async () => {
-    await renderPreview();
-    typeRaw(dimInput('Width (in)'), '0');
-    act(() => usePlanStore.getState().setUnits('m'));
-    expect(dimInput('Width (cm)').value).toBe('213');
-    expect(dimInput('Depth (cm)').value).toBe('91');
-    expect(dimInput('Height (cm)').value).toBe('84');
-  });
-
-  it('re-seeds on a units change even when the draft happens to parse to the stored length', async () => {
-    await renderPreview({ ...SOFA, w: 100 });
-    // 254.0 in is out of range, so the preview keeps 100 in, which is exactly 254 cm.
-    typeRaw(dimInput('Width (in)'), '254.0');
-    const lookup = useUiStore.getState().lookup;
-    expect(lookup.status === 'preview' && lookup.product.w).toBe(100);
-    act(() => usePlanStore.getState().setUnits('m'));
-    expect(dimInput('Width (cm)').value).toBe('254');
-  });
-
-  it('places the previewed product, selects it and returns to idle with an empty link', async () => {
-    const before = usePlanStore.getState().items.length;
-    await renderPreview();
-    expect(linkInput().value).toBe(SAMPLE_LINKS.sofa);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Place in room' }));
-    const items = usePlanStore.getState().items;
-    expect(items).toHaveLength(before + 1);
-    const added = at(items, items.length - 1);
-    expect(added.name).toBe('Alder 3-seat sofa');
-    expect(useUiStore.getState().selectedId).toBe(added.id);
-    expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
-    expect(linkInput().value).toBe('');
-    expect(screen.getByRole('button', { name: 'Sofa' })).toBeInTheDocument();
-  });
-
-  it('on a plan with 200 items shows why nothing was placed and keeps the preview; removing one lets it place', async () => {
-    const seed = usePlanStore.getState().items[0];
-    const items = Array.from({ length: 200 }, (_, i) => ({ ...seed, id: `box-${i}` }));
-    usePlanStore.getState().reset({ ...usePlanStore.getState(), items });
-    await renderPreview();
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Place in room' }));
-    expect(usePlanStore.getState().items).toBe(items);
-    expect(screen.getByRole('alert').textContent).toBe('This plan already has 200 items. Remove one to add another.');
-    expect(useUiStore.getState().lookup).toEqual({ status: 'preview', product: SOFA });
-    expect(useUiStore.getState().selectedId).toBeNull();
-    expect(linkInput().value).toBe(SAMPLE_LINKS.sofa);
-
-    act(() => usePlanStore.getState().removeItem('box-0'));
-    await user.click(screen.getByRole('button', { name: 'Place in room' }));
-    expect(usePlanStore.getState().items).toHaveLength(200);
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
-  });
-
-  it('clears the full-plan message when the preview is discarded', async () => {
-    const seed = usePlanStore.getState().items[0];
-    usePlanStore.getState().reset({
-      ...usePlanStore.getState(),
-      items: Array.from({ length: 200 }, (_, i) => ({ ...seed, id: `box-${i}` })),
+    it('moves focus to the link input after Add to room closes the card', async () => {
+      useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+      render(<AddFurnitureSection />);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Add to room' }));
+      expect(document.querySelector('.product-card')).toBeNull();
+      expect(document.activeElement).toBe(linkInput());
     });
-    await renderPreview();
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Place in room' }));
-    expect(screen.getByRole('alert')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Discard' }));
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
 
-  it('discards the preview without adding an item and empties the link', async () => {
-    const before = usePlanStore.getState().items;
-    await renderPreview();
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Discard' }));
-    expect(usePlanStore.getState().items).toBe(before);
-    expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
-    expect(linkInput().value).toBe('');
-    expect(screen.queryByText('Alder 3-seat sofa')).toBeNull();
-  });
+    it('moves focus to the link input after Cancel closes the card', async () => {
+      useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+      render(<AddFurnitureSection />);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(document.querySelector('.product-card')).toBeNull();
+      expect(document.activeElement).toBe(linkInput());
+    });
 
-  it('shows the unavailable message (never the raw error) when the provider fails', async () => {
-    const fake = fakeLookup();
-    render(<AddFurnitureSection lookup={fake.lookup} />);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Sofa' }));
-    await settle(() => at(fake.calls, 0).reject(new Error('x')));
-    expect(screen.getByRole('alert')).toHaveTextContent(LOOKUP_MESSAGES.unavailable);
-    expect(screen.getByRole('alert').textContent).toBe(LOOKUP_MESSAGES.unavailable);
-    expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
-    expect(screen.getByRole('button', { name: 'Sofa' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Fetch' })).toBeEnabled();
-  });
+    it('moves focus to the link input when clicking Look up puts the box into loading', async () => {
+      const user = userEvent.setup();
+      render(<AddFurnitureSection />);
+      await user.type(linkInput(), 'https://www.ikea.com/us/en/p/alder-sofa-12345678/');
+      await user.click(screen.getByRole('button', { name: 'Look up' }));
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Look up' }));
+      act(() => useUiStore.getState().setLookup({ status: 'loading' }));
+      expect(screen.getByRole('button', { name: 'Reading the page…' })).toBeDisabled();
+      expect(document.activeElement).toBe(linkInput());
+    });
 
-  it('shows a LookupError from the provider by its code message', async () => {
-    const fake = fakeLookup();
-    render(<AddFurnitureSection lookup={fake.lookup} />);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Sofa' }));
-    await settle(() => at(fake.calls, 0).reject(new LookupError('invalid_url')));
-    expect(screen.getByRole('alert')).toHaveTextContent(LOOKUP_MESSAGES.invalid_url);
-    expect(useUiStore.getState().lookup).toEqual({ status: 'idle' });
-  });
-
-  it('aborts a superseded lookup and ignores its late response', async () => {
-    const fake = fakeLookup();
-    render(<AddFurnitureSection lookup={fake.lookup} />);
-    const user = userEvent.setup();
-    await user.type(linkInput(), 'https://a.example/sofa{Enter}');
-    await user.clear(linkInput());
-    await user.type(linkInput(), 'https://b.example/shelf{Enter}');
-    expect(fake.calls).toHaveLength(2);
-    const a = at(fake.calls, 0);
-    const b = at(fake.calls, 1);
-    expect(a.signal?.aborted).toBe(true);
-    expect(b.signal?.aborted).toBe(false);
-    expect(useUiStore.getState().lookup).toEqual({ status: 'loading', host: 'b.example' });
-
-    await settle(() => a.resolve({ ...SOFA, host: 'a.example', name: 'Stale sofa' }));
-    expect(useUiStore.getState().lookup).toEqual({ status: 'loading', host: 'b.example' });
-    expect(screen.queryByText('Stale sofa')).toBeNull();
-
-    const shelf: ProductPreview = { ...SOFA, host: 'b.example', name: 'Fresh shelf' };
-    await settle(() => b.resolve(shelf));
-    expect(useUiStore.getState().lookup).toEqual({ status: 'preview', product: shelf });
-    expect(screen.getByText('Fresh shelf')).toBeInTheDocument();
-  });
-
-  it('ignores a late rejection from a superseded lookup', async () => {
-    const fake = fakeLookup();
-    render(<AddFurnitureSection lookup={fake.lookup} />);
-    const user = userEvent.setup();
-    await user.type(linkInput(), 'https://a.example/sofa{Enter}');
-    await user.clear(linkInput());
-    await user.type(linkInput(), 'https://b.example/shelf{Enter}');
-    await settle(() => at(fake.calls, 0).reject(new Error('late')));
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(useUiStore.getState().lookup).toEqual({ status: 'loading', host: 'b.example' });
-  });
-
-  it('shows no error line when the provider rejects with an AbortError', async () => {
-    const fake = fakeLookup();
-    render(<AddFurnitureSection lookup={fake.lookup} />);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Sofa' }));
-    await settle(() => at(fake.calls, 0).reject(new DOMException('aborted', 'AbortError')));
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  it('aborts the lookup on unmount and makes no store update afterwards', async () => {
-    const fake = fakeLookup();
-    const { unmount } = render(<AddFurnitureSection lookup={fake.lookup} />);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Sofa' }));
-    const setLookup = vi.spyOn(useUiStore.getState(), 'setLookup');
-    unmount();
-    expect(at(fake.calls, 0).signal?.aborted).toBe(true);
-    const before = useUiStore.getState().lookup;
-    await settle(() => at(fake.calls, 0).resolve(SOFA));
-    expect(useUiStore.getState().lookup).toBe(before);
-    expect(setLookup).not.toHaveBeenCalled();
-    setLookup.mockRestore();
-  });
-
-  it('renders a hostile product name as literal text', async () => {
-    const name = '<img src=x onerror=alert(1)>';
-    const { container } = await renderPreview({ ...SOFA, name });
-    expect(screen.getByText(name)).toHaveClass('card-title');
-    expect(container.querySelector('img')).toBeNull();
+    it('leaves focus alone when it is on an unrelated element', () => {
+      useUiStore.getState().setLookup({ status: 'preview', preview: PREVIEW });
+      render(
+        <>
+          <input aria-label="Elsewhere" />
+          <AddFurnitureSection />
+        </>,
+      );
+      const elsewhere = screen.getByLabelText('Elsewhere');
+      elsewhere.focus();
+      act(() => {
+        addPreviewToRoom();
+      });
+      expect(document.querySelector('.product-card')).toBeNull();
+      expect(document.activeElement).toBe(elsewhere);
+      act(() => useUiStore.getState().setLookup({ status: 'loading' }));
+      expect(document.activeElement).toBe(elsewhere);
+    });
   });
 });
